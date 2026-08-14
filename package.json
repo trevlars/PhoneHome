@@ -1,0 +1,22 @@
+{
+  "name": "kids-landline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open kids/family landline network — Stage 1 softphones (Digits-inspired). Maintained by trevlars.",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w server",
+    "dev:web": "npm run build -w web -- --watch",
+    "build": "npm run build -w web && npm run build -w server",
+    "start": "npm run start -w server",
+    "lab": "npm run build -w web && npm run start -w server",
+    "test": "npm run test -w server"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "AGPL-3.0-or-later"
+}
