@@ -5,5 +5,13 @@
   "display": "standalone",
   "background_color": "#07110e",
   "theme_color": "#0c1814",
-  "description": "Private family softphones — allowlisted calls only"
+  "description": "Private family softphones — allowlisted calls only",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

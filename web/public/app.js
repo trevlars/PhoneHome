@@ -44,6 +44,9 @@ const state = {
   ringTimer: null,
   tickTimer: null,
   connectWatch: null,
+  audioCtx: null,
+  presenceTimer: null,
+  celebrate: "",
   error: "",
   screen: "boot",
   mode: "host",
@@ -213,20 +216,15 @@ function releaseWakeLock() {
 function startRing() {
   stopRing();
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = state.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    state.audioCtx = ctx;
     const beep = () => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.frequency.value = 440;
-      g.gain.value = 0.05;
-      o.connect(g);
-      g.connect(ctx.destination);
-      o.start();
-      o.stop(ctx.currentTime + 0.25);
+      playTone(440, 0.22, 0.055, "triangle");
+      setTimeout(() => playTone(554, 0.22, 0.045, "triangle"), 220);
     };
     beep();
-    state.ringTimer = setInterval(beep, 2000);
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    state.ringTimer = setInterval(beep, 2200);
+    if (navigator.vibrate) navigator.vibrate([180, 80, 180, 80, 240]);
   } catch {}
 }
 
@@ -303,6 +301,11 @@ async function makePc(peer) {
       clearConnectWatch();
       if (state.call && state.call.status !== "active") {
         state.call = { ...state.call, status: "active" };
+        playConnectChime();
+        if (!sessionStorage.getItem("kl_celebrated_call")) {
+          sessionStorage.setItem("kl_celebrated_call", "1");
+          state.celebrate = "You’re on a private family line.";
+        }
       }
       if (!state.callStartedAt) {
         state.callStartedAt = Date.now();
@@ -477,8 +480,78 @@ function contactLabel(call) {
   return lineName(other);
 }
 
+function otherLineId(call) {
+  if (!call) return "";
+  return call.fromLineId === state.activeLineId ? call.toLineId : call.fromLineId;
+}
+
+function initials(name) {
+  const parts = String(name || "?")
+    .replace(/'s phone$/i, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+const AVATAR_HUES = [28, 48, 142, 168, 198, 22, 85, 12];
+
+function avatarStyle(seed) {
+  let h = 0;
+  const s = String(seed || "x");
+  for (let i = 0; i < s.length; i++) h = (h + s.charCodeAt(i) * 17) % AVATAR_HUES.length;
+  const hue = AVATAR_HUES[h];
+  return `background: linear-gradient(145deg, hsl(${hue} 52% 42%), hsl(${hue} 40% 22%));`;
+}
+
+function avatarHtml(name, seed, sizeClass = "") {
+  return `<div class="avatar ${sizeClass}" style="${avatarStyle(seed)}" aria-hidden="true">${initials(name)}</div>`;
+}
+
+function playTone(freq, dur = 0.18, gain = 0.06, type = "sine") {
+  try {
+    const ctx = state.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    state.audioCtx = ctx;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.value = gain;
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    o.stop(ctx.currentTime + dur);
+  } catch {}
+}
+
+function playConnectChime() {
+  playTone(523, 0.12, 0.05);
+  setTimeout(() => playTone(784, 0.18, 0.05), 90);
+}
+
 function dots(n, active) {
   return `<div class="step-dots">${Array.from({ length: n }, (_, i) => `<span class="${i === active ? "on" : ""}"></span>`).join("")}</div>`;
+}
+
+function formatCallWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function outcomeLabel(outcome) {
+  if (outcome === "completed" || outcome === "answered") return "Talked";
+  if (outcome === "missed") return "Missed";
+  if (outcome === "cancelled") return "Cancelled";
+  if (outcome === "offline") return "Away";
+  if (outcome === "ringing") return "Ringing";
+  return "Call";
 }
 
 function paintCallLayer() {
@@ -493,16 +566,15 @@ function paintCallLayer() {
     status === "incoming"
       ? "Incoming call"
       : status === "active"
-        ? "On a call"
+        ? "Connected"
         : status === "connecting"
           ? "Connecting…"
           : status === "ringing"
             ? "Ringing…"
             : "Calling…";
   const who = contactLabel(state.call);
-  const house = householdName(
-    state.call.fromLineId === state.activeLineId ? state.call.toLineId : state.call.fromLineId
-  );
+  const other = otherLineId(state.call);
+  const house = householdName(other);
   const timer =
     state.callStartedAt && (status === "active" || status === "connecting")
       ? formatDuration(Date.now() - state.callStartedAt)
@@ -511,24 +583,33 @@ function paintCallLayer() {
         : "";
   const mediaHint =
     state.iceState === "connected"
-      ? "Connected"
+      ? "Private · encrypted voice"
       : state.iceState === "disconnected"
         ? "Reconnecting…"
-        : status === "connecting" || status === "active"
-          ? "Setting up voice…"
-          : "";
+        : status === "connecting"
+          ? "Setting up a private line…"
+          : status === "incoming"
+            ? "Someone on your allowlist is calling"
+            : "Waiting for them to pick up…";
+  const ringing = status === "incoming" || status === "ringing" || status === "calling";
 
   root.innerHTML = `
-    <div id="call-layer">
-      <div class="call-card">
+    <div id="call-layer" class="call-stage ${status}">
+      <div class="call-stage-bg" aria-hidden="true"></div>
+      <div class="call-card cinematic">
         <p class="call-kicker">${title}</p>
+        <div class="call-avatar-wrap ${ringing ? "pulse" : ""}">
+          <span class="call-ring"></span>
+          <span class="call-ring delay"></span>
+          ${avatarHtml(who, other, "xl")}
+        </div>
         <h2 class="call-who">${who}</h2>
         ${house ? `<p class="call-house">${house}</p>` : ""}
-        ${timer ? `<p class="call-timer" id="call-timer">${timer}</p>` : ""}
-        ${mediaHint ? `<p class="call-media">${mediaHint}</p>` : ""}
-        <div class="call-actions ${status === "incoming" ? "incoming" : status === "active" || status === "connecting" ? "in-call" : ""}">
+        ${timer ? `<p class="call-timer" id="call-timer">${timer}</p>` : `<p class="call-media">${mediaHint}</p>`}
+        ${timer && mediaHint ? `<p class="call-media">${mediaHint}</p>` : ""}
+        <div class="call-actions ${status === "incoming" ? "incoming" : status === "active" || status === "connecting" ? "in-call" : "outbound"}">
           ${status === "incoming" ? `<button class="primary call-answer" id="accept">Answer</button>` : ""}
-          ${(status === "active" || status === "connecting") ? `<button class="ghost" id="mute">${state.muted ? "Unmute" : "Mute"}</button>` : ""}
+          ${status === "active" || status === "connecting" ? `<button class="ghost" id="mute">${state.muted ? "Unmute" : "Mute"}</button>` : ""}
           <button class="danger" id="hangup">${status === "incoming" ? "Decline" : "Hang up"}</button>
         </div>
       </div>
@@ -546,15 +627,19 @@ function renderWelcome() {
   const invite = new URLSearchParams(location.search).get("invite") || "";
   app.innerHTML = `
     <p class="brand">Kids<br/>Landline</p>
-    <p class="lede">Private calls for families you trust. No strangers. No feeds. Just talk.</p>
-    <div class="sheet">
-      <h2>Get started</h2>
-      <p>You’ll use a short code — no app store, no VPN for cousins.</p>
+    <p class="lede">A private phone for the people you love. No strangers. No feeds. Just talk.</p>
+    <div class="sheet welcome-sheet">
+      <h2>Open the clubhouse</h2>
+      <p>Cousins join with a short code — no app store, no VPN.</p>
       <div class="btn-row">
         <button class="primary" id="go-host">I’m hosting this family network</button>
         <button class="ghost" id="go-join">I was invited</button>
       </div>
-      ${invite ? `<p class="tiny" style="margin-top:14px">Invite code ready: <strong style="letter-spacing:0.12em">${invite}</strong></p>` : ""}
+      ${
+        invite
+          ? `<div class="invite-ready">Invite code ready<br/><strong>${invite}</strong></div>`
+          : ""
+      }
       <button class="linkish" id="replay-tutorial">How does this work?</button>
     </div>
   `;
@@ -882,51 +967,99 @@ function renderHome() {
     ...a,
     online: state.directory.find((d) => d.id === a.target_line_id)?.online,
   }));
+  const onlineCount = contacts.filter((c) => c.online).length;
+  const logs = (hh?.call_logs || []).slice(0, 6);
+  const hour = new Date().getHours();
+  const hello = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   app.innerHTML = `
     <div class="topbar">
       <div>
         <div class="mark">Kids Landline</div>
-        <div class="who">${hh?.name || ""} · ${state.user.display_name}</div>
+        <div class="who">${hh?.name || "Family"} · ${state.user.display_name}</div>
       </div>
-      <button class="icon-btn" id="settings" title="Settings">⚙</button>
+      <button class="icon-btn" id="settings" title="Settings" aria-label="Settings">⚙</button>
     </div>
 
-    ${state.flash ? `<p class="error">${state.flash}</p>` : ""}
-
-    <div class="stack" style="grid-template-columns:1fr 1fr;display:grid;gap:10px;margin-bottom:8px">
-      <button class="ghost" id="invite" style="width:100%">Invite</button>
-      <button class="ghost" id="add-contact" style="width:100%">Add contact</button>
+    <div class="home-hero">
+      <p class="home-hello">${hello}</p>
+      <h1 class="home-title">Who are we calling?</h1>
+      <div class="status-chip ${onlineCount ? "live" : ""}">
+        <span class="dot"></span>
+        ${onlineCount ? `${onlineCount} family line${onlineCount === 1 ? "" : "s"} online` : "Waiting for family to open their phone"}
+      </div>
     </div>
 
-    <div class="section-title">Contacts you can call</div>
+    ${state.flash ? `<p class="flash-banner">${state.flash}</p>` : ""}
+    ${state.celebrate ? `<p class="celebrate-banner">${state.celebrate}</p>` : ""}
+
+    <div class="home-actions">
+      <button class="action-tile" id="invite">
+        <span class="action-glyph">＋</span>
+        <span><strong>Invite</strong><small>Bring cousins in</small></span>
+      </button>
+      <button class="action-tile" id="add-contact">
+        <span class="action-glyph">★</span>
+        <span><strong>Contacts</strong><small>Allowlist a line</small></span>
+      </button>
+    </div>
+
+    <div class="section-title">Family lines</div>
     ${
       contacts.length
-        ? contacts
+        ? `<div class="contact-grid">${contacts
             .map(
-              (c) => `
-        <div class="contact">
-          <div>
-            <strong>${c.label}</strong>
-            <small>${lineName(c.target_line_id)} · ${householdName(c.target_line_id)}</small>
-          </div>
-          <div class="stack" style="justify-items:end">
+              (c, i) => `
+          <button class="contact-tile" data-call="${c.target_line_id}" style="animation-delay:${i * 0.05}s">
+            ${avatarHtml(c.label, c.target_line_id, "lg")}
+            <div class="contact-meta">
+              <strong>${c.label}</strong>
+              <small>${householdName(c.target_line_id) || lineName(c.target_line_id)}</small>
+            </div>
             <span class="pill ${c.online ? "on" : ""}"><span class="dot"></span>${c.online ? "Online" : "Away"}</span>
-            <button class="primary call" data-call="${c.target_line_id}">Call</button>
-          </div>
-        </div>`
+            <span class="call-fab">Call</span>
+          </button>`
             )
-            .join("")
-        : `<div class="empty">No contacts yet.<br/>Invite a family, then tap <strong>Add contact</strong>.</div>`
+            .join("")}</div>`
+        : `<div class="empty hero-empty">
+            <div class="empty-visual">${phoneSvg()}</div>
+            <strong>Your phone book is empty</strong>
+            <p>Invite a relative, then add each other as contacts. After that, one tap starts a private call.</p>
+            <button class="primary" id="empty-invite">Send an invite</button>
+          </div>`
+    }
+
+    ${
+      logs.length
+        ? `<div class="section-title">Recent</div>
+        <div class="recent-list">
+          ${logs
+            .map((log) => {
+              const other =
+                log.from_line_id === state.activeLineId ? log.to_line_id : log.from_line_id;
+              const inbound = log.to_line_id === state.activeLineId;
+              const name =
+                contacts.find((c) => c.target_line_id === other)?.label || lineName(other);
+              return `<div class="recent-row">
+                ${avatarHtml(name, other, "sm")}
+                <div>
+                  <strong>${inbound ? "←" : "→"} ${name}</strong>
+                  <small>${outcomeLabel(log.outcome)} · ${formatCallWhen(log.started_at)}</small>
+                </div>
+              </div>`;
+            })
+            .join("")}
+        </div>`
+        : ""
     }
 
     <div class="section-title">Safety</div>
-    <div class="sheet" style="padding:14px">
+    <div class="sheet safety-sheet">
       <div class="btn-row two">
         <button class="ghost" id="toggle-kill">${hh.kill_switch ? "Kill switch ON" : "Kill switch"}</button>
         <button class="ghost" id="quiet">${quietSummary(hh)}</button>
       </div>
-      <p class="tiny" style="margin:12px 0 0">Only allowlisted people can ring you. Keep this tab open to receive calls.</p>
+      <p class="tiny" style="margin:12px 0 0">Only people you approve can ring this phone. Keep the tab open to receive calls.</p>
     </div>
   `;
 
@@ -934,6 +1067,13 @@ function renderHome() {
     setTimeout(() => {
       state.flash = "";
     }, 5000);
+  }
+  if (state.celebrate) {
+    setTimeout(() => {
+      state.celebrate = "";
+      const el = document.querySelector(".celebrate-banner");
+      if (el) el.remove();
+    }, 4200);
   }
 
   document.getElementById("settings").onclick = () => {
@@ -944,6 +1084,10 @@ function renderHome() {
     state.screen = "invite";
     render();
   };
+  document.getElementById("empty-invite")?.addEventListener("click", () => {
+    state.screen = "invite";
+    render();
+  });
   document.getElementById("add-contact").onclick = () => {
     state.screen = "add-contact";
     render();
@@ -962,6 +1106,18 @@ function renderHome() {
     state.screen = "quiet";
     render();
   };
+
+  if (!state.presenceTimer) {
+    state.presenceTimer = setInterval(async () => {
+      if (!state.sessionId || state.call || state.screen !== "home") return;
+      try {
+        const data = await api("/api/me");
+        state.directory = data.directory || [];
+        state.households = data.households || [];
+        render();
+      } catch {}
+    }, 12000);
+  }
 }
 
 function browserTimeZone() {
@@ -1076,21 +1232,32 @@ function renderQuietHours() {
 
 async function renderInvite() {
   const hh = state.households[0];
+  let sharePayload = null;
   app.innerHTML = `
     <div class="topbar">
       <button class="icon-btn" id="back">←</button>
       <div class="mark">Invite</div>
       <span style="width:40px"></span>
     </div>
-    <div class="sheet">
-      <h2>Invite another family</h2>
-      <p>Send them this code. They open the same website — no VPN.</p>
-      <div class="code-box" id="code">······</div>
-      <p class="tiny" id="url"></p>
+    <div class="invite-hero sheet">
+      <p class="invite-eyebrow">Family pass</p>
+      <h2>Invite someone you trust</h2>
+      <p>They open the same link, type this code, and join your private network — no VPN, no app store.</p>
+      <div class="code-box glow" id="code">······</div>
+      <p class="tiny center" id="url"></p>
       <div class="btn-row">
-        <button class="primary" id="copy">Copy invite</button>
-        <button class="ghost" id="refresh-inv">New code</button>
+        <button class="primary" id="share">Share invite</button>
+        <button class="ghost" id="copy">Copy link</button>
       </div>
+      <button class="linkish" id="refresh-inv">Make a new code</button>
+    </div>
+    <div class="sheet tip-sheet">
+      <h2>What to tell them</h2>
+      <ol class="how-list">
+        <li>Open the link on their phone</li>
+        <li>Tap <em>I was invited</em></li>
+        <li>Enter the code, then add each other as contacts</li>
+      </ol>
     </div>
   `;
   document.getElementById("back").onclick = () => {
@@ -1100,15 +1267,40 @@ async function renderInvite() {
 
   async function loadInvite() {
     const data = await api(`/api/households/${hh.id}/invites`, { method: "POST", body: "{}" });
+    sharePayload = data;
     document.getElementById("code").textContent = data.invite.code;
     document.getElementById("url").textContent = data.shareUrl;
-    document.getElementById("copy").onclick = async () => {
-      await navigator.clipboard.writeText(`${data.shareText}\n${data.shareUrl}`);
-      state.flash = "Invite copied";
-      state.screen = "home";
-      render();
-    };
   }
+
+  document.getElementById("copy").onclick = async () => {
+    if (!sharePayload) return;
+    const text = `${sharePayload.shareText}\n${sharePayload.shareUrl}`;
+    await navigator.clipboard.writeText(text);
+    state.flash = "Invite copied — send it to them";
+    state.screen = "home";
+    render();
+  };
+  document.getElementById("share").onclick = async () => {
+    if (!sharePayload) return;
+    const text = `${sharePayload.shareText}\n${sharePayload.shareUrl}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Kids Landline invite",
+          text: sharePayload.shareText,
+          url: sharePayload.shareUrl,
+        });
+        state.flash = "Invite sent";
+        state.screen = "home";
+        render();
+        return;
+      } catch {}
+    }
+    await navigator.clipboard.writeText(text);
+    state.flash = "Invite copied — paste it in a text";
+    state.screen = "home";
+    render();
+  };
   document.getElementById("refresh-inv").onclick = loadInvite;
   await loadInvite();
 }
@@ -1124,36 +1316,60 @@ function renderAddContact() {
     </div>
     <div class="sheet">
       <h2>Who can they call?</h2>
-      <p>Pick a line from families on this network. Both sides must add each other.</p>
+      <p>Both families must add each other. After that, kids only see approved names.</p>
       ${
         others.length
           ? `
-        <label>Line</label>
-        <select id="dir">${others.map((d) => `<option value="${d.id}">${d.name} — ${d.household_name}</option>`).join("")}</select>
-        <label>Label on your phone</label>
+        <div class="picker-list" id="picker">
+          ${others
+            .map(
+              (d, i) => `
+            <button type="button" class="picker-row ${i === 0 ? "selected" : ""}" data-id="${d.id}">
+              ${avatarHtml(d.name, d.id, "md")}
+              <span><strong>${d.name}</strong><small>${d.household_name}</small></span>
+            </button>`
+            )
+            .join("")}
+        </div>
+        <label>Name on your phone</label>
         <input id="label" placeholder="e.g. Maya" value="${others[0] ? others[0].name.replace(/'s phone$/i, "").trim() : ""}" />
         <button class="primary" id="save">Add to contacts</button>`
-          : `<div class="empty">No other families yet. Send an invite first.</div>`
+          : `<div class="empty hero-empty">
+              <strong>No other families yet</strong>
+              <p>Send an invite first. When they join, they’ll show up here.</p>
+              <button class="primary" id="to-invite">Invite someone</button>
+            </div>`
       }
     </div>
   `;
+  let selectedId = others[0]?.id || "";
   document.getElementById("back").onclick = () => {
     state.screen = "home";
     render();
   };
-  document.getElementById("dir")?.addEventListener("change", () => {
-    const d = others.find((x) => x.id === document.getElementById("dir").value);
-    if (d) document.getElementById("label").value = d.name.replace(/'s phone$/i, "").trim() || d.name;
+  document.getElementById("to-invite")?.addEventListener("click", () => {
+    state.screen = "invite";
+    render();
+  });
+  document.querySelectorAll(".picker-row").forEach((row) => {
+    row.onclick = () => {
+      document.querySelectorAll(".picker-row").forEach((r) => r.classList.remove("selected"));
+      row.classList.add("selected");
+      selectedId = row.getAttribute("data-id");
+      const d = others.find((x) => x.id === selectedId);
+      if (d) document.getElementById("label").value = d.name.replace(/'s phone$/i, "").trim() || d.name;
+    };
   });
   document.getElementById("save")?.addEventListener("click", async () => {
-    const selected = others.find((x) => x.id === document.getElementById("dir").value);
+    const selected = others.find((x) => x.id === selectedId);
     await api(`/api/households/${hh.id}/allowlist`, {
       method: "POST",
       body: JSON.stringify({
-        targetLineId: document.getElementById("dir").value,
+        targetLineId: selectedId,
         label: document.getElementById("label").value || selected?.name || "Contact",
       }),
     });
+    state.flash = "Contact added — they need to add you too";
     state.screen = "home";
     await refresh();
   });

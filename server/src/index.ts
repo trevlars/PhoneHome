@@ -163,7 +163,7 @@ app.post("/api/households/:id/invites", (req, res) => {
   res.json({
     invite,
     shareUrl: `${base}/?invite=${invite.code}`,
-    shareText: `Join our kids landline network with code ${invite.code}`,
+    shareText: `Join our Kids Landline — a private family phone (code ${invite.code})`,
   });
 });
 
