@@ -487,6 +487,20 @@ function otherLineId(call) {
   return call.fromLineId === state.activeLineId ? call.toLineId : call.fromLineId;
 }
 
+function friendlyPersonName(raw) {
+  return String(raw || "")
+    .replace(/'s phone$/i, "")
+    .replace(/\s+phone$/i, "")
+    .trim() || "Friend";
+}
+
+/** Prefer custom label; fall back when old rows were saved as generic "Contact". */
+function contactDisplayName(entry) {
+  const label = String(entry?.label || "").trim();
+  if (label && !/^contact$/i.test(label)) return label;
+  return friendlyPersonName(lineName(entry?.target_line_id));
+}
+
 function initials(name) {
   const parts = String(name || "?")
     .replace(/'s phone$/i, "")
@@ -1067,8 +1081,8 @@ function renderPhone() {
             }
             return `<button class="speed-slot" data-call="${c.target_line_id}" type="button">
               <span class="speed-num">${n}</span>
-              ${avatarHtml(c.label, c.target_line_id, "md")}
-              <strong>${c.label}</strong>
+              ${avatarHtml(contactDisplayName(c), c.target_line_id, "md")}
+              <strong>${contactDisplayName(c)}</strong>
               <small class="${c.online ? "on" : ""}">${c.online ? "Online" : "Away"}</small>
             </button>`;
           })
@@ -1093,9 +1107,9 @@ function renderPhone() {
             .map(
               (c, i) => `
             <button class="contact-tile" data-call="${c.target_line_id}" style="animation-delay:${i * 0.04}s">
-              ${avatarHtml(c.label, c.target_line_id, "lg")}
+              ${avatarHtml(contactDisplayName(c), c.target_line_id, "lg")}
               <div class="contact-meta">
-                <strong>${c.speed_dial ? `${c.speed_dial} · ` : ""}${c.label}</strong>
+                <strong>${c.speed_dial ? `${c.speed_dial} · ` : ""}${contactDisplayName(c)}</strong>
                 <small>${householdName(c.target_line_id) || lineName(c.target_line_id)}</small>
               </div>
               <span class="pill ${c.online ? "on" : ""}"><span class="dot"></span>${c.online ? "Online" : "Away"}</span>
@@ -1184,7 +1198,9 @@ function renderActivity() {
                     log.from_line_id === state.activeLineId ? log.to_line_id : log.from_line_id;
                   const inbound = log.to_line_id === state.activeLineId;
                   const name =
-                    contacts.find((c) => c.target_line_id === other)?.label || lineName(other);
+                    contactDisplayName(
+                      contacts.find((c) => c.target_line_id === other) || { target_line_id: other, label: "" }
+                    );
                   return `<div class="recent-row">
                     ${avatarHtml(name, other, "sm")}
                     <div>
@@ -1595,7 +1611,10 @@ function renderAddContact() {
       method: "POST",
       body: JSON.stringify({
         targetLineId: selectedId,
-        label: document.getElementById("label").value || selected?.name || "Contact",
+        label:
+          document.getElementById("label").value.trim() ||
+          friendlyPersonName(selected?.name) ||
+          "Friend",
       }),
     });
     state.flash = "Contact added — they need to add you too";

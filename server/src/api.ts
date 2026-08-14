@@ -192,11 +192,18 @@ export function addAllowlist(
       }
     }
   }
+  let cleanLabel = label.trim() || "Friend";
+  if (/^contact$/i.test(cleanLabel)) {
+    const line = db.prepare(`SELECT name FROM lines WHERE id = ?`).get(targetLineId) as
+      | { name: string }
+      | undefined;
+    cleanLabel = (line?.name || "Friend").replace(/'s phone$/i, "").replace(/\s+phone$/i, "").trim() || "Friend";
+  }
   const entry: AllowlistEntry = {
     id: newId("al"),
     household_id: householdId,
     target_line_id: targetLineId,
-    label: label.trim() || "Contact",
+    label: cleanLabel,
     speed_dial: speed,
     favorite: opts.favorite === false ? 0 : 1,
     created_at: nowIso(),
