@@ -20,6 +20,18 @@ Open **http://localhost:8787**. On first boot the server prints a **HOST SETUP C
 
 Cousins need **no VPN** — only the server URL + invite code.
 
+## Host for other parents
+
+Remote phones need **HTTPS**. Run the Stage 1 server on a always-on host (Pi / VPS / Proxmox LXC), then put a Cloudflare Tunnel (or any reverse proxy with TLS) in front. See **`docs/hosting.md`**.
+
+Quick tunnel example (prints a `*.trycloudflare.com` URL):
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8787
+```
+
+Share that URL + an invite code. Host setup code is printed on first boot (`data/HOST_CODE.txt` or `DATA_DIR/HOST_CODE.txt`).
+
 ## Repo layout
 
 | Path | Role |
