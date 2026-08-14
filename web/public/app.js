@@ -1,5 +1,30 @@
 const app = document.getElementById("app");
 
+const TUTORIAL_KEY = "kl_tutorial_done";
+
+const TUTORIAL_SLIDES = [
+  {
+    glyph: "☎",
+    title: "A phone that’s just a phone",
+    body: "Kids call people you approve — not the open internet. No feeds, no strangers, no spam.",
+  },
+  {
+    glyph: "🔗",
+    title: "Invite families you trust",
+    body: "Send a short code. Cousins join the same private network. They don’t need a VPN.",
+  },
+  {
+    glyph: "✓",
+    title: "Allowlist is the rule",
+    body: "If someone’s not on your contacts list, the phone doesn’t ring. Quiet hours and a kill switch are one tap away.",
+  },
+  {
+    glyph: "🔒",
+    title: "Calls stay private",
+    body: "Voice is encrypted between phones. The server only helps the call start — it doesn’t listen in.",
+  },
+];
+
 const state = {
   sessionId: localStorage.getItem("kl_session") || "",
   user: null,
@@ -11,9 +36,11 @@ const state = {
   localStream: null,
   call: null,
   error: "",
-  screen: "boot", // boot | welcome | host | join | home | invite | settings | add-contact
-  mode: "host", // host | join on welcome
+  screen: "boot",
+  mode: "host",
   flash: "",
+  tutorialIndex: 0,
+  tutorialFromSettings: false,
 };
 
 async function api(path, opts = {}) {
@@ -252,7 +279,8 @@ function renderWelcome() {
         <button class="primary" id="go-host">I’m hosting this family network</button>
         <button class="ghost" id="go-join">I was invited</button>
       </div>
-      ${invite ? `<p class="tiny" style="margin-top:14px">Invite code ready: <strong class="mono" style="letter-spacing:0.12em;font-size:0.95rem!important">${invite}</strong></p>` : ""}
+      ${invite ? `<p class="tiny" style="margin-top:14px">Invite code ready: <strong style="letter-spacing:0.12em">${invite}</strong></p>` : ""}
+      <button class="linkish" id="replay-tutorial">How does this work?</button>
     </div>
   `;
   document.getElementById("go-host").onclick = () => {
@@ -265,6 +293,89 @@ function renderWelcome() {
     state.screen = "join";
     render();
   };
+  document.getElementById("replay-tutorial").onclick = () => {
+    state.tutorialFromSettings = false;
+    state.tutorialIndex = 0;
+    state.screen = "tutorial";
+    render();
+  };
+}
+
+function phoneSvg() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1.1-.3 1.2.4 2.5.6 3.8.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.8.1.4 0 .8-.3 1.1L6.6 10.8z"/></svg>`;
+}
+
+function renderSplash() {
+  app.innerHTML = `
+    <div class="splash">
+      <div class="splash-mark">${phoneSvg()}</div>
+      <p class="brand">Kids<br/>Landline</p>
+      <p class="lede">A private phone network for your family circle.</p>
+    </div>
+  `;
+  setTimeout(() => {
+    const done = localStorage.getItem(TUTORIAL_KEY) === "1";
+    if (done) {
+      state.screen = "welcome";
+    } else {
+      state.tutorialIndex = 0;
+      state.screen = "tutorial";
+    }
+    render();
+  }, 1600);
+}
+
+function finishTutorial() {
+  localStorage.setItem(TUTORIAL_KEY, "1");
+  if (state.tutorialFromSettings) {
+    state.tutorialFromSettings = false;
+    state.screen = state.user ? "settings" : "welcome";
+  } else {
+    state.screen = "welcome";
+  }
+  render();
+}
+
+function renderTutorial() {
+  const slide = TUTORIAL_SLIDES[state.tutorialIndex];
+  const last = state.tutorialIndex === TUTORIAL_SLIDES.length - 1;
+  app.innerHTML = `
+    <div class="tutorial">
+      <div>
+        ${dots(TUTORIAL_SLIDES.length, state.tutorialIndex)}
+        <div class="tutorial-visual">
+          <span class="ring"></span>
+          <span class="ring delay"></span>
+          <span class="glyph">${slide.glyph}</span>
+        </div>
+        <h2>${slide.title}</h2>
+        <p>${slide.body}</p>
+      </div>
+      <div class="tutorial-footer">
+        <div class="btn-row ${state.tutorialIndex > 0 ? "two" : ""}">
+          ${state.tutorialIndex > 0 ? `<button class="ghost" id="prev">Back</button>` : ""}
+          <button class="primary" id="next">${last ? "Get started" : "Next"}</button>
+        </div>
+        ${
+          last
+            ? ""
+            : `<button class="linkish tutorial-skip" id="skip">Skip tutorial</button>`
+        }
+      </div>
+    </div>
+  `;
+  document.getElementById("next").onclick = () => {
+    if (last) finishTutorial();
+    else {
+      state.tutorialIndex += 1;
+      render();
+    }
+  };
+  document.getElementById("prev")?.addEventListener("click", () => {
+    state.tutorialIndex = Math.max(0, state.tutorialIndex - 1);
+    render();
+  });
+  document.getElementById("skip")?.addEventListener("click", finishTutorial);
 }
 
 function renderHost() {
@@ -676,6 +787,11 @@ function renderSettings() {
       <p class="tiny">Calls use this line’s identity on the network.</p>
     </div>
     <div class="sheet" style="margin-top:12px">
+      <h2>Help</h2>
+      <p>Replay the intro if you want a refresher.</p>
+      <button class="ghost" id="tutorial">Show tutorial</button>
+    </div>
+    <div class="sheet" style="margin-top:12px">
       <button class="ghost" id="logout">Sign out</button>
     </div>
   `;
@@ -688,6 +804,12 @@ function renderSettings() {
     localStorage.setItem("kl_line", state.activeLineId);
     if (state.ws) state.ws.close();
     ensureWs();
+  };
+  document.getElementById("tutorial").onclick = () => {
+    state.tutorialFromSettings = true;
+    state.tutorialIndex = 0;
+    state.screen = "tutorial";
+    render();
   };
   document.getElementById("logout").onclick = async () => {
     await api("/api/auth/logout", { method: "POST" });
@@ -702,6 +824,8 @@ function renderSettings() {
 }
 
 function render() {
+  if (state.screen === "splash") return renderSplash();
+  if (state.screen === "tutorial") return renderTutorial();
   if (state.screen === "welcome") return renderWelcome();
   if (state.screen === "host") return renderHost();
   if (state.screen === "join") return renderJoin();
@@ -713,7 +837,6 @@ function render() {
 }
 
 async function boot() {
-  // Clear stale session if DB was wiped
   if (state.sessionId) {
     try {
       await refresh();
@@ -725,8 +848,18 @@ async function boot() {
     }
   }
   const invite = new URLSearchParams(location.search).get("invite");
-  state.screen = invite ? "join" : "welcome";
-  if (invite) state.mode = "join";
+  // Invite deep-links skip splash but still offer tutorial if never seen
+  if (invite) {
+    state.mode = "join";
+    if (localStorage.getItem(TUTORIAL_KEY) === "1") {
+      state.screen = "join";
+    } else {
+      state.tutorialIndex = 0;
+      state.screen = "tutorial";
+    }
+  } else {
+    state.screen = "splash";
+  }
   render();
 }
 
