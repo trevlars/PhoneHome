@@ -1,14 +1,14 @@
 # Parent UX walkthrough
 
-## Stage 1
+## Stage 1 onboarding
 
-1. Open web app → sign in with setup code.  
-2. Create household → add softphone line.  
-3. Invite family → share code/link.  
-4. Other parent accepts → adds softphone.  
-5. Both allowlist → Call.  
+1. **Splash** — brand moment (tap to skip); first-time users continue into tutorial.  
+2. **Tutorial (v2)** — 5 beats: allowlist phone → invite/mutual → parent controls (Quiet Time, schedules, cap, PIN) → speed dial / VIP / voicemail → private encrypted voice. Swipe or progress segments.  
+3. **Welcome** — host family network or join with invite.  
+4. Host: setup code → household name → softphone line → home.  
+5. Invite family → both allowlist → Call.  
 
-No VPN. Kill switch / quiet hours in the same app.
+No VPN. Controls live in the same app (pause, Quiet Time, Bedtime/School, daily cap, PIN).
 
 ## Stage 2
 

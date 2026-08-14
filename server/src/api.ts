@@ -92,11 +92,12 @@ export function createHousehold(db: Database.Database, userId: string, name: str
     daily_cap_minutes: null,
     parent_pin_hash: null,
     schedule_preset: "open",
+    dnd: 0,
     created_at: nowIso(),
   };
   db.prepare(
-    `INSERT INTO households (id, name, owner_user_id, kill_switch, quiet_start, quiet_end, quiet_tz, daily_cap_minutes, parent_pin_hash, schedule_preset, created_at)
-     VALUES (@id, @name, @owner_user_id, @kill_switch, @quiet_start, @quiet_end, @quiet_tz, @daily_cap_minutes, @parent_pin_hash, @schedule_preset, @created_at)`
+    `INSERT INTO households (id, name, owner_user_id, kill_switch, quiet_start, quiet_end, quiet_tz, daily_cap_minutes, parent_pin_hash, schedule_preset, dnd, created_at)
+     VALUES (@id, @name, @owner_user_id, @kill_switch, @quiet_start, @quiet_end, @quiet_tz, @daily_cap_minutes, @parent_pin_hash, @schedule_preset, @dnd, @created_at)`
   ).run(household);
   db.prepare(
     `INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, 'owner')`
@@ -177,7 +178,7 @@ export function addAllowlist(
   householdId: string,
   targetLineId: string,
   label: string,
-  opts: { speedDial?: number | null; favorite?: boolean } = {}
+  opts: { speedDial?: number | null; favorite?: boolean; alwaysAllow?: boolean } = {}
 ): AllowlistEntry {
   const used = db
     .prepare(`SELECT speed_dial FROM allowlist WHERE household_id = ? AND speed_dial IS NOT NULL`)
@@ -206,11 +207,12 @@ export function addAllowlist(
     label: cleanLabel,
     speed_dial: speed,
     favorite: opts.favorite === false ? 0 : 1,
+    always_allow: opts.alwaysAllow ? 1 : 0,
     created_at: nowIso(),
   };
   db.prepare(
-    `INSERT OR REPLACE INTO allowlist (id, household_id, target_line_id, label, speed_dial, favorite, created_at)
-     VALUES (@id, @household_id, @target_line_id, @label, @speed_dial, @favorite, @created_at)`
+    `INSERT OR REPLACE INTO allowlist (id, household_id, target_line_id, label, speed_dial, favorite, always_allow, created_at)
+     VALUES (@id, @household_id, @target_line_id, @label, @speed_dial, @favorite, @always_allow, @created_at)`
   ).run(entry);
   return entry;
 }
@@ -219,7 +221,12 @@ export function updateAllowlistEntry(
   db: Database.Database,
   householdId: string,
   entryId: string,
-  patch: { label?: string; speed_dial?: number | null; favorite?: boolean }
+  patch: {
+    label?: string;
+    speed_dial?: number | null;
+    favorite?: boolean;
+    always_allow?: boolean;
+  }
 ): AllowlistEntry {
   const entry = db
     .prepare(`SELECT * FROM allowlist WHERE id = ? AND household_id = ?`)
@@ -230,12 +237,13 @@ export function updateAllowlistEntry(
     label: patch.label === undefined ? entry.label : patch.label.trim() || entry.label,
     speed_dial: patch.speed_dial === undefined ? entry.speed_dial : patch.speed_dial,
     favorite: patch.favorite === undefined ? entry.favorite : patch.favorite ? 1 : 0,
+    always_allow: patch.always_allow === undefined ? entry.always_allow || 0 : patch.always_allow ? 1 : 0,
   };
   if (next.speed_dial != null && (next.speed_dial < 1 || next.speed_dial > 9)) {
     throw new Error("Speed dial must be 1–9");
   }
   db.prepare(
-    `UPDATE allowlist SET label = @label, speed_dial = @speed_dial, favorite = @favorite WHERE id = @id`
+    `UPDATE allowlist SET label = @label, speed_dial = @speed_dial, favorite = @favorite, always_allow = @always_allow WHERE id = @id`
   ).run(next);
   return next;
 }
@@ -364,6 +372,7 @@ export function updateHouseholdRules(
     daily_cap_minutes?: number | null;
     schedule_preset?: string;
     parent_pin?: string | null;
+    dnd?: boolean;
   }
 ): Household {
   const hh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(householdId) as Household;
@@ -376,6 +385,7 @@ export function updateHouseholdRules(
   let daily_cap_minutes =
     patch.daily_cap_minutes === undefined ? hh.daily_cap_minutes ?? null : patch.daily_cap_minutes;
   let parent_pin_hash = hh.parent_pin_hash;
+  let dnd = patch.dnd === undefined ? hh.dnd || 0 : patch.dnd ? 1 : 0;
 
   if (patch.schedule_preset && patch.schedule_preset !== "custom") {
     const preset = SCHEDULE_PRESETS[patch.schedule_preset];
@@ -437,11 +447,12 @@ export function updateHouseholdRules(
     daily_cap_minutes,
     parent_pin_hash,
     schedule_preset: schedule_preset || "open",
+    dnd,
   };
   db.prepare(
     `UPDATE households SET kill_switch = @kill_switch, quiet_start = @quiet_start, quiet_end = @quiet_end,
      quiet_tz = @quiet_tz, daily_cap_minutes = @daily_cap_minutes, parent_pin_hash = @parent_pin_hash,
-     schedule_preset = @schedule_preset WHERE id = @id`
+     schedule_preset = @schedule_preset, dnd = @dnd WHERE id = @id`
   ).run(next);
   return next;
 }
@@ -465,8 +476,23 @@ export function canCall(
 
   if (fromHh.kill_switch) return { ok: false, reason: "Phone is paused by a parent" };
   if (toHh.kill_switch) return { ok: false, reason: "Their phone is paused by a parent" };
-  if (inQuietHours(fromHh, now)) return { ok: false, reason: "Quiet hours — try again later" };
-  if (inQuietHours(toHh, now)) return { ok: false, reason: "They’re in quiet hours" };
+
+  const fromVip = Boolean(
+    db
+      .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ? AND always_allow = 1`)
+      .get(from.household_id, toLineId)
+  );
+  const toVip = Boolean(
+    db
+      .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ? AND always_allow = 1`)
+      .get(to.household_id, fromLineId)
+  );
+
+  // DND / quiet — VIP always_allow can still ring through (grandma exception)
+  if (fromHh.dnd && !fromVip) return { ok: false, reason: "Quiet Time is on" };
+  if (toHh.dnd && !toVip) return { ok: false, reason: "They’re in Quiet Time" };
+  if (inQuietHours(fromHh, now) && !fromVip) return { ok: false, reason: "Quiet hours — try again later" };
+  if (inQuietHours(toHh, now) && !toVip) return { ok: false, reason: "They’re in quiet hours" };
 
   if (fromHh.daily_cap_minutes != null) {
     const used = minutesUsedToday(db, fromHh.id, now);
@@ -542,6 +568,57 @@ export function expireStaleRings(db: Database.Database, maxAgeMs = 45_000): numb
   return result.changes;
 }
 
+export function leaveVoicemail(
+  db: Database.Database,
+  toHouseholdId: string,
+  fromLineId: string,
+  body: string,
+  fromLabel?: string
+) {
+  const text = body.trim();
+  if (!text) throw new Error("Message required");
+  if (text.length > 500) throw new Error("Keep messages under 500 characters");
+  const fromLine = db.prepare(`SELECT name FROM lines WHERE id = ?`).get(fromLineId) as
+    | { name: string }
+    | undefined;
+  const row = {
+    id: newId("vm"),
+    household_id: toHouseholdId,
+    from_line_id: fromLineId,
+    from_label: fromLabel?.trim() || fromLine?.name?.replace(/'s phone$/i, "").trim() || "Family",
+    body: text,
+    listened: 0,
+    created_at: nowIso(),
+  };
+  db.prepare(
+    `INSERT INTO voicemails (id, household_id, from_line_id, from_label, body, listened, created_at)
+     VALUES (@id, @household_id, @from_line_id, @from_label, @body, @listened, @created_at)`
+  ).run(row);
+  return row;
+}
+
+/** Club-style leave-a-message after miss/away — caller must own the from line and have them allowlisted. */
+export function leaveVoicemailForContact(
+  db: Database.Database,
+  userId: string,
+  fromLineId: string,
+  toLineId: string,
+  body: string
+) {
+  const from = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(fromLineId) as Line | undefined;
+  const to = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(toLineId) as Line | undefined;
+  if (!from || !to) throw new Error("Unknown line");
+  const member = db
+    .prepare(`SELECT 1 FROM household_members WHERE household_id = ? AND user_id = ?`)
+    .get(from.household_id, userId);
+  if (!member) throw new Error("Not your line");
+  const approved = db
+    .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
+    .get(from.household_id, toLineId);
+  if (!approved) throw new Error("Contact not approved");
+  return leaveVoicemail(db, to.household_id, fromLineId, body);
+}
+
 export function householdSnapshot(db: Database.Database, userId: string) {
   const memberships = db
     .prepare(`SELECT household_id FROM household_members WHERE user_id = ?`)
@@ -552,6 +629,21 @@ export function householdSnapshot(db: Database.Database, userId: string) {
     const allowlist = db
       .prepare(`SELECT * FROM allowlist WHERE household_id = ? ORDER BY speed_dial IS NULL, speed_dial, label`)
       .all(hh.id) as AllowlistEntry[];
+    const ourLineIds = lines.map((l) => l.id);
+    const enrichedAllowlist = allowlist.map((a) => {
+      const theirHh = db
+        .prepare(`SELECT household_id FROM lines WHERE id = ?`)
+        .get(a.target_line_id) as { household_id: string } | undefined;
+      const mutual = Boolean(
+        theirHh &&
+          ourLineIds.some((lid) =>
+            db
+              .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
+              .get(theirHh.household_id, lid)
+          )
+      );
+      return { ...a, always_allow: a.always_allow || 0, mutual };
+    });
     const logs = db
       .prepare(
         `SELECT cl.* FROM call_logs cl
@@ -571,8 +663,9 @@ export function householdSnapshot(db: Database.Database, userId: string) {
       ...safe,
       has_parent_pin: Boolean(parent_pin_hash),
       parent_pin_hash: undefined,
+      dnd: hh.dnd || 0,
       lines,
-      allowlist,
+      allowlist: enrichedAllowlist,
       call_logs: logs,
       voicemails,
       usage_today_minutes: used,

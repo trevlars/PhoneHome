@@ -1,27 +1,37 @@
 const app = document.getElementById("app");
 
-const TUTORIAL_KEY = "kl_tutorial_done";
+const TUTORIAL_KEY = "kl_tutorial_v2";
 
 const TUTORIAL_SLIDES = [
   {
-    glyph: "☎",
+    id: "phone",
+    kicker: "For kids",
     title: "A phone that’s just a phone",
-    body: "Kids call people you approve — not the open internet. No feeds, no strangers, no spam.",
+    body: "No feeds, no strangers, no spam. Kids only call people you approve — the same idea as Tin Can and Ring Ring, on your own private network.",
   },
   {
-    glyph: "🔗",
-    title: "Invite families you trust",
-    body: "Send a short code. Cousins join the same private network. They don’t need a VPN.",
+    id: "invite",
+    kicker: "Family circle",
+    title: "Invite, then approve each other",
+    body: "Share a short code. Cousins join without an app store or VPN. Both households add each other — Mutual badges show when you’re ready to call.",
   },
   {
-    glyph: "✓",
-    title: "Allowlist is the rule",
-    body: "If someone’s not on your contacts list, the phone doesn’t ring. Quiet hours and a kill switch are one tap away.",
+    id: "controls",
+    kicker: "Parent power",
+    title: "You’re always in control",
+    body: "Pause the phone, start Quiet Time, set Bedtime or School hours, cap daily talk time, and lock Controls with a PIN — all from one tab.",
   },
   {
-    glyph: "🔒",
-    title: "Calls stay private",
-    body: "Voice is encrypted between phones. The server only helps the call start — it doesn’t listen in.",
+    id: "contacts",
+    kicker: "Speed dial",
+    title: "Nine slots, VIP, and voicemail",
+    body: "Assign speed dial 1–9, mark Grandma VIP so she rings through Quiet Time, and leave a note if nobody picks up.",
+  },
+  {
+    id: "private",
+    kicker: "Private by design",
+    title: "Voice stays between you",
+    body: "Calls are encrypted phone-to-phone. The server only helps the call start — it doesn’t listen in. Outside lines and 911 come later as an add-on.",
   },
 ];
 
@@ -55,6 +65,9 @@ const state = {
   flash: "",
   tutorialIndex: 0,
   tutorialFromSettings: false,
+  leaveFor: null,
+  editContactId: null,
+  splashTimer: null,
 };
 
 const callRoot = () => document.getElementById("call-root");
@@ -103,13 +116,30 @@ async function handleSignal(msg) {
   else if (msg.type === "call.answer") await onAnswer(msg);
   else if (msg.type === "call.ice") await addRemoteIce(msg.candidate);
   else if (msg.type === "call.hangup") {
+    const outboundMiss =
+      state.call &&
+      (state.call.status === "calling" || state.call.status === "ringing") &&
+      state.call.fromLineId === state.activeLineId;
+    const toLineId = state.call?.toLineId;
     stopRing();
-    endCallUi("Call ended");
+    endCallUi(outboundMiss ? "No answer" : "Call ended");
+    if (outboundMiss && toLineId) {
+      state.leaveFor = { toLineId, hint: "They didn’t pick up" };
+      state.screen = "leave-message";
+    }
     render();
   } else if (msg.type === "call.rejected") {
+    const toLineId = state.call?.toLineId;
+    const reason = msg.reason || "Call could not connect";
+    const blocked =
+      /quiet|pause|limit|Quiet Time|paused|talk time/i.test(reason);
     stopRing();
-    state.flash = msg.reason || "Call could not connect";
+    state.flash = reason;
     endCallUi();
+    if (toLineId && !blocked) {
+      state.leaveFor = { toLineId, hint: reason };
+      state.screen = "leave-message";
+    }
     render();
   } else if (msg.type === "call.ringing") {
     state.call = { ...(state.call || {}), status: "ringing", callId: msg.callId };
@@ -643,13 +673,25 @@ function paintCallLayer() {
 function renderWelcome() {
   const invite = new URLSearchParams(location.search).get("invite") || "";
   app.innerHTML = `
-    <p class="brand">Kids<br/>Landline</p>
-    <p class="lede">A private phone for the people you love. No strangers. No feeds. Just talk.</p>
+    <div class="welcome-hero">
+      <div class="splash-mark-wrap compact">
+        <span class="splash-ring"></span>
+        <div class="splash-mark sm">${phoneSvg()}</div>
+      </div>
+      <p class="brand">Kids<br/>Landline</p>
+      <p class="lede">A private phone for people you love. Approved contacts, Quiet Time, and parent controls — no strangers, no feeds.</p>
+      <div class="splash-pills welcome-pills" aria-hidden="true">
+        <span>Allowlist</span>
+        <span>Quiet Time</span>
+        <span>Speed dial</span>
+        <span>Voicemail</span>
+      </div>
+    </div>
     <div class="sheet welcome-sheet">
       <h2>Open the clubhouse</h2>
-      <p>Cousins join with a short code — no app store, no VPN.</p>
+      <p>Host the family network, or join with an invite code. No app store. No VPN.</p>
       <div class="btn-row">
-        <button class="primary" id="go-host">I’m hosting this family network</button>
+        <button class="primary" id="go-host">I’m hosting this family</button>
         <button class="ghost" id="go-join">I was invited</button>
       </div>
       ${
@@ -657,7 +699,7 @@ function renderWelcome() {
           ? `<div class="invite-ready">Invite code ready<br/><strong>${invite}</strong></div>`
           : ""
       }
-      <button class="linkish" id="replay-tutorial">How does this work?</button>
+      <button class="linkish" id="replay-tutorial">See how it works</button>
     </div>
   `;
   document.getElementById("go-host").onclick = () => {
@@ -682,24 +724,101 @@ function phoneSvg() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1.1-.3 1.2.4 2.5.6 3.8.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.8.1.4 0 .8-.3 1.1L6.6 10.8z"/></svg>`;
 }
 
+function tutorialScene(id) {
+  if (id === "phone") {
+    return `
+      <div class="scene scene-phone">
+        <div class="scene-dial">
+          <span>1<div>Maya</div></span>
+          <span class="on">2<div>Gram</div></span>
+          <span>3<div>Sam</div></span>
+        </div>
+        <p class="scene-caption">Kids only see approved names</p>
+      </div>`;
+  }
+  if (id === "invite") {
+    return `
+      <div class="scene scene-invite">
+        <div class="scene-code">482917</div>
+        <div class="scene-houses">
+          <em>Your house</em>
+          <span>⟷</span>
+          <em>Cousins</em>
+        </div>
+        <p class="scene-caption">Both sides approve · Mutual badge</p>
+      </div>`;
+  }
+  if (id === "controls") {
+    return `
+      <div class="scene scene-controls">
+        <div class="scene-chip danger">Pause</div>
+        <div class="scene-chip accent">Quiet Time</div>
+        <div class="scene-chip">Bedtime</div>
+        <div class="scene-chip">60 min / day</div>
+        <div class="scene-chip">PIN lock</div>
+      </div>`;
+  }
+  if (id === "contacts") {
+    return `
+      <div class="scene scene-contacts">
+        <div class="scene-contact">
+          <strong>Grandma</strong>
+          <span class="badge vip">VIP</span>
+          <span class="badge ok">Mutual</span>
+          <small>Dial 1 · rings through Quiet Time</small>
+        </div>
+        <div class="scene-vm">“Call me when you’re free!”</div>
+      </div>`;
+  }
+  return `
+    <div class="scene scene-private">
+      <div class="scene-lock">${phoneSvg()}</div>
+      <div class="scene-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <p class="scene-caption">Encrypted voice · server never listens</p>
+    </div>`;
+}
+
+function advanceFromSplash() {
+  if (state.splashTimer) {
+    clearTimeout(state.splashTimer);
+    state.splashTimer = null;
+  }
+  const done = localStorage.getItem(TUTORIAL_KEY) === "1";
+  state.screen = done ? "welcome" : "tutorial";
+  if (!done) state.tutorialIndex = 0;
+  render();
+}
+
 function renderSplash() {
   app.innerHTML = `
-    <div class="splash">
-      <div class="splash-mark">${phoneSvg()}</div>
-      <p class="brand">Kids<br/>Landline</p>
-      <p class="lede">A private phone network for your family circle.</p>
+    <div class="splash" id="splash-root" role="button" tabindex="0" aria-label="Continue">
+      <div class="splash-glow" aria-hidden="true"></div>
+      <div class="splash-mark-wrap">
+        <span class="splash-ring"></span>
+        <span class="splash-ring delay"></span>
+        <div class="splash-mark">${phoneSvg()}</div>
+      </div>
+      <p class="brand splash-brand">Kids<br/>Landline</p>
+      <p class="lede splash-lede">Private family calling — approved contacts only.</p>
+      <div class="splash-pills" aria-hidden="true">
+        <span>Allowlist</span>
+        <span>Quiet Time</span>
+        <span>Speed dial</span>
+        <span>Voicemail</span>
+      </div>
+      <div class="splash-progress" aria-hidden="true"><i></i></div>
+      <p class="splash-hint">Tap to continue</p>
     </div>
   `;
-  setTimeout(() => {
-    const done = localStorage.getItem(TUTORIAL_KEY) === "1";
-    if (done) {
-      state.screen = "welcome";
-    } else {
-      state.tutorialIndex = 0;
-      state.screen = "tutorial";
+  const go = () => advanceFromSplash();
+  document.getElementById("splash-root")?.addEventListener("click", go);
+  document.getElementById("splash-root")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      go();
     }
-    render();
-  }, 1600);
+  });
+  state.splashTimer = setTimeout(go, 2400);
 }
 
 function finishTutorial() {
@@ -716,43 +835,77 @@ function finishTutorial() {
 function renderTutorial() {
   const slide = TUTORIAL_SLIDES[state.tutorialIndex];
   const last = state.tutorialIndex === TUTORIAL_SLIDES.length - 1;
+  const n = TUTORIAL_SLIDES.length;
   app.innerHTML = `
-    <div class="tutorial">
-      <div>
-        ${dots(TUTORIAL_SLIDES.length, state.tutorialIndex)}
-        <div class="tutorial-visual">
-          <span class="ring"></span>
-          <span class="ring delay"></span>
-          <span class="glyph">${slide.glyph}</span>
+    <div class="tutorial" id="tutorial-root">
+      <div class="tutorial-top">
+        <button type="button" class="linkish tutorial-skip-top" id="skip">Skip</button>
+        <div class="tutorial-progress" aria-label="Step ${state.tutorialIndex + 1} of ${n}">
+          ${Array.from({ length: n }, (_, i) => `<button type="button" class="tp-seg ${i === state.tutorialIndex ? "on" : i < state.tutorialIndex ? "done" : ""}" data-jump="${i}" aria-label="Go to step ${i + 1}"></button>`).join("")}
         </div>
+      </div>
+      <div class="tutorial-body">
+        <div class="tutorial-visual scene-${slide.id}">
+          ${tutorialScene(slide.id)}
+        </div>
+        <p class="tutorial-kicker">${slide.kicker}</p>
         <h2>${slide.title}</h2>
         <p>${slide.body}</p>
       </div>
       <div class="tutorial-footer">
         <div class="btn-row ${state.tutorialIndex > 0 ? "two" : ""}">
           ${state.tutorialIndex > 0 ? `<button class="ghost" id="prev">Back</button>` : ""}
-          <button class="primary" id="next">${last ? "Get started" : "Next"}</button>
+          <button class="primary" id="next">${last ? "Let’s go" : "Next"}</button>
         </div>
-        ${
-          last
-            ? ""
-            : `<button class="linkish tutorial-skip" id="skip">Skip tutorial</button>`
-        }
+        <p class="tutorial-swipe-hint">Swipe or use the dots</p>
       </div>
     </div>
   `;
-  document.getElementById("next").onclick = () => {
+
+  const goNext = () => {
     if (last) finishTutorial();
     else {
       state.tutorialIndex += 1;
       render();
     }
   };
-  document.getElementById("prev")?.addEventListener("click", () => {
+  const goPrev = () => {
     state.tutorialIndex = Math.max(0, state.tutorialIndex - 1);
     render();
-  });
+  };
+
+  document.getElementById("next").onclick = goNext;
+  document.getElementById("prev")?.addEventListener("click", goPrev);
   document.getElementById("skip")?.addEventListener("click", finishTutorial);
+  document.querySelectorAll("[data-jump]").forEach((btn) => {
+    btn.onclick = () => {
+      state.tutorialIndex = Number(btn.getAttribute("data-jump"));
+      render();
+    };
+  });
+
+  const root = document.getElementById("tutorial-root");
+  let startX = 0;
+  let startY = 0;
+  root?.addEventListener(
+    "touchstart",
+    (e) => {
+      startX = e.changedTouches[0].clientX;
+      startY = e.changedTouches[0].clientY;
+    },
+    { passive: true }
+  );
+  root?.addEventListener(
+    "touchend",
+    (e) => {
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy)) return;
+      if (dx < 0) goNext();
+      else goPrev();
+    },
+    { passive: true }
+  );
 }
 
 function renderHost() {
@@ -795,9 +948,9 @@ function renderHost() {
         </div>`
               : `
         <h2>You’re ready</h2>
-        <p>Invite another parent, then allowlist each other’s lines to call.</p>
+        <p>Invite another parent, add each other as contacts, then kids get speed dial. Set Quiet Time and caps anytime in Controls.</p>
         <div class="btn-row">
-          <button class="primary" id="to-home">Go to home</button>
+          <button class="primary" id="to-home">Open the phone</button>
         </div>`
       }
     </div>
@@ -1020,8 +1173,31 @@ function bindDock() {
   });
 }
 
+function callDurationLabel(log) {
+  if (!log?.started_at || !log?.ended_at) return "";
+  if (log.outcome !== "completed" && log.outcome !== "answered") return "";
+  const ms = new Date(log.ended_at) - new Date(log.started_at);
+  if (ms < 1000) return "";
+  return formatDuration(ms);
+}
+
+function usageBarHtml(hh) {
+  const cap = hh?.daily_cap_minutes;
+  const used = hh?.usage_today_minutes || 0;
+  if (cap == null) {
+    return `<div class="usage-bar open"><div class="usage-meta"><span>Talk today</span><strong>${used} min</strong></div></div>`;
+  }
+  const pct = Math.min(100, Math.round((used / Math.max(cap, 1)) * 100));
+  const hot = pct >= 90;
+  return `<div class="usage-bar ${hot ? "hot" : ""}">
+    <div class="usage-meta"><span>Daily talk time</span><strong>${used} / ${cap} min</strong></div>
+    <div class="usage-track"><i style="width:${pct}%"></i></div>
+  </div>`;
+}
+
 function statusLine(hh, onlineCount) {
   if (hh.kill_switch) return { text: "Phone paused by parent", live: false, danger: true };
+  if (hh.dnd) return { text: "Quiet Time on — VIP contacts still ring", live: false, danger: true };
   if (hh.quiet_start && hh.quiet_end) return { text: `Quiet hours · ${quietSummary(hh)}`, live: false };
   const cap = hh.daily_cap_minutes;
   const used = hh.usage_today_minutes || 0;
@@ -1072,6 +1248,8 @@ function renderPhone() {
       ${state.flash ? `<p class="flash-banner">${state.flash}</p>` : ""}
       ${state.celebrate ? `<p class="celebrate-banner">${state.celebrate}</p>` : ""}
 
+      ${usageBarHtml(hh)}
+
       <div class="speed-grid">
         ${dialSlots
           .map((c, idx) => {
@@ -1096,13 +1274,13 @@ function renderPhone() {
         </button>
         <button class="action-tile" id="add-contact">
           <span class="action-glyph">★</span>
-          <span><strong>Contacts</strong><small>Approved only</small></span>
+          <span><strong>Contacts</strong><small>Add · edit · VIP</small></span>
         </button>
       </div>
 
       ${
         contacts.length
-          ? `<div class="section-title">All approved contacts</div>
+          ? `<div class="section-title">All approved contacts <button type="button" class="linkish inline" id="manage-contacts">Manage</button></div>
           <div class="contact-grid">${contacts
             .map(
               (c, i) => `
@@ -1111,6 +1289,10 @@ function renderPhone() {
               <div class="contact-meta">
                 <strong>${c.speed_dial ? `${c.speed_dial} · ` : ""}${contactDisplayName(c)}</strong>
                 <small>${householdName(c.target_line_id) || lineName(c.target_line_id)}</small>
+                <span class="badge-row">
+                  ${c.always_allow ? `<em class="badge vip">VIP</em>` : ""}
+                  ${c.mutual ? `<em class="badge ok">Mutual</em>` : `<em class="badge wait">Waiting on them</em>`}
+                </span>
               </div>
               <span class="pill ${c.online ? "on" : ""}"><span class="dot"></span>${c.online ? "Online" : "Away"}</span>
               <span class="call-fab">Call</span>
@@ -1150,9 +1332,15 @@ function renderPhone() {
     render();
   });
   document.getElementById("add-contact").onclick = () => {
-    state.screen = "add-contact";
+    state.screen = "manage-contacts";
     render();
   };
+  document.getElementById("manage-contacts")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    state.screen = "manage-contacts";
+    render();
+  });
   document.querySelectorAll("[data-add]").forEach((b) => {
     b.onclick = () => {
       state.screen = "add-contact";
@@ -1201,11 +1389,12 @@ function renderActivity() {
                     contactDisplayName(
                       contacts.find((c) => c.target_line_id === other) || { target_line_id: other, label: "" }
                     );
+                  const dur = callDurationLabel(log);
                   return `<div class="recent-row">
                     ${avatarHtml(name, other, "sm")}
                     <div>
                       <strong>${inbound ? "Incoming" : "Outgoing"} · ${name}</strong>
-                      <small>${outcomeLabel(log.outcome)} · ${formatCallWhen(log.started_at)}</small>
+                      <small>${outcomeLabel(log.outcome)}${dur ? ` · ${dur}` : ""} · ${formatCallWhen(log.started_at)}</small>
                     </div>
                   </div>`;
                 })
@@ -1271,6 +1460,12 @@ function renderControls() {
       </div>
 
       <div class="sheet control-card">
+        <h2>Quiet Time</h2>
+        <p>Tin Can–style instant DND. Blocks calls in and out until you turn it off — VIP contacts (always allow) still ring.</p>
+        <button class="${hh.dnd ? "danger" : "primary"}" id="toggle-dnd">${hh.dnd ? "End Quiet Time" : "Start Quiet Time"}</button>
+      </div>
+
+      <div class="sheet control-card">
         <h2>Schedule modes</h2>
         <p>One-tap quiet windows in your timezone.</p>
         <div class="preset-grid">
@@ -1317,6 +1512,14 @@ function renderControls() {
       body: JSON.stringify({ kill_switch: !hh.kill_switch }),
     });
     state.flash = hh.kill_switch ? "Phone resumed" : "Phone paused";
+    await refresh();
+  };
+  document.getElementById("toggle-dnd").onclick = async () => {
+    await api(`/api/households/${hh.id}/rules`, {
+      method: "PATCH",
+      body: JSON.stringify({ dnd: !hh.dnd }),
+    });
+    state.flash = hh.dnd ? "Quiet Time ended" : "Quiet Time on";
     await refresh();
   };
   document.querySelectorAll("[data-preset]").forEach((btn) => {
@@ -1578,6 +1781,7 @@ function renderAddContact() {
         </div>
         <label>Name on your phone</label>
         <input id="label" placeholder="e.g. Maya" value="${others[0] ? others[0].name.replace(/'s phone$/i, "").trim() : ""}" />
+        <label class="check-row"><input type="checkbox" id="vip" /> VIP — always allow through Quiet Time / quiet hours</label>
         <button class="primary" id="save">Add to contacts</button>`
           : `<div class="empty hero-empty">
               <strong>No other families yet</strong>
@@ -1589,7 +1793,7 @@ function renderAddContact() {
   `;
   let selectedId = others[0]?.id || "";
   document.getElementById("back").onclick = () => {
-    state.screen = "home";
+    state.screen = "manage-contacts";
     render();
   };
   document.getElementById("to-invite")?.addEventListener("click", () => {
@@ -1615,12 +1819,151 @@ function renderAddContact() {
           document.getElementById("label").value.trim() ||
           friendlyPersonName(selected?.name) ||
           "Friend",
+        alwaysAllow: Boolean(document.getElementById("vip")?.checked),
       }),
     });
     state.flash = "Contact added — they need to add you too";
-    state.screen = "home";
+    state.screen = "manage-contacts";
     await refresh();
   });
+}
+
+function renderManageContacts() {
+  const hh = state.households[0];
+  const contacts = hh?.allowlist || [];
+  const editing = contacts.find((c) => c.id === state.editContactId);
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-btn" id="back">←</button>
+      <div class="mark">Contacts</div>
+      <span style="width:40px"></span>
+    </div>
+    <div class="sheet">
+      <h2>Approved callers</h2>
+      <p>Rename, set speed dial 1–9, mark VIP (rings through Quiet Time), or remove — like Tin Can / Pinwheel caregiver lists.</p>
+      <button class="primary" id="add-new" style="margin-bottom:14px">Add contact</button>
+      ${
+        contacts.length
+          ? `<div class="manage-list">${contacts
+              .map(
+                (c) => `
+            <div class="manage-row">
+              ${avatarHtml(contactDisplayName(c), c.target_line_id, "md")}
+              <div>
+                <strong>${contactDisplayName(c)}</strong>
+                <small>${c.speed_dial ? `Dial ${c.speed_dial}` : "No speed dial"}${c.always_allow ? " · VIP" : ""}${c.mutual ? " · Mutual" : " · Waiting"}</small>
+              </div>
+              <button type="button" class="ghost compact" data-edit="${c.id}">Edit</button>
+            </div>`
+              )
+              .join("")}</div>`
+          : `<div class="empty">No contacts yet.</div>`
+      }
+    </div>
+    ${
+      editing
+        ? `<div class="sheet" style="margin-top:12px">
+        <h2>Edit ${contactDisplayName(editing)}</h2>
+        <label>Name</label>
+        <input id="edit-label" value="${contactDisplayName(editing).replace(/"/g, "&quot;")}" />
+        <label>Speed dial (1–9, blank = none)</label>
+        <input id="edit-dial" type="number" min="1" max="9" value="${editing.speed_dial ?? ""}" />
+        <label class="check-row"><input type="checkbox" id="edit-vip" ${editing.always_allow ? "checked" : ""} /> VIP — always allow</label>
+        <div class="btn-row two">
+          <button class="primary" id="save-edit">Save</button>
+          <button class="danger" id="remove-contact">Remove</button>
+        </div>
+      </div>`
+        : ""
+    }
+  `;
+  document.getElementById("back").onclick = () => {
+    state.editContactId = null;
+    state.screen = "home";
+    state.nav = "phone";
+    render();
+  };
+  document.getElementById("add-new").onclick = () => {
+    state.editContactId = null;
+    state.screen = "add-contact";
+    render();
+  };
+  document.querySelectorAll("[data-edit]").forEach((btn) => {
+    btn.onclick = () => {
+      state.editContactId = btn.getAttribute("data-edit");
+      render();
+    };
+  });
+  document.getElementById("save-edit")?.addEventListener("click", async () => {
+    const dialRaw = document.getElementById("edit-dial").value.trim();
+    const speed_dial = dialRaw === "" ? null : Number(dialRaw);
+    await api(`/api/households/${hh.id}/allowlist/${editing.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        label: document.getElementById("edit-label").value.trim(),
+        speed_dial,
+        always_allow: Boolean(document.getElementById("edit-vip").checked),
+      }),
+    });
+    state.flash = "Contact updated";
+    state.editContactId = null;
+    await refresh();
+  });
+  document.getElementById("remove-contact")?.addEventListener("click", async () => {
+    if (!confirm(`Remove ${contactDisplayName(editing)}?`)) return;
+    await api(`/api/households/${hh.id}/allowlist/${editing.id}`, { method: "DELETE" });
+    state.flash = "Contact removed";
+    state.editContactId = null;
+    await refresh();
+  });
+}
+
+function renderLeaveMessage() {
+  const hh = state.households[0];
+  const toLineId = state.leaveFor?.toLineId;
+  const contact = (hh?.allowlist || []).find((c) => c.target_line_id === toLineId);
+  const name = contact ? contactDisplayName(contact) : friendlyPersonName(lineName(toLineId));
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-btn" id="back">←</button>
+      <div class="mark">Leave a message</div>
+      <span style="width:40px"></span>
+    </div>
+    <div class="sheet">
+      <h2>Voicemail for ${name}</h2>
+      <p>${state.leaveFor?.hint || "They weren’t available."} Club-style note for their inbox (audio drop-offs come with hardware later).</p>
+      <label>Your message</label>
+      <textarea id="vm-body" rows="4" maxlength="500" placeholder="Hey — call me back when you’re free!"></textarea>
+      <div class="btn-row two">
+        <button class="primary" id="send-vm">Send</button>
+        <button class="ghost" id="skip-vm">Skip</button>
+      </div>
+    </div>
+  `;
+  const done = () => {
+    state.leaveFor = null;
+    state.screen = "home";
+    render();
+  };
+  document.getElementById("back").onclick = done;
+  document.getElementById("skip-vm").onclick = done;
+  document.getElementById("send-vm").onclick = async () => {
+    try {
+      await api("/api/voicemails", {
+        method: "POST",
+        body: JSON.stringify({
+          fromLineId: state.activeLineId,
+          toLineId,
+          body: document.getElementById("vm-body").value,
+        }),
+      });
+      state.flash = `Message left for ${name}`;
+      done();
+    } catch (e) {
+      state.flash = e.message || "Could not leave message";
+      render();
+    }
+  };
 }
 
 function renderSettings() {
@@ -1693,6 +2036,8 @@ function render() {
   else if (!state.user) renderWelcome();
   else if (state.screen === "invite") renderInvite();
   else if (state.screen === "add-contact") renderAddContact();
+  else if (state.screen === "manage-contacts") renderManageContacts();
+  else if (state.screen === "leave-message") renderLeaveMessage();
   else if (state.screen === "quiet") renderQuietHours();
   else if (state.screen === "settings") renderSettings();
   else renderHome();

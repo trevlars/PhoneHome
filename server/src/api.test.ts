@@ -10,10 +10,13 @@ import {
   createHousehold,
   createInvite,
   endCallLog,
+  householdSnapshot,
   isInQuietWindow,
+  leaveVoicemailForContact,
   logCall,
   redeemInvite,
   registerParent,
+  updateAllowlistEntry,
   updateHouseholdRules,
 } from "./api.js";
 import { openDb } from "./db.js";
@@ -128,4 +131,48 @@ test("invite redeem creates household", () => {
   const redeemed = redeemInvite(db, invite.code, b.user.id, "House B");
   assert.ok(redeemed.household.id);
   assert.throws(() => redeemInvite(db, invite.code, b.user.id, "X"));
+});
+
+test("Quiet Time blocks unless VIP always_allow", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const a = registerParent(db, "A");
+  const b = registerParent(db, "B");
+  const hhA = createHousehold(db, a.user.id, "House A");
+  const hhB = createHousehold(db, b.user.id, "House B");
+  const lineA = addLine(db, hhA.id, a.user.id, "A phone");
+  const lineB = addLine(db, hhB.id, b.user.id, "B phone");
+  addAllowlist(db, hhA.id, lineB.id, "B");
+  addAllowlist(db, hhB.id, lineA.id, "A");
+
+  updateHouseholdRules(db, hhB.id, { dnd: true });
+  assert.equal(canCall(db, lineA.id, lineB.id).ok, false);
+
+  const entry = db
+    .prepare(`SELECT id FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
+    .get(hhB.id, lineA.id) as { id: string };
+  updateAllowlistEntry(db, hhB.id, entry.id, { always_allow: true });
+  assert.equal(canCall(db, lineA.id, lineB.id).ok, true);
+});
+
+test("leave voicemail and mutual badge in snapshot", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const a = registerParent(db, "A");
+  const b = registerParent(db, "B");
+  const hhA = createHousehold(db, a.user.id, "House A");
+  const hhB = createHousehold(db, b.user.id, "House B");
+  const lineA = addLine(db, hhA.id, a.user.id, "A phone");
+  const lineB = addLine(db, hhB.id, b.user.id, "B phone");
+  addAllowlist(db, hhA.id, lineB.id, "Cousin");
+  addAllowlist(db, hhB.id, lineA.id, "A");
+
+  const vm = leaveVoicemailForContact(db, a.user.id, lineA.id, lineB.id, "Call me back!");
+  assert.equal(vm.household_id, hhB.id);
+  assert.match(vm.body, /Call me/);
+
+  const snap = householdSnapshot(db, a.user.id);
+  const contact = snap.households[0].allowlist.find((x: { target_line_id: string }) => x.target_line_id === lineB.id);
+  assert.ok(contact);
+  assert.equal(contact.mutual, true);
 });

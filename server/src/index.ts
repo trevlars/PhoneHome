@@ -20,6 +20,7 @@ import {
   loginWithSetupCode,
   redeemInvite,
   registerParent,
+  leaveVoicemailForContact,
   removeAllowlist,
   updateAllowlistEntry,
   updateHouseholdRules,
@@ -184,16 +185,18 @@ app.post("/api/invites/redeem", (req, res) => {
 app.post("/api/households/:id/allowlist", (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
-  const { targetLineId, label, speedDial, favorite } = req.body as {
+  const { targetLineId, label, speedDial, favorite, alwaysAllow } = req.body as {
     targetLineId?: string;
     label?: string;
     speedDial?: number;
     favorite?: boolean;
+    alwaysAllow?: boolean;
   };
   if (!targetLineId) return res.status(400).json({ error: "targetLineId required" });
   const entry = addAllowlist(db, req.params.id, targetLineId, label || "Contact", {
     speedDial,
     favorite,
+    alwaysAllow,
   });
   res.json({ entry });
 });
@@ -239,6 +242,24 @@ app.post("/api/households/:id/voicemails/:vmId/listen", (req, res) => {
   );
   res.json({ ok: true });
 });
+
+app.post("/api/voicemails", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  try {
+    const { fromLineId, toLineId, body } = req.body as {
+      fromLineId?: string;
+      toLineId?: string;
+      body?: string;
+    };
+    if (!fromLineId || !toLineId) return res.status(400).json({ error: "fromLineId and toLineId required" });
+    const vm = leaveVoicemailForContact(db, user.id, fromLineId, toLineId, String(body || ""));
+    res.json({ voicemail: vm });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
 app.get("/api/directory", (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;

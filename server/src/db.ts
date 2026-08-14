@@ -24,6 +24,8 @@ export interface Household {
   daily_cap_minutes: number | null;
   parent_pin_hash: string | null;
   schedule_preset: string;
+  /** Tin Can–style instant Quiet Time */
+  dnd: number;
   created_at: string;
 }
 
@@ -54,6 +56,8 @@ export interface AllowlistEntry {
   label: string;
   speed_dial: number | null;
   favorite: number;
+  /** Bypass quiet hours / DND (VIP grandma pattern) */
+  always_allow: number;
   created_at: string;
 }
 
@@ -174,12 +178,15 @@ function migrateSchema(db: Database.Database): void {
   if (!hhNames.has("schedule_preset")) {
     db.exec(`ALTER TABLE households ADD COLUMN schedule_preset TEXT NOT NULL DEFAULT 'open'`);
   }
+  if (!hhNames.has("dnd")) db.exec(`ALTER TABLE households ADD COLUMN dnd INTEGER NOT NULL DEFAULT 0`);
 
   const alCols = db.prepare(`PRAGMA table_info(allowlist)`).all() as { name: string }[];
   const alNames = new Set(alCols.map((c) => c.name));
   if (!alNames.has("speed_dial")) db.exec(`ALTER TABLE allowlist ADD COLUMN speed_dial INTEGER`);
   if (!alNames.has("favorite")) db.exec(`ALTER TABLE allowlist ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0`);
-
+  if (!alNames.has("always_allow")) {
+    db.exec(`ALTER TABLE allowlist ADD COLUMN always_allow INTEGER NOT NULL DEFAULT 0`);
+  }
   // Backfill speed-dial slots for existing contacts
   const households = db.prepare(`SELECT id FROM households`).all() as { id: string }[];
   for (const h of households) {
