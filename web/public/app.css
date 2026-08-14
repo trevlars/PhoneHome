@@ -53,7 +53,7 @@ body {
 #app {
   max-width: 430px;
   margin: 0 auto;
-  padding: max(20px, env(safe-area-inset-top)) 18px 56px;
+  padding: max(20px, env(safe-area-inset-top)) 18px 96px;
   min-height: 100dvh;
 }
 
@@ -1019,3 +1019,238 @@ input[type="time"] {
   font-size: 0.78rem;
 }
 
+
+/* —— Parent-app parity: dock, speed dial, controls —— */
+.app-shell {
+  padding-bottom: 12px;
+}
+
+.dock {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(430px, 100%);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+  background: rgba(7, 17, 14, 0.92);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(16px);
+  z-index: 15;
+}
+
+.dock-btn {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  padding: 8px 4px;
+  border-radius: 14px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  width: 100%;
+}
+
+.dock-btn span {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.dock-btn.on {
+  color: var(--accent);
+  background: rgba(240, 180, 41, 0.1);
+}
+
+.dock-btn em {
+  position: absolute;
+  top: 2px;
+  right: 18%;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.65rem;
+  font-style: normal;
+  display: grid;
+  place-items: center;
+}
+
+.speed-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 8px 0 16px;
+}
+
+.speed-slot {
+  aspect-ratio: 0.92;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  width: 100%;
+  position: relative;
+}
+
+.speed-slot strong {
+  font-size: 0.78rem;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.speed-slot small {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.speed-slot small.on {
+  color: var(--ok);
+}
+
+.speed-num {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.speed-slot.empty {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.speed-empty {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.home-hero.compact {
+  margin-bottom: 10px;
+}
+
+.home-hero.compact .home-title {
+  margin-bottom: 10px;
+  font-size: 1.7rem;
+}
+
+.lede.tight {
+  margin-bottom: 14px;
+  font-size: 0.92rem;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.stat {
+  text-align: center;
+  padding: 12px 8px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.stat strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 1.4rem;
+}
+
+.stat span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.recent-list.tall {
+  max-height: none;
+  margin-bottom: 20px;
+}
+
+.vm-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.vm-card {
+  text-align: left;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  width: 100%;
+}
+
+.vm-card.unread {
+  border-color: rgba(240, 180, 41, 0.4);
+}
+
+.vm-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.vm-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.control-card {
+  margin-bottom: 12px;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.preset {
+  padding: 12px 8px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.preset.on {
+  border-color: rgba(240, 180, 41, 0.55);
+  background: rgba(240, 180, 41, 0.14);
+  color: var(--accent);
+}
+
+.status-chip.danger {
+  color: #ffb4b4;
+  border-color: rgba(255, 107, 107, 0.3);
+}
+
+.status-chip.danger .dot {
+  background: var(--danger);
+}

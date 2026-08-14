@@ -21,7 +21,9 @@ import {
   redeemInvite,
   registerParent,
   removeAllowlist,
+  updateAllowlistEntry,
   updateHouseholdRules,
+  verifyParentPin,
   getSessionUser,
 } from "./api.js";
 import { openDb, type LineType } from "./db.js";
@@ -182,10 +184,29 @@ app.post("/api/invites/redeem", (req, res) => {
 app.post("/api/households/:id/allowlist", (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
-  const { targetLineId, label } = req.body as { targetLineId?: string; label?: string };
+  const { targetLineId, label, speedDial, favorite } = req.body as {
+    targetLineId?: string;
+    label?: string;
+    speedDial?: number;
+    favorite?: boolean;
+  };
   if (!targetLineId) return res.status(400).json({ error: "targetLineId required" });
-  const entry = addAllowlist(db, req.params.id, targetLineId, label || "Contact");
+  const entry = addAllowlist(db, req.params.id, targetLineId, label || "Contact", {
+    speedDial,
+    favorite,
+  });
   res.json({ entry });
+});
+
+app.patch("/api/households/:id/allowlist/:entryId", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  try {
+    const entry = updateAllowlistEntry(db, req.params.id, req.params.entryId, req.body || {});
+    res.json({ entry });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
 });
 
 app.delete("/api/households/:id/allowlist/:entryId", (req, res) => {
@@ -195,6 +216,29 @@ app.delete("/api/households/:id/allowlist/:entryId", (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/households/:id/pin/verify", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const hh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(req.params.id) as
+    | import("./db.js").Household
+    | undefined;
+  if (!hh) return res.status(404).json({ error: "Household not found" });
+  const { pin } = req.body as { pin?: string };
+  if (!verifyParentPin(hh, String(pin || ""))) {
+    return res.status(403).json({ error: "Incorrect PIN" });
+  }
+  res.json({ ok: true });
+});
+
+app.post("/api/households/:id/voicemails/:vmId/listen", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  db.prepare(`UPDATE voicemails SET listened = 1 WHERE id = ? AND household_id = ?`).run(
+    req.params.vmId,
+    req.params.id
+  );
+  res.json({ ok: true });
+});
 app.get("/api/directory", (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -283,6 +327,7 @@ wss.on("connection", (ws) => {
       const check = canCall(db, fromLineId, toLineId);
       if (!check.ok) {
         console.log(`[call] rejected ${fromLineId}→${toLineId}: ${check.reason}`);
+        logCall(db, fromLineId, toLineId, "blocked");
         send(ws, { type: "call.rejected", reason: check.reason });
         return;
       }

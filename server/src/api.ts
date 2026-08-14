@@ -89,15 +89,27 @@ export function createHousehold(db: Database.Database, userId: string, name: str
     quiet_start: null,
     quiet_end: null,
     quiet_tz: null,
+    daily_cap_minutes: null,
+    parent_pin_hash: null,
+    schedule_preset: "open",
     created_at: nowIso(),
   };
   db.prepare(
-    `INSERT INTO households (id, name, owner_user_id, kill_switch, quiet_start, quiet_end, quiet_tz, created_at)
-     VALUES (@id, @name, @owner_user_id, @kill_switch, @quiet_start, @quiet_end, @quiet_tz, @created_at)`
+    `INSERT INTO households (id, name, owner_user_id, kill_switch, quiet_start, quiet_end, quiet_tz, daily_cap_minutes, parent_pin_hash, schedule_preset, created_at)
+     VALUES (@id, @name, @owner_user_id, @kill_switch, @quiet_start, @quiet_end, @quiet_tz, @daily_cap_minutes, @parent_pin_hash, @schedule_preset, @created_at)`
   ).run(household);
   db.prepare(
     `INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, 'owner')`
   ).run(household.id, userId);
+  db.prepare(
+    `INSERT INTO voicemails (id, household_id, from_line_id, from_label, body, listened, created_at)
+     VALUES (?, ?, NULL, 'Kids Landline', ?, 0, ?)`
+  ).run(
+    newId("vm"),
+    household.id,
+    "Welcome! Approved contacts only, quiet hours, daily limits, and a parent pause switch — just like the big kids-phone clubs, on your own private network.",
+    nowIso()
+  );
   return household;
 }
 
@@ -164,20 +176,61 @@ export function addAllowlist(
   db: Database.Database,
   householdId: string,
   targetLineId: string,
-  label: string
+  label: string,
+  opts: { speedDial?: number | null; favorite?: boolean } = {}
 ): AllowlistEntry {
+  const used = db
+    .prepare(`SELECT speed_dial FROM allowlist WHERE household_id = ? AND speed_dial IS NOT NULL`)
+    .all(householdId) as { speed_dial: number }[];
+  const taken = new Set(used.map((u) => u.speed_dial));
+  let speed = opts.speedDial ?? null;
+  if (speed == null) {
+    for (let i = 1; i <= 9; i++) {
+      if (!taken.has(i)) {
+        speed = i;
+        break;
+      }
+    }
+  }
   const entry: AllowlistEntry = {
     id: newId("al"),
     household_id: householdId,
     target_line_id: targetLineId,
     label: label.trim() || "Contact",
+    speed_dial: speed,
+    favorite: opts.favorite === false ? 0 : 1,
     created_at: nowIso(),
   };
   db.prepare(
-    `INSERT OR REPLACE INTO allowlist (id, household_id, target_line_id, label, created_at)
-     VALUES (@id, @household_id, @target_line_id, @label, @created_at)`
+    `INSERT OR REPLACE INTO allowlist (id, household_id, target_line_id, label, speed_dial, favorite, created_at)
+     VALUES (@id, @household_id, @target_line_id, @label, @speed_dial, @favorite, @created_at)`
   ).run(entry);
   return entry;
+}
+
+export function updateAllowlistEntry(
+  db: Database.Database,
+  householdId: string,
+  entryId: string,
+  patch: { label?: string; speed_dial?: number | null; favorite?: boolean }
+): AllowlistEntry {
+  const entry = db
+    .prepare(`SELECT * FROM allowlist WHERE id = ? AND household_id = ?`)
+    .get(entryId, householdId) as AllowlistEntry | undefined;
+  if (!entry) throw new Error("Contact not found");
+  const next = {
+    ...entry,
+    label: patch.label === undefined ? entry.label : patch.label.trim() || entry.label,
+    speed_dial: patch.speed_dial === undefined ? entry.speed_dial : patch.speed_dial,
+    favorite: patch.favorite === undefined ? entry.favorite : patch.favorite ? 1 : 0,
+  };
+  if (next.speed_dial != null && (next.speed_dial < 1 || next.speed_dial > 9)) {
+    throw new Error("Speed dial must be 1–9");
+  }
+  db.prepare(
+    `UPDATE allowlist SET label = @label, speed_dial = @speed_dial, favorite = @favorite WHERE id = @id`
+  ).run(next);
+  return next;
 }
 
 export function removeAllowlist(db: Database.Database, householdId: string, entryId: string): void {
@@ -232,6 +285,67 @@ export function isInQuietWindow(
   return mins >= startM || mins < endM;
 }
 
+const SCHEDULE_PRESETS: Record<
+  string,
+  { quiet_start: string | null; quiet_end: string | null; label: string }
+> = {
+  open: { quiet_start: null, quiet_end: null, label: "Open" },
+  bedtime: { quiet_start: "20:00", quiet_end: "07:00", label: "Bedtime" },
+  school: { quiet_start: "08:00", quiet_end: "15:30", label: "School hours" },
+  custom: { quiet_start: null, quiet_end: null, label: "Custom" },
+};
+
+export function hashPin(pin: string): string {
+  return createHash("sha256").update(`kl-pin:${pin}`).digest("hex");
+}
+
+export function verifyParentPin(hh: Household, pin: string): boolean {
+  if (!hh.parent_pin_hash) return true;
+  const a = Buffer.from(hh.parent_pin_hash, "hex");
+  const b = Buffer.from(hashPin(pin), "hex");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+export function minutesUsedToday(db: Database.Database, householdId: string, now = new Date()): number {
+  const hh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(householdId) as Household;
+  const tz = hh?.quiet_tz && isValidTimeZone(hh.quiet_tz) ? hh.quiet_tz : "UTC";
+  const dayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const lines = db.prepare(`SELECT id FROM lines WHERE household_id = ?`).all(householdId) as {
+    id: string;
+  }[];
+  if (!lines.length) return 0;
+  const ids = lines.map((l) => l.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const logs = db
+    .prepare(
+      `SELECT started_at, ended_at, outcome FROM call_logs
+       WHERE outcome IN ('completed', 'answered')
+         AND (from_line_id IN (${placeholders}) OR to_line_id IN (${placeholders}))`
+    )
+    .all(...ids, ...ids) as { started_at: string; ended_at: string | null; outcome: string }[];
+
+  let totalSec = 0;
+  for (const log of logs) {
+    const start = new Date(log.started_at);
+    const startDay = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(start);
+    if (startDay !== dayKey) continue;
+    const end = log.ended_at ? new Date(log.ended_at) : now;
+    totalSec += Math.max(0, (end.getTime() - start.getTime()) / 1000);
+  }
+  return Math.round(totalSec / 60);
+}
+
 export function updateHouseholdRules(
   db: Database.Database,
   householdId: string,
@@ -240,6 +354,9 @@ export function updateHouseholdRules(
     quiet_start?: string | null;
     quiet_end?: string | null;
     quiet_tz?: string | null;
+    daily_cap_minutes?: number | null;
+    schedule_preset?: string;
+    parent_pin?: string | null;
   }
 ): Household {
   const hh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(householdId) as Household;
@@ -248,6 +365,24 @@ export function updateHouseholdRules(
   let quiet_start = patch.quiet_start === undefined ? hh.quiet_start : patch.quiet_start;
   let quiet_end = patch.quiet_end === undefined ? hh.quiet_end : patch.quiet_end;
   let quiet_tz = patch.quiet_tz === undefined ? hh.quiet_tz : patch.quiet_tz;
+  let schedule_preset = patch.schedule_preset === undefined ? hh.schedule_preset || "open" : patch.schedule_preset;
+  let daily_cap_minutes =
+    patch.daily_cap_minutes === undefined ? hh.daily_cap_minutes ?? null : patch.daily_cap_minutes;
+  let parent_pin_hash = hh.parent_pin_hash;
+
+  if (patch.schedule_preset && patch.schedule_preset !== "custom") {
+    const preset = SCHEDULE_PRESETS[patch.schedule_preset];
+    if (!preset) throw new Error("Unknown schedule preset");
+    if (patch.schedule_preset !== "open") {
+      quiet_start = preset.quiet_start;
+      quiet_end = preset.quiet_end;
+      if (!quiet_tz) quiet_tz = "America/New_York";
+    } else {
+      quiet_start = null;
+      quiet_end = null;
+    }
+    schedule_preset = patch.schedule_preset;
+  }
 
   if (quiet_start === "") quiet_start = null;
   if (quiet_end === "") quiet_end = null;
@@ -259,15 +394,31 @@ export function updateHouseholdRules(
     if (!quiet_tz || !isValidTimeZone(quiet_tz)) {
       throw new Error("Quiet hours need a valid timezone (e.g. America/Chicago)");
     }
+    if (!patch.schedule_preset) schedule_preset = "custom";
   } else if (quiet_start || quiet_end) {
     throw new Error("Set both quiet start and end, or clear both");
-  } else {
+  } else if (patch.quiet_start !== undefined || patch.quiet_end !== undefined) {
     quiet_start = null;
     quiet_end = null;
+    if (!patch.schedule_preset) schedule_preset = "open";
   }
 
   if (quiet_tz && !isValidTimeZone(quiet_tz)) {
     throw new Error("Invalid timezone");
+  }
+
+  if (daily_cap_minutes !== null && daily_cap_minutes !== undefined) {
+    const n = Number(daily_cap_minutes);
+    if (!Number.isFinite(n) || n < 0) throw new Error("Daily cap must be 0+ minutes");
+    daily_cap_minutes = Math.round(n) || null;
+  }
+
+  if (patch.parent_pin !== undefined) {
+    if (patch.parent_pin === null || patch.parent_pin === "") parent_pin_hash = null;
+    else {
+      if (!/^\d{4,6}$/.test(patch.parent_pin)) throw new Error("PIN must be 4–6 digits");
+      parent_pin_hash = hashPin(patch.parent_pin);
+    }
   }
 
   const next = {
@@ -276,9 +427,14 @@ export function updateHouseholdRules(
     quiet_start,
     quiet_end,
     quiet_tz,
+    daily_cap_minutes,
+    parent_pin_hash,
+    schedule_preset: schedule_preset || "open",
   };
   db.prepare(
-    `UPDATE households SET kill_switch = @kill_switch, quiet_start = @quiet_start, quiet_end = @quiet_end, quiet_tz = @quiet_tz WHERE id = @id`
+    `UPDATE households SET kill_switch = @kill_switch, quiet_start = @quiet_start, quiet_end = @quiet_end,
+     quiet_tz = @quiet_tz, daily_cap_minutes = @daily_cap_minutes, parent_pin_hash = @parent_pin_hash,
+     schedule_preset = @schedule_preset WHERE id = @id`
   ).run(next);
   return next;
 }
@@ -300,10 +456,23 @@ export function canCall(
   const fromHh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(from.household_id) as Household;
   const toHh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(to.household_id) as Household;
 
-  if (fromHh.kill_switch) return { ok: false, reason: "Caller household kill switch is on" };
-  if (toHh.kill_switch) return { ok: false, reason: "Callee household kill switch is on" };
-  if (inQuietHours(fromHh, now)) return { ok: false, reason: "Caller quiet hours" };
-  if (inQuietHours(toHh, now)) return { ok: false, reason: "Callee quiet hours" };
+  if (fromHh.kill_switch) return { ok: false, reason: "Phone is paused by a parent" };
+  if (toHh.kill_switch) return { ok: false, reason: "Their phone is paused by a parent" };
+  if (inQuietHours(fromHh, now)) return { ok: false, reason: "Quiet hours — try again later" };
+  if (inQuietHours(toHh, now)) return { ok: false, reason: "They’re in quiet hours" };
+
+  if (fromHh.daily_cap_minutes != null) {
+    const used = minutesUsedToday(db, fromHh.id, now);
+    if (used >= fromHh.daily_cap_minutes) {
+      return { ok: false, reason: "Daily talk time limit reached" };
+    }
+  }
+  if (toHh.daily_cap_minutes != null) {
+    const used = minutesUsedToday(db, toHh.id, now);
+    if (used >= toHh.daily_cap_minutes) {
+      return { ok: false, reason: "Their daily talk time limit is full" };
+    }
+  }
 
   const allowedOut = db
     .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
@@ -315,8 +484,8 @@ export function canCall(
   // Same household can always call
   if (from.household_id === to.household_id) return { ok: true };
 
-  if (!allowedOut) return { ok: false, reason: "Destination not on your allowlist" };
-  if (!allowedIn) return { ok: false, reason: "You are not on their allowlist" };
+  if (!allowedOut) return { ok: false, reason: "Not on your approved contacts" };
+  if (!allowedIn) return { ok: false, reason: "You’re not on their approved contacts" };
   return { ok: true };
 }
 
@@ -373,16 +542,36 @@ export function householdSnapshot(db: Database.Database, userId: string) {
   const households = memberships.map((m) => {
     const hh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(m.household_id) as Household;
     const lines = db.prepare(`SELECT * FROM lines WHERE household_id = ?`).all(hh.id) as Line[];
-    const allowlist = db.prepare(`SELECT * FROM allowlist WHERE household_id = ?`).all(hh.id) as AllowlistEntry[];
+    const allowlist = db
+      .prepare(`SELECT * FROM allowlist WHERE household_id = ? ORDER BY speed_dial IS NULL, speed_dial, label`)
+      .all(hh.id) as AllowlistEntry[];
     const logs = db
       .prepare(
         `SELECT cl.* FROM call_logs cl
          JOIN lines l ON l.id = cl.from_line_id OR l.id = cl.to_line_id
          WHERE l.household_id = ?
-         ORDER BY cl.started_at DESC LIMIT 50`
+         ORDER BY cl.started_at DESC LIMIT 80`
       )
       .all(hh.id) as CallLog[];
-    return { ...hh, lines, allowlist, call_logs: logs };
+    const voicemails = db
+      .prepare(
+        `SELECT * FROM voicemails WHERE household_id = ? ORDER BY created_at DESC LIMIT 40`
+      )
+      .all(hh.id);
+    const used = minutesUsedToday(db, hh.id);
+    const { parent_pin_hash, ...safe } = hh as Household & { parent_pin_hash: string | null };
+    return {
+      ...safe,
+      has_parent_pin: Boolean(parent_pin_hash),
+      parent_pin_hash: undefined,
+      lines,
+      allowlist,
+      call_logs: logs,
+      voicemails,
+      usage_today_minutes: used,
+      daily_cap_minutes: hh.daily_cap_minutes ?? null,
+      schedule_preset: hh.schedule_preset || "open",
+    };
   });
 
   const directory = db

@@ -47,6 +47,8 @@ const state = {
   audioCtx: null,
   presenceTimer: null,
   celebrate: "",
+  nav: localStorage.getItem("kl_nav") || "phone",
+  parentUnlocked: sessionStorage.getItem("kl_parent_ok") === "1",
   error: "",
   screen: "boot",
   mode: "host",
@@ -551,6 +553,7 @@ function outcomeLabel(outcome) {
   if (outcome === "cancelled") return "Cancelled";
   if (outcome === "offline") return "Away";
   if (outcome === "ringing") return "Ringing";
+  if (outcome === "blocked") return "Blocked";
   return "Call";
 }
 
@@ -961,121 +964,165 @@ function renderJoin() {
   });
 }
 
+function dockHtml(active) {
+  const unreadVm = (state.households[0]?.voicemails || []).filter((v) => !v.listened).length;
+  const blocked = (state.households[0]?.call_logs || []).filter((l) => l.outcome === "blocked").length;
+  return `
+    <nav class="dock" aria-label="Main">
+      <button type="button" class="dock-btn ${active === "phone" ? "on" : ""}" data-nav="phone"><span>☎</span>Phone</button>
+      <button type="button" class="dock-btn ${active === "activity" ? "on" : ""}" data-nav="activity"><span>◉</span>Activity${blocked ? `<em>${Math.min(blocked, 9)}</em>` : ""}</button>
+      <button type="button" class="dock-btn ${active === "voicemail" ? "on" : ""}" data-nav="voicemail"><span>▤</span>Voicemail${unreadVm ? `<em>${Math.min(unreadVm, 9)}</em>` : ""}</button>
+      <button type="button" class="dock-btn ${active === "controls" ? "on" : ""}" data-nav="controls"><span>▣</span>Controls</button>
+    </nav>`;
+}
+
+function bindDock() {
+  document.querySelectorAll("[data-nav]").forEach((btn) => {
+    btn.onclick = async () => {
+      const nav = btn.getAttribute("data-nav");
+      if (nav === "controls" && state.households[0]?.has_parent_pin && !state.parentUnlocked) {
+        const pin = prompt("Parent PIN");
+        if (pin == null) return;
+        try {
+          await api(`/api/households/${state.households[0].id}/pin/verify`, {
+            method: "POST",
+            body: JSON.stringify({ pin }),
+          });
+          state.parentUnlocked = true;
+          sessionStorage.setItem("kl_parent_ok", "1");
+        } catch (e) {
+          state.flash = e.message || "Incorrect PIN";
+          state.nav = "phone";
+          localStorage.setItem("kl_nav", "phone");
+          render();
+          return;
+        }
+      }
+      state.nav = nav;
+      localStorage.setItem("kl_nav", nav);
+      state.screen = "home";
+      render();
+    };
+  });
+}
+
+function statusLine(hh, onlineCount) {
+  if (hh.kill_switch) return { text: "Phone paused by parent", live: false, danger: true };
+  if (hh.quiet_start && hh.quiet_end) return { text: `Quiet hours · ${quietSummary(hh)}`, live: false };
+  const cap = hh.daily_cap_minutes;
+  const used = hh.usage_today_minutes || 0;
+  if (cap != null) return { text: `${used}/${cap} min used today · ${onlineCount} online`, live: onlineCount > 0 };
+  return {
+    text: onlineCount ? `${onlineCount} family line${onlineCount === 1 ? "" : "s"} online` : "Waiting for family to open their phone",
+    live: onlineCount > 0,
+  };
+}
+
 function renderHome() {
+  if (state.nav === "activity") return renderActivity();
+  if (state.nav === "voicemail") return renderVoicemail();
+  if (state.nav === "controls") return renderControls();
+  return renderPhone();
+}
+
+function renderPhone() {
   const hh = state.households[0];
   const contacts = (hh?.allowlist || []).map((a) => ({
     ...a,
     online: state.directory.find((d) => d.id === a.target_line_id)?.online,
   }));
   const onlineCount = contacts.filter((c) => c.online).length;
-  const logs = (hh?.call_logs || []).slice(0, 6);
-  const hour = new Date().getHours();
-  const hello = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const status = statusLine(hh, onlineCount);
+  const dialSlots = [];
+  for (let i = 1; i <= 9; i++) {
+    dialSlots.push(contacts.find((c) => Number(c.speed_dial) === i) || null);
+  }
 
   app.innerHTML = `
-    <div class="topbar">
-      <div>
-        <div class="mark">Kids Landline</div>
-        <div class="who">${hh?.name || "Family"} · ${state.user.display_name}</div>
+    <div class="app-shell">
+      <div class="topbar">
+        <div>
+          <div class="mark">Kids Landline</div>
+          <div class="who">${hh?.name || "Family"} · ${state.user.display_name}</div>
+        </div>
+        <button class="icon-btn" id="settings" title="Settings" aria-label="Settings">⚙</button>
       </div>
-      <button class="icon-btn" id="settings" title="Settings" aria-label="Settings">⚙</button>
-    </div>
 
-    <div class="home-hero">
-      <p class="home-hello">${hello}</p>
-      <h1 class="home-title">Who are we calling?</h1>
-      <div class="status-chip ${onlineCount ? "live" : ""}">
-        <span class="dot"></span>
-        ${onlineCount ? `${onlineCount} family line${onlineCount === 1 ? "" : "s"} online` : "Waiting for family to open their phone"}
+      <div class="home-hero compact">
+        <h1 class="home-title">Speed dial</h1>
+        <div class="status-chip ${status.live ? "live" : ""} ${status.danger ? "danger" : ""}">
+          <span class="dot"></span>${status.text}
+        </div>
       </div>
-    </div>
 
-    ${state.flash ? `<p class="flash-banner">${state.flash}</p>` : ""}
-    ${state.celebrate ? `<p class="celebrate-banner">${state.celebrate}</p>` : ""}
+      ${state.flash ? `<p class="flash-banner">${state.flash}</p>` : ""}
+      ${state.celebrate ? `<p class="celebrate-banner">${state.celebrate}</p>` : ""}
 
-    <div class="home-actions">
-      <button class="action-tile" id="invite">
-        <span class="action-glyph">＋</span>
-        <span><strong>Invite</strong><small>Bring cousins in</small></span>
-      </button>
-      <button class="action-tile" id="add-contact">
-        <span class="action-glyph">★</span>
-        <span><strong>Contacts</strong><small>Allowlist a line</small></span>
-      </button>
-    </div>
+      <div class="speed-grid">
+        ${dialSlots
+          .map((c, idx) => {
+            const n = idx + 1;
+            if (!c) {
+              return `<button class="speed-slot empty" data-add="1" type="button"><span class="speed-num">${n}</span><span class="speed-empty">Add</span></button>`;
+            }
+            return `<button class="speed-slot" data-call="${c.target_line_id}" type="button">
+              <span class="speed-num">${n}</span>
+              ${avatarHtml(c.label, c.target_line_id, "md")}
+              <strong>${c.label}</strong>
+              <small class="${c.online ? "on" : ""}">${c.online ? "Online" : "Away"}</small>
+            </button>`;
+          })
+          .join("")}
+      </div>
 
-    <div class="section-title">Family lines</div>
-    ${
-      contacts.length
-        ? `<div class="contact-grid">${contacts
+      <div class="home-actions">
+        <button class="action-tile" id="invite">
+          <span class="action-glyph">＋</span>
+          <span><strong>Invite</strong><small>Family pass code</small></span>
+        </button>
+        <button class="action-tile" id="add-contact">
+          <span class="action-glyph">★</span>
+          <span><strong>Contacts</strong><small>Approved only</small></span>
+        </button>
+      </div>
+
+      ${
+        contacts.length
+          ? `<div class="section-title">All approved contacts</div>
+          <div class="contact-grid">${contacts
             .map(
               (c, i) => `
-          <button class="contact-tile" data-call="${c.target_line_id}" style="animation-delay:${i * 0.05}s">
-            ${avatarHtml(c.label, c.target_line_id, "lg")}
-            <div class="contact-meta">
-              <strong>${c.label}</strong>
-              <small>${householdName(c.target_line_id) || lineName(c.target_line_id)}</small>
-            </div>
-            <span class="pill ${c.online ? "on" : ""}"><span class="dot"></span>${c.online ? "Online" : "Away"}</span>
-            <span class="call-fab">Call</span>
-          </button>`
+            <button class="contact-tile" data-call="${c.target_line_id}" style="animation-delay:${i * 0.04}s">
+              ${avatarHtml(c.label, c.target_line_id, "lg")}
+              <div class="contact-meta">
+                <strong>${c.speed_dial ? `${c.speed_dial} · ` : ""}${c.label}</strong>
+                <small>${householdName(c.target_line_id) || lineName(c.target_line_id)}</small>
+              </div>
+              <span class="pill ${c.online ? "on" : ""}"><span class="dot"></span>${c.online ? "Online" : "Away"}</span>
+              <span class="call-fab">Call</span>
+            </button>`
             )
             .join("")}</div>`
-        : `<div class="empty hero-empty">
-            <div class="empty-visual">${phoneSvg()}</div>
-            <strong>Your phone book is empty</strong>
-            <p>Invite a relative, then add each other as contacts. After that, one tap starts a private call.</p>
-            <button class="primary" id="empty-invite">Send an invite</button>
-          </div>`
-    }
-
-    ${
-      logs.length
-        ? `<div class="section-title">Recent</div>
-        <div class="recent-list">
-          ${logs
-            .map((log) => {
-              const other =
-                log.from_line_id === state.activeLineId ? log.to_line_id : log.from_line_id;
-              const inbound = log.to_line_id === state.activeLineId;
-              const name =
-                contacts.find((c) => c.target_line_id === other)?.label || lineName(other);
-              return `<div class="recent-row">
-                ${avatarHtml(name, other, "sm")}
-                <div>
-                  <strong>${inbound ? "←" : "→"} ${name}</strong>
-                  <small>${outcomeLabel(log.outcome)} · ${formatCallWhen(log.started_at)}</small>
-                </div>
-              </div>`;
-            })
-            .join("")}
-        </div>`
-        : ""
-    }
-
-    <div class="section-title">Safety</div>
-    <div class="sheet safety-sheet">
-      <div class="btn-row two">
-        <button class="ghost" id="toggle-kill">${hh.kill_switch ? "Kill switch ON" : "Kill switch"}</button>
-        <button class="ghost" id="quiet">${quietSummary(hh)}</button>
-      </div>
-      <p class="tiny" style="margin:12px 0 0">Only people you approve can ring this phone. Keep the tab open to receive calls.</p>
+          : `<div class="empty hero-empty">
+              <div class="empty-visual">${phoneSvg()}</div>
+              <strong>No approved contacts yet</strong>
+              <p>Invite a relative, add each other, then kids only see people you trust — same idea as Ring Ring / Tin Can.</p>
+              <button class="primary" id="empty-invite">Send an invite</button>
+            </div>`
+      }
+      ${dockHtml("phone")}
     </div>
   `;
 
-  if (state.flash) {
-    setTimeout(() => {
-      state.flash = "";
-    }, 5000);
-  }
+  if (state.flash) setTimeout(() => { state.flash = ""; }, 5000);
   if (state.celebrate) {
     setTimeout(() => {
       state.celebrate = "";
-      const el = document.querySelector(".celebrate-banner");
-      if (el) el.remove();
+      document.querySelector(".celebrate-banner")?.remove();
     }, 4200);
   }
 
+  bindDock();
   document.getElementById("settings").onclick = () => {
     state.screen = "settings";
     render();
@@ -1092,20 +1139,15 @@ function renderHome() {
     state.screen = "add-contact";
     render();
   };
+  document.querySelectorAll("[data-add]").forEach((b) => {
+    b.onclick = () => {
+      state.screen = "add-contact";
+      render();
+    };
+  });
   document.querySelectorAll("[data-call]").forEach((btn) => {
     btn.onclick = () => placeCall(btn.getAttribute("data-call"));
   });
-  document.getElementById("toggle-kill").onclick = async () => {
-    await api(`/api/households/${hh.id}/rules`, {
-      method: "PATCH",
-      body: JSON.stringify({ kill_switch: !hh.kill_switch }),
-    });
-    await refresh();
-  };
-  document.getElementById("quiet").onclick = () => {
-    state.screen = "quiet";
-    render();
-  };
 
   if (!state.presenceTimer) {
     state.presenceTimer = setInterval(async () => {
@@ -1118,6 +1160,193 @@ function renderHome() {
       } catch {}
     }, 12000);
   }
+}
+
+function renderActivity() {
+  const hh = state.households[0];
+  const contacts = hh?.allowlist || [];
+  const logs = hh?.call_logs || [];
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="topbar"><div class="mark">Activity</div><span style="width:40px"></span></div>
+      <p class="lede tight">Calls, misses, and blocked attempts — parent visibility like the paid clubs.</p>
+      <div class="stat-row">
+        <div class="stat"><strong>${logs.filter((l) => l.outcome === "completed").length}</strong><span>Completed</span></div>
+        <div class="stat"><strong>${logs.filter((l) => l.outcome === "missed").length}</strong><span>Missed</span></div>
+        <div class="stat"><strong>${logs.filter((l) => l.outcome === "blocked").length}</strong><span>Blocked</span></div>
+      </div>
+      <div class="recent-list tall">
+        ${
+          logs.length
+            ? logs
+                .map((log) => {
+                  const other =
+                    log.from_line_id === state.activeLineId ? log.to_line_id : log.from_line_id;
+                  const inbound = log.to_line_id === state.activeLineId;
+                  const name =
+                    contacts.find((c) => c.target_line_id === other)?.label || lineName(other);
+                  return `<div class="recent-row">
+                    ${avatarHtml(name, other, "sm")}
+                    <div>
+                      <strong>${inbound ? "Incoming" : "Outgoing"} · ${name}</strong>
+                      <small>${outcomeLabel(log.outcome)} · ${formatCallWhen(log.started_at)}</small>
+                    </div>
+                  </div>`;
+                })
+                .join("")
+            : `<div class="empty">No activity yet. First calls show up here.</div>`
+        }
+      </div>
+      ${dockHtml("activity")}
+    </div>`;
+  bindDock();
+}
+
+function renderVoicemail() {
+  const hh = state.households[0];
+  const vms = hh?.voicemails || [];
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="topbar"><div class="mark">Voicemail</div><span style="width:40px"></span></div>
+      <p class="lede tight">Family voicemail inbox. Audio drop-offs from hardware landlines come in Stage 2 — notes work now.</p>
+      <div class="vm-list">
+        ${
+          vms.length
+            ? vms
+                .map(
+                  (v) => `
+            <button class="vm-card ${v.listened ? "" : "unread"}" data-vm="${v.id}" type="button">
+              <div class="vm-top"><strong>${v.from_label || "Family"}</strong><small>${formatCallWhen(v.created_at)}</small></div>
+              <p>${v.body}</p>
+            </button>`
+                )
+                .join("")
+            : `<div class="empty hero-empty"><strong>Inbox zero</strong><p>When cousins leave a message, it’ll land here.</p></div>`
+        }
+      </div>
+      ${dockHtml("voicemail")}
+    </div>`;
+  bindDock();
+  document.querySelectorAll("[data-vm]").forEach((btn) => {
+    btn.onclick = async () => {
+      await api(`/api/households/${hh.id}/voicemails/${btn.getAttribute("data-vm")}/listen`, {
+        method: "POST",
+        body: "{}",
+      });
+      await refresh();
+    };
+  });
+}
+
+function renderControls() {
+  const hh = state.households[0];
+  const preset = hh.schedule_preset || "open";
+  const cap = hh.daily_cap_minutes;
+  const used = hh.usage_today_minutes || 0;
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="topbar"><div class="mark">Parent controls</div><span style="width:40px"></span></div>
+      <p class="lede tight">Pause, schedules, daily caps, PIN — the dashboard relatives expect from Ring Ring / Tin Can / Pinwheel.</p>
+
+      <div class="sheet control-card">
+        <h2>Phone power</h2>
+        <p>Instant pause for the whole household softphone.</p>
+        <button class="${hh.kill_switch ? "danger" : "primary"}" id="toggle-kill">${hh.kill_switch ? "Resume phone" : "Pause phone"}</button>
+      </div>
+
+      <div class="sheet control-card">
+        <h2>Schedule modes</h2>
+        <p>One-tap quiet windows in your timezone.</p>
+        <div class="preset-grid">
+          ${["open", "bedtime", "school"]
+            .map(
+              (p) =>
+                `<button type="button" class="preset ${preset === p ? "on" : ""}" data-preset="${p}">${p === "open" ? "Open" : p === "bedtime" ? "Bedtime" : "School"}</button>`
+            )
+            .join("")}
+        </div>
+        <button class="ghost" id="custom-quiet" style="margin-top:10px">Custom quiet hours…</button>
+      </div>
+
+      <div class="sheet control-card">
+        <h2>Daily talk limit</h2>
+        <p>Used today: <strong>${used} min</strong>${cap != null ? ` / ${cap} min` : " · unlimited"}</p>
+        <label>Minutes per day (blank = unlimited)</label>
+        <input id="cap" type="number" min="0" step="5" placeholder="e.g. 60" value="${cap ?? ""}" />
+        <button class="primary" id="save-cap">Save limit</button>
+      </div>
+
+      <div class="sheet control-card">
+        <h2>Parent PIN</h2>
+        <p>${hh.has_parent_pin ? "PIN is on — required to open Controls." : "Lock Controls so kids can’t change rules."}</p>
+        <label>Set 4–6 digit PIN</label>
+        <input id="pin" class="mono" inputmode="numeric" maxlength="6" placeholder="····" />
+        <div class="btn-row two">
+          <button class="primary" id="save-pin">Save PIN</button>
+          <button class="ghost" id="clear-pin">Remove PIN</button>
+        </div>
+      </div>
+
+      <div class="sheet control-card">
+        <h2>Outside lines</h2>
+        <p class="tiny">Cell / landline / 911 via SIP trunk is a paid add-on (Stage 3) — same split the commercial kits use. Network-to-network family calling is free here.</p>
+      </div>
+      ${dockHtml("controls")}
+    </div>`;
+
+  bindDock();
+  document.getElementById("toggle-kill").onclick = async () => {
+    await api(`/api/households/${hh.id}/rules`, {
+      method: "PATCH",
+      body: JSON.stringify({ kill_switch: !hh.kill_switch }),
+    });
+    state.flash = hh.kill_switch ? "Phone resumed" : "Phone paused";
+    await refresh();
+  };
+  document.querySelectorAll("[data-preset]").forEach((btn) => {
+    btn.onclick = async () => {
+      const body = {
+        schedule_preset: btn.getAttribute("data-preset"),
+        quiet_tz: hh.quiet_tz || browserTimeZone(),
+      };
+      await api(`/api/households/${hh.id}/rules`, { method: "PATCH", body: JSON.stringify(body) });
+      state.flash = "Schedule updated";
+      await refresh();
+    };
+  });
+  document.getElementById("custom-quiet").onclick = () => {
+    state.screen = "quiet";
+    render();
+  };
+  document.getElementById("save-cap").onclick = async () => {
+    const raw = document.getElementById("cap").value.trim();
+    const daily_cap_minutes = raw === "" ? null : Number(raw);
+    await api(`/api/households/${hh.id}/rules`, {
+      method: "PATCH",
+      body: JSON.stringify({ daily_cap_minutes }),
+    });
+    state.flash = "Daily limit saved";
+    await refresh();
+  };
+  document.getElementById("save-pin").onclick = async () => {
+    const parent_pin = document.getElementById("pin").value.trim();
+    await api(`/api/households/${hh.id}/rules`, {
+      method: "PATCH",
+      body: JSON.stringify({ parent_pin }),
+    });
+    state.parentUnlocked = true;
+    sessionStorage.setItem("kl_parent_ok", "1");
+    state.flash = "Parent PIN saved";
+    await refresh();
+  };
+  document.getElementById("clear-pin").onclick = async () => {
+    await api(`/api/households/${hh.id}/rules`, {
+      method: "PATCH",
+      body: JSON.stringify({ parent_pin: null }),
+    });
+    state.flash = "PIN removed";
+    await refresh();
+  };
 }
 
 function browserTimeZone() {

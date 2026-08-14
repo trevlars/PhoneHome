@@ -21,6 +21,9 @@ export interface Household {
   quiet_end: string | null;
   /** IANA timezone for quiet hours, e.g. America/Chicago */
   quiet_tz: string | null;
+  daily_cap_minutes: number | null;
+  parent_pin_hash: string | null;
+  schedule_preset: string;
   created_at: string;
 }
 
@@ -49,6 +52,8 @@ export interface AllowlistEntry {
   household_id: string;
   target_line_id: string;
   label: string;
+  speed_dial: number | null;
+  favorite: number;
   created_at: string;
 }
 
@@ -119,6 +124,8 @@ export function openDb(dbPath: string): Database.Database {
       household_id TEXT NOT NULL,
       target_line_id TEXT NOT NULL,
       label TEXT NOT NULL,
+      speed_dial INTEGER,
+      favorite INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       UNIQUE(household_id, target_line_id)
     );
@@ -129,6 +136,15 @@ export function openDb(dbPath: string): Database.Database {
       started_at TEXT NOT NULL,
       ended_at TEXT,
       outcome TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS voicemails (
+      id TEXT PRIMARY KEY,
+      household_id TEXT NOT NULL,
+      from_line_id TEXT,
+      from_label TEXT,
+      body TEXT NOT NULL,
+      listened INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
@@ -145,14 +161,41 @@ export function openDb(dbPath: string): Database.Database {
       created_at TEXT NOT NULL
     );
   `);
-  migrateHouseholds(db);
+  migrateSchema(db);
   return db;
 }
 
-function migrateHouseholds(db: Database.Database): void {
-  const cols = db.prepare(`PRAGMA table_info(households)`).all() as { name: string }[];
-  if (!cols.some((c) => c.name === "quiet_tz")) {
-    db.exec(`ALTER TABLE households ADD COLUMN quiet_tz TEXT`);
+function migrateSchema(db: Database.Database): void {
+  const hhCols = db.prepare(`PRAGMA table_info(households)`).all() as { name: string }[];
+  const hhNames = new Set(hhCols.map((c) => c.name));
+  if (!hhNames.has("quiet_tz")) db.exec(`ALTER TABLE households ADD COLUMN quiet_tz TEXT`);
+  if (!hhNames.has("daily_cap_minutes")) db.exec(`ALTER TABLE households ADD COLUMN daily_cap_minutes INTEGER`);
+  if (!hhNames.has("parent_pin_hash")) db.exec(`ALTER TABLE households ADD COLUMN parent_pin_hash TEXT`);
+  if (!hhNames.has("schedule_preset")) {
+    db.exec(`ALTER TABLE households ADD COLUMN schedule_preset TEXT NOT NULL DEFAULT 'open'`);
+  }
+
+  const alCols = db.prepare(`PRAGMA table_info(allowlist)`).all() as { name: string }[];
+  const alNames = new Set(alCols.map((c) => c.name));
+  if (!alNames.has("speed_dial")) db.exec(`ALTER TABLE allowlist ADD COLUMN speed_dial INTEGER`);
+  if (!alNames.has("favorite")) db.exec(`ALTER TABLE allowlist ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0`);
+
+  // Backfill speed-dial slots for existing contacts
+  const households = db.prepare(`SELECT id FROM households`).all() as { id: string }[];
+  for (const h of households) {
+    const rows = db
+      .prepare(`SELECT id, speed_dial FROM allowlist WHERE household_id = ? ORDER BY created_at`)
+      .all(h.id) as { id: string; speed_dial: number | null }[];
+    const taken = new Set(rows.map((r) => r.speed_dial).filter((n) => n != null));
+    let next = 1;
+    for (const row of rows) {
+      if (row.speed_dial != null) continue;
+      while (taken.has(next) && next <= 9) next += 1;
+      if (next > 9) break;
+      db.prepare(`UPDATE allowlist SET speed_dial = ?, favorite = 1 WHERE id = ?`).run(next, row.id);
+      taken.add(next);
+      next += 1;
+    }
   }
 }
 
