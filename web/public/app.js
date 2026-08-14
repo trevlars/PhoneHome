@@ -650,9 +650,9 @@ function renderHome() {
     <div class="sheet" style="padding:14px">
       <div class="btn-row two">
         <button class="ghost" id="toggle-kill">${hh.kill_switch ? "Kill switch ON" : "Kill switch"}</button>
-        <button class="ghost" id="quiet">${hh.quiet_start ? "Quiet hours on" : "Quiet 9pm–7am"}</button>
+        <button class="ghost" id="quiet">${quietSummary(hh)}</button>
       </div>
-      <p class="tiny" style="margin:12px 0 0">Only allowlisted people can ring you. Unknown callers never get through.</p>
+      <p class="tiny" style="margin:12px 0 0">Only allowlisted people can ring you. Unknown callers never get through. Quiet hours use <em>your</em> timezone.</p>
     </div>
     ${callOverlay()}
   `;
@@ -681,13 +681,119 @@ function renderHome() {
     });
     await refresh();
   };
-  document.getElementById("quiet").onclick = async () => {
-    const on = Boolean(hh.quiet_start);
-    await api(`/api/households/${hh.id}/rules`, {
-      method: "PATCH",
-      body: JSON.stringify(on ? { quiet_start: null, quiet_end: null } : { quiet_start: "21:00", quiet_end: "07:00" }),
-    });
-    await refresh();
+  document.getElementById("quiet").onclick = () => {
+    state.screen = "quiet";
+    render();
+  };
+}
+
+function browserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+function formatQuietClock(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function quietSummary(hh) {
+  if (!hh?.quiet_start || !hh?.quiet_end) return "Quiet hours";
+  const tz = (hh.quiet_tz || "").split("/").pop()?.replace(/_/g, " ") || "local";
+  return `${formatQuietClock(hh.quiet_start)}–${formatQuietClock(hh.quiet_end)} · ${tz}`;
+}
+
+function timezoneOptions(selected) {
+  const detected = browserTimeZone();
+  const zones = [
+    detected,
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "America/Phoenix",
+    "America/Anchorage",
+    "Pacific/Honolulu",
+    "UTC",
+  ];
+  const unique = [...new Set(zones.filter(Boolean))];
+  if (selected && !unique.includes(selected)) unique.unshift(selected);
+  return unique
+    .map((z) => `<option value="${z}" ${z === selected ? "selected" : ""}>${z === detected ? `${z} (this device)` : z}</option>`)
+    .join("");
+}
+
+function renderQuietHours() {
+  const hh = state.households[0];
+  const enabled = Boolean(hh?.quiet_start && hh?.quiet_end);
+  const start = hh?.quiet_start || "21:00";
+  const end = hh?.quiet_end || "07:00";
+  const tz = hh?.quiet_tz || browserTimeZone();
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-btn" id="back">←</button>
+      <div class="mark">Quiet hours</div>
+      <span style="width:40px"></span>
+    </div>
+    <div class="sheet">
+      <h2>Your family’s quiet window</h2>
+      <p>Calls are blocked during this window in <strong>your</strong> timezone — not the host’s server clock.</p>
+      <label class="check-row">
+        <input type="checkbox" id="q-on" ${enabled ? "checked" : ""} />
+        <span>Enable quiet hours</span>
+      </label>
+      <div id="q-fields" class="${enabled ? "" : "hidden"}">
+        <label>Starts</label>
+        <input type="time" id="q-start" value="${start}" />
+        <label>Ends</label>
+        <input type="time" id="q-end" value="${end}" />
+        <label>Timezone</label>
+        <select id="q-tz">${timezoneOptions(tz)}</select>
+        <p class="tiny">Detected on this phone as ${browserTimeZone()}. Cousins should set their own window in their timezone.</p>
+      </div>
+      <p class="error hidden" id="q-err"></p>
+      <button class="primary" id="q-save">Save</button>
+    </div>
+  `;
+
+  const fields = document.getElementById("q-fields");
+  document.getElementById("q-on").onchange = (e) => {
+    fields.classList.toggle("hidden", !e.target.checked);
+  };
+  document.getElementById("back").onclick = () => {
+    state.screen = "home";
+    render();
+  };
+  document.getElementById("q-save").onclick = async () => {
+    const err = document.getElementById("q-err");
+    err.classList.add("hidden");
+    try {
+      const on = document.getElementById("q-on").checked;
+      const body = on
+        ? {
+            quiet_start: document.getElementById("q-start").value,
+            quiet_end: document.getElementById("q-end").value,
+            quiet_tz: document.getElementById("q-tz").value,
+          }
+        : { quiet_start: null, quiet_end: null };
+      await api(`/api/households/${hh.id}/rules`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      state.flash = on ? "Quiet hours saved" : "Quiet hours off";
+      state.screen = "home";
+      await refresh();
+    } catch (e) {
+      err.textContent = e.message || "Could not save";
+      err.classList.remove("hidden");
+    }
   };
 }
 
@@ -787,6 +893,11 @@ function renderSettings() {
       <p class="tiny">Calls use this line’s identity on the network.</p>
     </div>
     <div class="sheet" style="margin-top:12px">
+      <h2>Quiet hours</h2>
+      <p>${quietSummary(hh)}${hh?.quiet_tz ? ` · ${hh.quiet_tz}` : ""}</p>
+      <button class="ghost" id="edit-quiet">Customize quiet hours</button>
+    </div>
+    <div class="sheet" style="margin-top:12px">
       <h2>Help</h2>
       <p>Replay the intro if you want a refresher.</p>
       <button class="ghost" id="tutorial">Show tutorial</button>
@@ -804,6 +915,10 @@ function renderSettings() {
     localStorage.setItem("kl_line", state.activeLineId);
     if (state.ws) state.ws.close();
     ensureWs();
+  };
+  document.getElementById("edit-quiet").onclick = () => {
+    state.screen = "quiet";
+    render();
   };
   document.getElementById("tutorial").onclick = () => {
     state.tutorialFromSettings = true;
@@ -832,6 +947,7 @@ function render() {
   if (!state.user) return renderWelcome();
   if (state.screen === "invite") return renderInvite();
   if (state.screen === "add-contact") return renderAddContact();
+  if (state.screen === "quiet") return renderQuietHours();
   if (state.screen === "settings") return renderSettings();
   return renderHome();
 }

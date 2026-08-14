@@ -10,7 +10,7 @@ Mobile-first web app (PWA). Native iOS/Android later wraps the same APIs.
 | Softphone / line | Digits handset; commercials HW | Softphone line |
 | Invite family | Digits / commercials | 6-digit + share URL |
 | Allowlist contacts | All | Mutual allowlist required cross-household |
-| Quiet hours | All | Yes (`HH:MM`–`HH:MM`) |
+| Quiet hours | All | Yes (custom start/end + IANA timezone per household) |
 | Kill switch | Ring Ring et al. | Yes |
 | Call metadata log | Most | Yes (no recording) |
 | VPN for cousins | No | No |
@@ -24,8 +24,10 @@ Mobile-first web app (PWA). Native iOS/Android later wraps the same APIs.
 3. **Lines** — add softphone, select active line  
 4. **Invite** — code + URL  
 5. **Allowlist** — pick from directory, label, call / remove  
-6. **Rules** — kill switch, quiet hours  
+6. **Rules** — kill switch; quiet hours (start, end, timezone)  
 7. **Call UI** — incoming banner, answer / hang up  
+
+Quiet hours are evaluated in the household’s stored IANA timezone (e.g. `America/Chicago`), not the server’s clock. Each parent sets their own window.
 
 ## API surface (stable for native later)
 

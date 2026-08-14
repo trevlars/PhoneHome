@@ -19,6 +19,8 @@ export interface Household {
   kill_switch: number;
   quiet_start: string | null;
   quiet_end: string | null;
+  /** IANA timezone for quiet hours, e.g. America/Chicago */
+  quiet_tz: string | null;
   created_at: string;
 }
 
@@ -84,6 +86,7 @@ export function openDb(dbPath: string): Database.Database {
       kill_switch INTEGER NOT NULL DEFAULT 0,
       quiet_start TEXT,
       quiet_end TEXT,
+      quiet_tz TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY(owner_user_id) REFERENCES users(id)
     );
@@ -142,7 +145,15 @@ export function openDb(dbPath: string): Database.Database {
       created_at TEXT NOT NULL
     );
   `);
+  migrateHouseholds(db);
   return db;
+}
+
+function migrateHouseholds(db: Database.Database): void {
+  const cols = db.prepare(`PRAGMA table_info(households)`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === "quiet_tz")) {
+    db.exec(`ALTER TABLE households ADD COLUMN quiet_tz TEXT`);
+  }
 }
 
 export function nowIso(): string {

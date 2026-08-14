@@ -88,11 +88,12 @@ export function createHousehold(db: Database.Database, userId: string, name: str
     kill_switch: 0,
     quiet_start: null,
     quiet_end: null,
+    quiet_tz: null,
     created_at: nowIso(),
   };
   db.prepare(
-    `INSERT INTO households (id, name, owner_user_id, kill_switch, quiet_start, quiet_end, created_at)
-     VALUES (@id, @name, @owner_user_id, @kill_switch, @quiet_start, @quiet_end, @created_at)`
+    `INSERT INTO households (id, name, owner_user_id, kill_switch, quiet_start, quiet_end, quiet_tz, created_at)
+     VALUES (@id, @name, @owner_user_id, @kill_switch, @quiet_start, @quiet_end, @quiet_tz, @created_at)`
   ).run(household);
   db.prepare(
     `INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, 'owner')`
@@ -183,41 +184,114 @@ export function removeAllowlist(db: Database.Database, householdId: string, entr
   db.prepare(`DELETE FROM allowlist WHERE id = ? AND household_id = ?`).run(entryId, householdId);
 }
 
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseHhMm(value: string): { h: number; m: number } {
+  if (!HHMM.test(value)) throw new Error("Quiet hours must be HH:MM (24-hour)");
+  const [h, m] = value.split(":").map(Number);
+  return { h, m };
+}
+
+/** Local minutes-since-midnight in an IANA timezone (not the server clock). */
+export function localMinutesInTimeZone(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
+}
+
+export function isInQuietWindow(
+  quietStart: string | null | undefined,
+  quietEnd: string | null | undefined,
+  quietTz: string | null | undefined,
+  date = new Date()
+): boolean {
+  if (!quietStart || !quietEnd || !quietTz) return false;
+  if (!isValidTimeZone(quietTz)) return false;
+  const start = parseHhMm(quietStart);
+  const end = parseHhMm(quietEnd);
+  const mins = localMinutesInTimeZone(date, quietTz);
+  const startM = start.h * 60 + start.m;
+  const endM = end.h * 60 + end.m;
+  if (startM === endM) return false;
+  if (startM < endM) return mins >= startM && mins < endM;
+  return mins >= startM || mins < endM;
+}
+
 export function updateHouseholdRules(
   db: Database.Database,
   householdId: string,
-  patch: { kill_switch?: boolean; quiet_start?: string | null; quiet_end?: string | null }
+  patch: {
+    kill_switch?: boolean;
+    quiet_start?: string | null;
+    quiet_end?: string | null;
+    quiet_tz?: string | null;
+  }
 ): Household {
   const hh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(householdId) as Household;
   if (!hh) throw new Error("Household not found");
+
+  let quiet_start = patch.quiet_start === undefined ? hh.quiet_start : patch.quiet_start;
+  let quiet_end = patch.quiet_end === undefined ? hh.quiet_end : patch.quiet_end;
+  let quiet_tz = patch.quiet_tz === undefined ? hh.quiet_tz : patch.quiet_tz;
+
+  if (quiet_start === "") quiet_start = null;
+  if (quiet_end === "") quiet_end = null;
+  if (quiet_tz === "") quiet_tz = null;
+
+  if (quiet_start && quiet_end) {
+    parseHhMm(quiet_start);
+    parseHhMm(quiet_end);
+    if (!quiet_tz || !isValidTimeZone(quiet_tz)) {
+      throw new Error("Quiet hours need a valid timezone (e.g. America/Chicago)");
+    }
+  } else if (quiet_start || quiet_end) {
+    throw new Error("Set both quiet start and end, or clear both");
+  } else {
+    quiet_start = null;
+    quiet_end = null;
+  }
+
+  if (quiet_tz && !isValidTimeZone(quiet_tz)) {
+    throw new Error("Invalid timezone");
+  }
+
   const next = {
     ...hh,
     kill_switch: patch.kill_switch === undefined ? hh.kill_switch : patch.kill_switch ? 1 : 0,
-    quiet_start: patch.quiet_start === undefined ? hh.quiet_start : patch.quiet_start,
-    quiet_end: patch.quiet_end === undefined ? hh.quiet_end : patch.quiet_end,
+    quiet_start,
+    quiet_end,
+    quiet_tz,
   };
   db.prepare(
-    `UPDATE households SET kill_switch = @kill_switch, quiet_start = @quiet_start, quiet_end = @quiet_end WHERE id = @id`
+    `UPDATE households SET kill_switch = @kill_switch, quiet_start = @quiet_start, quiet_end = @quiet_end, quiet_tz = @quiet_tz WHERE id = @id`
   ).run(next);
   return next;
 }
 
 function inQuietHours(hh: Household, date = new Date()): boolean {
-  if (!hh.quiet_start || !hh.quiet_end) return false;
-  const [sh, sm] = hh.quiet_start.split(":").map(Number);
-  const [eh, em] = hh.quiet_end.split(":").map(Number);
-  const mins = date.getHours() * 60 + date.getMinutes();
-  const start = sh * 60 + sm;
-  const end = eh * 60 + em;
-  if (start === end) return false;
-  if (start < end) return mins >= start && mins < end;
-  return mins >= start || mins < end;
+  return isInQuietWindow(hh.quiet_start, hh.quiet_end, hh.quiet_tz, date);
 }
 
 export function canCall(
   db: Database.Database,
   fromLineId: string,
-  toLineId: string
+  toLineId: string,
+  now = new Date()
 ): { ok: true } | { ok: false; reason: string } {
   const from = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(fromLineId) as Line | undefined;
   const to = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(toLineId) as Line | undefined;
@@ -228,8 +302,8 @@ export function canCall(
 
   if (fromHh.kill_switch) return { ok: false, reason: "Caller household kill switch is on" };
   if (toHh.kill_switch) return { ok: false, reason: "Callee household kill switch is on" };
-  if (inQuietHours(fromHh)) return { ok: false, reason: "Caller quiet hours" };
-  if (inQuietHours(toHh)) return { ok: false, reason: "Callee quiet hours" };
+  if (inQuietHours(fromHh, now)) return { ok: false, reason: "Caller quiet hours" };
+  if (inQuietHours(toHh, now)) return { ok: false, reason: "Callee quiet hours" };
 
   const allowedOut = db
     .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ?`)

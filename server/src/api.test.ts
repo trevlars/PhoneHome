@@ -9,6 +9,7 @@ import {
   canCall,
   createHousehold,
   createInvite,
+  isInQuietWindow,
   redeemInvite,
   registerParent,
   updateHouseholdRules,
@@ -33,6 +34,61 @@ test("allowlist and kill switch gate calls", () => {
 
   updateHouseholdRules(db, hhB.id, { kill_switch: true });
   assert.equal(canCall(db, lineA.id, lineB.id).ok, false);
+});
+
+test("quiet hours use household timezone not server clock", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const a = registerParent(db, "A");
+  const b = registerParent(db, "B");
+  const hhA = createHousehold(db, a.user.id, "House A");
+  const hhB = createHousehold(db, b.user.id, "House B");
+  const lineA = addLine(db, hhA.id, a.user.id, "A phone");
+  const lineB = addLine(db, hhB.id, b.user.id, "B phone");
+  addAllowlist(db, hhA.id, lineB.id, "B");
+  addAllowlist(db, hhB.id, lineA.id, "A");
+
+  // 03:00 UTC is still evening previous day in US Pacific
+  const atUtc0300 = new Date("2026-01-15T03:00:00.000Z");
+
+  updateHouseholdRules(db, hhB.id, {
+    quiet_start: "21:00",
+    quiet_end: "07:00",
+    quiet_tz: "America/Los_Angeles",
+  });
+  // 03:00 UTC = 19:00 PST → outside quiet
+  assert.equal(isInQuietWindow("21:00", "07:00", "America/Los_Angeles", atUtc0300), false);
+
+  updateHouseholdRules(db, hhB.id, {
+    quiet_start: "18:00",
+    quiet_end: "07:00",
+    quiet_tz: "America/Los_Angeles",
+  });
+  // 03:00 UTC = 19:00 PST → inside 18:00–07:00
+  assert.equal(isInQuietWindow("18:00", "07:00", "America/Los_Angeles", atUtc0300), true);
+  assert.equal(canCall(db, lineA.id, lineB.id, atUtc0300).ok, false);
+
+  // Same instant in Tokyo is noon — outside evening quiet window
+  assert.equal(isInQuietWindow("21:00", "07:00", "Asia/Tokyo", atUtc0300), false);
+
+  updateHouseholdRules(db, hhB.id, { quiet_start: null, quiet_end: null });
+  assert.equal(canCall(db, lineA.id, lineB.id, atUtc0300).ok, true);
+});
+
+test("quiet hours require custom times and timezone", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const a = registerParent(db, "A");
+  const hh = createHousehold(db, a.user.id, "House A");
+  assert.throws(() => updateHouseholdRules(db, hh.id, { quiet_start: "21:00", quiet_end: "07:00" }));
+  const saved = updateHouseholdRules(db, hh.id, {
+    quiet_start: "20:30",
+    quiet_end: "06:15",
+    quiet_tz: "America/Chicago",
+  });
+  assert.equal(saved.quiet_start, "20:30");
+  assert.equal(saved.quiet_end, "06:15");
+  assert.equal(saved.quiet_tz, "America/Chicago");
 });
 
 test("invite redeem creates household", () => {

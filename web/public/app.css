@@ -238,6 +238,24 @@ button:disabled {
   margin: 0 0 12px;
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 18px;
+  font-weight: 600;
+}
+
+.check-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+input[type="time"] {
+  color-scheme: dark;
+}
+
 .topbar {
   display: flex;
   align-items: center;
