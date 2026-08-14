@@ -34,7 +34,15 @@ const state = {
   ws: null,
   pc: null,
   localStream: null,
+  pendingIce: [],
+  remoteReady: false,
+  muted: false,
   call: null,
+  callStartedAt: 0,
+  iceState: "",
+  wakeLock: null,
+  ringTimer: null,
+  tickTimer: null,
   error: "",
   screen: "boot",
   mode: "host",
@@ -42,6 +50,9 @@ const state = {
   tutorialIndex: 0,
   tutorialFromSettings: false,
 };
+
+const callRoot = () => document.getElementById("call-root");
+const remoteAudio = () => document.getElementById("remote-audio");
 
 async function api(path, opts = {}) {
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
@@ -75,20 +86,20 @@ function ensureWs() {
     const msg = JSON.parse(ev.data);
     if (msg.type === "call.offer") await onIncomingOffer(msg);
     if (msg.type === "call.answer") await onAnswer(msg);
-    if (msg.type === "call.ice" && state.pc && msg.candidate) {
-      try {
-        await state.pc.addIceCandidate(msg.candidate);
-      } catch {}
+    if (msg.type === "call.ice" && msg.candidate) await addRemoteIce(msg.candidate);
+    if (msg.type === "call.hangup") {
+      stopRing();
+      endCallUi("Call ended");
     }
-    if (msg.type === "call.hangup") endCallUi();
     if (msg.type === "call.rejected") {
+      stopRing();
       state.flash = msg.reason || "Call could not connect";
       endCallUi();
       render();
     }
     if (msg.type === "call.ringing") {
       state.call = { ...(state.call || {}), status: "ringing", callId: msg.callId };
-      render();
+      paintCallLayer();
     }
   };
   ws.onclose = () => setTimeout(ensureWs, 1500);
@@ -117,19 +128,110 @@ async function refresh() {
 }
 
 async function iceServers() {
-  return [{ urls: "stun:stun.l.google.com:19302" }];
+  try {
+    const data = await api("/api/ice");
+    if (data.iceServers?.length) return data.iceServers;
+  } catch {}
+  return [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+}
+
+async function addRemoteIce(candidate) {
+  if (!state.pc) return;
+  if (!state.remoteReady) {
+    state.pendingIce.push(candidate);
+    return;
+  }
+  try {
+    await state.pc.addIceCandidate(candidate);
+  } catch {}
+}
+
+async function flushIce() {
+  state.remoteReady = true;
+  const queued = state.pendingIce.splice(0);
+  for (const c of queued) {
+    try {
+      await state.pc.addIceCandidate(c);
+    } catch {}
+  }
+}
+
+async function requestWakeLock() {
+  try {
+    if (navigator.wakeLock) state.wakeLock = await navigator.wakeLock.request("screen");
+  } catch {}
+}
+
+function releaseWakeLock() {
+  try {
+    state.wakeLock?.release();
+  } catch {}
+  state.wakeLock = null;
+}
+
+function startRing() {
+  stopRing();
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const beep = () => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = 440;
+      g.gain.value = 0.05;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.25);
+    };
+    beep();
+    state.ringTimer = setInterval(beep, 2000);
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  } catch {}
+}
+
+function stopRing() {
+  if (state.ringTimer) clearInterval(state.ringTimer);
+  state.ringTimer = null;
+}
+
+function startCallTicker() {
+  stopCallTicker();
+  state.tickTimer = setInterval(() => {
+    const el = document.getElementById("call-timer");
+    if (el && state.callStartedAt) el.textContent = formatDuration(Date.now() - state.callStartedAt);
+  }, 500);
+}
+
+function stopCallTicker() {
+  if (state.tickTimer) clearInterval(state.tickTimer);
+  state.tickTimer = null;
+}
+
+function formatDuration(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
 }
 
 async function makePc(peer) {
+  state.pendingIce = [];
+  state.remoteReady = false;
+  state.iceState = "starting";
+  state.muted = false;
   const pc = new RTCPeerConnection({ iceServers: await iceServers() });
   state.pc = pc;
   state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   for (const track of state.localStream.getTracks()) pc.addTrack(track, state.localStream);
-  const remoteAudio = document.getElementById("remote-audio");
+
   pc.ontrack = (ev) => {
-    if (remoteAudio) {
-      remoteAudio.srcObject = ev.streams[0];
-      remoteAudio.play().catch(() => {});
+    const audio = remoteAudio();
+    if (audio) {
+      audio.srcObject = ev.streams[0];
+      audio.play().catch(() => {});
     }
   };
   pc.onicecandidate = (ev) => {
@@ -143,17 +245,42 @@ async function makePc(peer) {
       })
     );
   };
+  pc.onconnectionstatechange = () => {
+    state.iceState = pc.connectionState;
+    if (pc.connectionState === "connected") {
+      if (state.call && state.call.status !== "active") {
+        state.call = { ...state.call, status: "active" };
+      }
+      if (!state.callStartedAt) {
+        state.callStartedAt = Date.now();
+        startCallTicker();
+      }
+      paintCallLayer();
+    }
+    if (pc.connectionState === "failed") {
+      state.flash = "Couldn’t connect voice. Try again — both phones need a good network.";
+      hangup();
+      render();
+    }
+    if (pc.connectionState === "disconnected") {
+      paintCallLayer();
+    }
+  };
   return pc;
 }
 
 async function placeCall(toLineId) {
+  if (state.call) return;
   state.flash = "";
+  state.callStartedAt = 0;
   state.call = { status: "calling", toLineId, fromLineId: state.activeLineId };
-  render();
+  paintCallLayer();
   try {
+    await requestWakeLock();
     const pc = await makePc(toLineId);
-    const offer = await pc.createOffer();
+    const offer = await pc.createOffer({ offerToReceiveAudio: true });
     await pc.setLocalDescription(offer);
+    if (!state.ws || state.ws.readyState !== 1) throw new Error("Not connected to the network yet — wait a second and try again");
     state.ws.send(
       JSON.stringify({
         type: "call.offer",
@@ -170,6 +297,7 @@ async function placeCall(toLineId) {
 }
 
 async function onIncomingOffer(msg) {
+  state.callStartedAt = 0;
   state.call = {
     status: "incoming",
     fromLineId: msg.fromLineId,
@@ -177,56 +305,92 @@ async function onIncomingOffer(msg) {
     callId: msg.callId,
     sdp: msg.sdp,
   };
-  render();
+  startRing();
+  paintCallLayer();
 }
 
 async function acceptCall() {
   const msg = state.call;
-  const pc = await makePc(msg.fromLineId);
-  await pc.setRemoteDescription(msg.sdp);
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  state.ws.send(
-    JSON.stringify({
-      type: "call.answer",
-      callId: msg.callId,
-      fromLineId: msg.fromLineId,
-      toLineId: msg.toLineId,
-      sdp: answer,
-    })
-  );
-  state.call = { ...msg, status: "active" };
-  render();
+  if (!msg?.sdp) return;
+  stopRing();
+  try {
+    await requestWakeLock();
+    const pc = await makePc(msg.fromLineId);
+    await pc.setRemoteDescription(msg.sdp);
+    await flushIce();
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    state.ws.send(
+      JSON.stringify({
+        type: "call.answer",
+        callId: msg.callId,
+        fromLineId: msg.fromLineId,
+        toLineId: msg.toLineId,
+        sdp: answer,
+      })
+    );
+    state.call = { ...msg, status: "connecting" };
+    paintCallLayer();
+  } catch (e) {
+    state.flash = e.message || "Could not answer";
+    hangup();
+    render();
+  }
 }
 
 async function onAnswer(msg) {
   if (!state.pc) return;
   await state.pc.setRemoteDescription(msg.sdp);
-  state.call = { ...(state.call || {}), status: "active", callId: msg.callId };
-  render();
+  await flushIce();
+  state.call = { ...(state.call || {}), status: "connecting", callId: msg.callId };
+  paintCallLayer();
+}
+
+function toggleMute() {
+  state.muted = !state.muted;
+  state.localStream?.getAudioTracks().forEach((t) => {
+    t.enabled = !state.muted;
+  });
+  paintCallLayer();
 }
 
 function hangup() {
+  stopRing();
   if (state.ws && state.call) {
     state.ws.send(
       JSON.stringify({
         type: "call.hangup",
         callId: state.call.callId,
         fromLineId: state.call.fromLineId || state.activeLineId,
-        toLineId: state.call.toLineId || state.call.fromLineId,
+        toLineId: state.call.toLineId === state.activeLineId ? state.call.fromLineId : state.call.toLineId,
       })
     );
   }
   endCallUi();
 }
 
-function endCallUi() {
-  if (state.pc) state.pc.close();
+function endCallUi(flash) {
+  stopRing();
+  stopCallTicker();
+  releaseWakeLock();
+  if (state.pc) {
+    try {
+      state.pc.close();
+    } catch {}
+  }
   state.pc = null;
   if (state.localStream) state.localStream.getTracks().forEach((t) => t.stop());
   state.localStream = null;
+  state.pendingIce = [];
+  state.remoteReady = false;
   state.call = null;
-  render();
+  state.callStartedAt = 0;
+  state.iceState = "";
+  state.muted = false;
+  const audio = remoteAudio();
+  if (audio) audio.srcObject = null;
+  if (flash) state.flash = flash;
+  paintCallLayer();
 }
 
 function lineName(id) {
@@ -239,32 +403,75 @@ function householdName(id) {
   return d ? d.household_name : "";
 }
 
+function contactLabel(call) {
+  if (!call) return "";
+  const other = call.fromLineId === state.activeLineId ? call.toLineId : call.fromLineId;
+  return lineName(other);
+}
+
 function dots(n, active) {
   return `<div class="step-dots">${Array.from({ length: n }, (_, i) => `<span class="${i === active ? "on" : ""}"></span>`).join("")}</div>`;
 }
 
-function callOverlay() {
-  if (!state.call) return "";
+function paintCallLayer() {
+  const root = callRoot();
+  if (!root) return;
+  if (!state.call) {
+    root.innerHTML = "";
+    return;
+  }
+  const status = state.call.status;
   const title =
-    state.call.status === "incoming"
+    status === "incoming"
       ? "Incoming call"
-      : state.call.status === "active"
+      : status === "active"
         ? "On a call"
-        : state.call.status === "ringing"
-          ? "Ringing…"
-          : "Calling…";
-  const who = lineName(state.call.fromLineId === state.activeLineId ? state.call.toLineId : state.call.fromLineId);
-  return `
+        : status === "connecting"
+          ? "Connecting…"
+          : status === "ringing"
+            ? "Ringing…"
+            : "Calling…";
+  const who = contactLabel(state.call);
+  const house = householdName(
+    state.call.fromLineId === state.activeLineId ? state.call.toLineId : state.call.fromLineId
+  );
+  const timer =
+    state.callStartedAt && (status === "active" || status === "connecting")
+      ? formatDuration(Date.now() - state.callStartedAt)
+      : status === "active" || status === "connecting"
+        ? "0:00"
+        : "";
+  const mediaHint =
+    state.iceState === "connected"
+      ? "Connected"
+      : state.iceState === "disconnected"
+        ? "Reconnecting…"
+        : status === "connecting" || status === "active"
+          ? "Setting up voice…"
+          : "";
+
+  root.innerHTML = `
     <div id="call-layer">
-      <div class="sheet">
-        <h2>${title}</h2>
-        <p>${who}</p>
-        <div class="btn-row ${state.call.status === "incoming" ? "two" : ""}">
-          ${state.call.status === "incoming" ? `<button class="primary" id="accept">Answer</button>` : ""}
-          <button class="danger" id="hangup">Hang up</button>
+      <div class="call-card">
+        <p class="call-kicker">${title}</p>
+        <h2 class="call-who">${who}</h2>
+        ${house ? `<p class="call-house">${house}</p>` : ""}
+        ${timer ? `<p class="call-timer" id="call-timer">${timer}</p>` : ""}
+        ${mediaHint ? `<p class="call-media">${mediaHint}</p>` : ""}
+        <div class="call-actions ${status === "incoming" ? "incoming" : status === "active" || status === "connecting" ? "in-call" : ""}">
+          ${status === "incoming" ? `<button class="primary call-answer" id="accept">Answer</button>` : ""}
+          ${(status === "active" || status === "connecting") ? `<button class="ghost" id="mute">${state.muted ? "Unmute" : "Mute"}</button>` : ""}
+          <button class="danger" id="hangup">${status === "incoming" ? "Decline" : "Hang up"}</button>
         </div>
       </div>
     </div>`;
+
+  document.getElementById("hangup")?.addEventListener("click", () => {
+    hangup();
+    render();
+  });
+  document.getElementById("accept")?.addEventListener("click", acceptCall);
+  document.getElementById("mute")?.addEventListener("click", toggleMute);
 }
 
 function renderWelcome() {
@@ -609,7 +816,6 @@ function renderHome() {
   }));
 
   app.innerHTML = `
-    <audio id="remote-audio" autoplay playsinline></audio>
     <div class="topbar">
       <div>
         <div class="mark">Kids Landline</div>
@@ -652,10 +858,15 @@ function renderHome() {
         <button class="ghost" id="toggle-kill">${hh.kill_switch ? "Kill switch ON" : "Kill switch"}</button>
         <button class="ghost" id="quiet">${quietSummary(hh)}</button>
       </div>
-      <p class="tiny" style="margin:12px 0 0">Only allowlisted people can ring you. Unknown callers never get through. Quiet hours use <em>your</em> timezone.</p>
+      <p class="tiny" style="margin:12px 0 0">Only allowlisted people can ring you. Keep this tab open to receive calls.</p>
     </div>
-    ${callOverlay()}
   `;
+
+  if (state.flash) {
+    setTimeout(() => {
+      state.flash = "";
+    }, 5000);
+  }
 
   document.getElementById("settings").onclick = () => {
     state.screen = "settings";
@@ -669,8 +880,6 @@ function renderHome() {
     state.screen = "add-contact";
     render();
   };
-  document.getElementById("hangup")?.addEventListener("click", hangup);
-  document.getElementById("accept")?.addEventListener("click", acceptCall);
   document.querySelectorAll("[data-call]").forEach((btn) => {
     btn.onclick = () => placeCall(btn.getAttribute("data-call"));
   });
@@ -854,7 +1063,7 @@ function renderAddContact() {
         <label>Line</label>
         <select id="dir">${others.map((d) => `<option value="${d.id}">${d.name} — ${d.household_name}</option>`).join("")}</select>
         <label>Label on your phone</label>
-        <input id="label" placeholder="e.g. Maya" />
+        <input id="label" placeholder="e.g. Maya" value="${others[0] ? others[0].name.replace(/'s phone$/i, "").trim() : ""}" />
         <button class="primary" id="save">Add to contacts</button>`
           : `<div class="empty">No other families yet. Send an invite first.</div>`
       }
@@ -864,12 +1073,17 @@ function renderAddContact() {
     state.screen = "home";
     render();
   };
+  document.getElementById("dir")?.addEventListener("change", () => {
+    const d = others.find((x) => x.id === document.getElementById("dir").value);
+    if (d) document.getElementById("label").value = d.name.replace(/'s phone$/i, "").trim() || d.name;
+  });
   document.getElementById("save")?.addEventListener("click", async () => {
+    const selected = others.find((x) => x.id === document.getElementById("dir").value);
     await api(`/api/households/${hh.id}/allowlist`, {
       method: "POST",
       body: JSON.stringify({
         targetLineId: document.getElementById("dir").value,
-        label: document.getElementById("label").value || "Contact",
+        label: document.getElementById("label").value || selected?.name || "Contact",
       }),
     });
     state.screen = "home";
@@ -939,17 +1153,18 @@ function renderSettings() {
 }
 
 function render() {
-  if (state.screen === "splash") return renderSplash();
-  if (state.screen === "tutorial") return renderTutorial();
-  if (state.screen === "welcome") return renderWelcome();
-  if (state.screen === "host") return renderHost();
-  if (state.screen === "join") return renderJoin();
-  if (!state.user) return renderWelcome();
-  if (state.screen === "invite") return renderInvite();
-  if (state.screen === "add-contact") return renderAddContact();
-  if (state.screen === "quiet") return renderQuietHours();
-  if (state.screen === "settings") return renderSettings();
-  return renderHome();
+  if (state.screen === "splash") renderSplash();
+  else if (state.screen === "tutorial") renderTutorial();
+  else if (state.screen === "welcome") renderWelcome();
+  else if (state.screen === "host") renderHost();
+  else if (state.screen === "join") renderJoin();
+  else if (!state.user) renderWelcome();
+  else if (state.screen === "invite") renderInvite();
+  else if (state.screen === "add-contact") renderAddContact();
+  else if (state.screen === "quiet") renderQuietHours();
+  else if (state.screen === "settings") renderSettings();
+  else renderHome();
+  paintCallLayer();
 }
 
 async function boot() {

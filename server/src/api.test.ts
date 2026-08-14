@@ -9,7 +9,9 @@ import {
   canCall,
   createHousehold,
   createInvite,
+  endCallLog,
   isInQuietWindow,
+  logCall,
   redeemInvite,
   registerParent,
   updateHouseholdRules,
@@ -89,6 +91,31 @@ test("quiet hours require custom times and timezone", () => {
   assert.equal(saved.quiet_start, "20:30");
   assert.equal(saved.quiet_end, "06:15");
   assert.equal(saved.quiet_tz, "America/Chicago");
+});
+
+test("hangup after answer marks completed; cancel marks cancelled", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const a = registerParent(db, "A");
+  const b = registerParent(db, "B");
+  const hhA = createHousehold(db, a.user.id, "House A");
+  const hhB = createHousehold(db, b.user.id, "House B");
+  const lineA = addLine(db, hhA.id, a.user.id, "A phone");
+  const lineB = addLine(db, hhB.id, b.user.id, "B phone");
+  const ringing = logCall(db, lineA.id, lineB.id, "ringing");
+  endCallLog(db, ringing.id, "ended");
+  const cancelled = db.prepare(`SELECT outcome FROM call_logs WHERE id = ?`).get(ringing.id) as {
+    outcome: string;
+  };
+  assert.equal(cancelled.outcome, "cancelled");
+
+  const answered = logCall(db, lineA.id, lineB.id, "ringing");
+  db.prepare(`UPDATE call_logs SET outcome = 'answered' WHERE id = ?`).run(answered.id);
+  endCallLog(db, answered.id, "ended");
+  const done = db.prepare(`SELECT outcome FROM call_logs WHERE id = ?`).get(answered.id) as {
+    outcome: string;
+  };
+  assert.equal(done.outcome, "completed");
 });
 
 test("invite redeem creates household", () => {

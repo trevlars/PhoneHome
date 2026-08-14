@@ -366,13 +366,83 @@ input[type="time"] {
   display: grid;
   place-items: end center;
   padding: 18px;
-  background: rgba(4, 10, 8, 0.55);
-  backdrop-filter: blur(8px);
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+  background: rgba(4, 10, 8, 0.62);
+  backdrop-filter: blur(10px);
 }
 
-#call-layer .sheet {
+.call-card {
   width: min(430px, 100%);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  padding: 28px 22px 22px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, #1a3a2e, #10241c);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  text-align: center;
+  animation: rise 0.35s ease both;
+}
+
+.call-kicker {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.call-who {
+  font-family: var(--display);
+  font-size: 2rem;
+  margin: 10px 0 4px;
+  letter-spacing: -0.03em;
+}
+
+.call-house {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.call-timer {
+  margin: 18px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.call-media {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.call-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.call-actions.incoming {
+  grid-template-columns: 1fr 1fr;
+}
+
+.call-actions.in-call {
+  grid-template-columns: 1fr 1fr;
+}
+
+.call-answer {
+  order: 0;
+}
+
+#remote-audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .hidden {

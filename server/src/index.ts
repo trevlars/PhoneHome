@@ -14,6 +14,7 @@ import {
   createHousehold,
   createInvite,
   endCallLog,
+  expireStaleRings,
   householdSnapshot,
   logCall,
   loginWithSetupCode,
@@ -32,6 +33,26 @@ const PORT = Number(process.env.PORT || 8787);
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, "kids-landline.db");
 const WEB_DIR = path.join(ROOT, "web", "public");
 
+function buildIceServers(): RTCIceServerLike[] {
+  const servers: RTCIceServerLike[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+  const turnUrls = (process.env.TURN_URLS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (turnUrls.length && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    servers.push({
+      urls: turnUrls,
+      username: process.env.TURN_USERNAME,
+      credential: process.env.TURN_CREDENTIAL,
+    });
+  }
+  return servers;
+}
+
+type RTCIceServerLike = { urls: string | string[]; username?: string; credential?: string };
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = openDb(DB_PATH);
 const boot = bootstrapAdmin(db);
@@ -56,6 +77,10 @@ function requireUser(req: express.Request, res: express.Response) {
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "kids-landline", stage: 1 });
+});
+
+app.get("/api/ice", (_req, res) => {
+  res.json({ iceServers: buildIceServers() });
 });
 
 app.get("/api/bootstrap", (_req, res) => {
@@ -229,6 +254,7 @@ wss.on("connection", (ws) => {
         db.prepare(`UPDATE lines SET online = 1 WHERE id = ?`).run(client.lineId);
       }
       send(ws, { type: "welcome", userId: user.id, lineId: client.lineId });
+      console.log(`[ws] hello line=${client.lineId} user=${user.display_name}`);
       return;
     }
 
@@ -237,6 +263,7 @@ wss.on("connection", (ws) => {
       const toLineId = String(msg.toLineId || "");
       const check = canCall(db, fromLineId, toLineId);
       if (!check.ok) {
+        console.log(`[call] rejected ${fromLineId}→${toLineId}: ${check.reason}`);
         send(ws, { type: "call.rejected", reason: check.reason });
         return;
       }
@@ -244,7 +271,8 @@ wss.on("connection", (ws) => {
       const call = logCall(db, fromLineId, toLineId, "ringing");
       if (!target) {
         endCallLog(db, call.id, "offline");
-        send(ws, { type: "call.rejected", reason: "Callee softphone offline" });
+        console.log(`[call] offline ${call.id} ${fromLineId}→${toLineId}`);
+        send(ws, { type: "call.rejected", reason: "Their phone isn’t open right now. Ask them to keep the Kids Landline tab open." });
         return;
       }
       send(target.ws, {
@@ -255,38 +283,60 @@ wss.on("connection", (ws) => {
         sdp: msg.sdp,
       });
       send(ws, { type: "call.ringing", callId: call.id });
+      console.log(`[call] ringing ${call.id} ${fromLineId}→${toLineId}`);
       return;
     }
 
     if (type === "call.answer" || type === "call.ice" || type === "call.hangup") {
-      const toLineId = String(msg.toLineId || "");
-      const fromLineId = String(msg.fromLineId || "");
-      const peerLine = type === "call.answer" || type === "call.ice" ? fromLineId || toLineId : toLineId;
-      // Route to the other party
       const otherId =
         client.lineId === String(msg.fromLineId) ? String(msg.toLineId) : String(msg.fromLineId);
-      const target = findByLine(otherId || peerLine);
+      const target = findByLine(otherId);
       if (target) send(target.ws, msg);
       if (type === "call.hangup" && msg.callId) {
         endCallLog(db, String(msg.callId), "ended");
+        console.log(`[call] hangup ${msg.callId}`);
       }
       if (type === "call.answer" && msg.callId) {
-        endCallLog(db, String(msg.callId), "answered");
-        // keep ended_at null-ish — mark answered
         db.prepare(`UPDATE call_logs SET outcome = 'answered', ended_at = NULL WHERE id = ?`).run(
           String(msg.callId)
         );
+        console.log(`[call] answered ${msg.callId}`);
       }
       return;
     }
   });
 
   ws.on("close", () => {
-    if (client.lineId) db.prepare(`UPDATE lines SET online = 0 WHERE id = ?`).run(client.lineId);
+    if (client.lineId) {
+      db.prepare(`UPDATE lines SET online = 0 WHERE id = ?`).run(client.lineId);
+      // If they drop mid-ring as callee, mark open rings as missed and notify caller
+      const open = db
+        .prepare(
+          `SELECT id, from_line_id, to_line_id FROM call_logs
+           WHERE outcome = 'ringing' AND ended_at IS NULL AND to_line_id = ?`
+        )
+        .all(client.lineId) as { id: string; from_line_id: string; to_line_id: string }[];
+      for (const row of open) {
+        endCallLog(db, row.id, "missed");
+        const caller = findByLine(row.from_line_id);
+        if (caller) {
+          send(caller.ws, {
+            type: "call.rejected",
+            callId: row.id,
+            reason: "They closed the page before answering",
+          });
+        }
+        console.log(`[call] missed (disconnect) ${row.id}`);
+      }
+    }
     clients.delete(client);
   });
 });
 
+setInterval(() => {
+  const n = expireStaleRings(db);
+  if (n) console.log(`[call] expired ${n} stale ring(s)`);
+}, 10_000);
 server.listen(PORT, () => {
   console.log("");
   console.log(`Kids Landline → http://127.0.0.1:${PORT}`);

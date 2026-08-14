@@ -57,3 +57,15 @@ cd deploy && docker compose up -d --build
 ```
 
 Then put HTTPS in front (Caddy, Traefik, or Cloudflare Tunnel) the same way.
+
+## Optional TURN (hard NATs)
+
+Signaling goes through your HTTPS URL; **voice is peer-to-peer WebRTC**. Some phone networks need a TURN relay. Set on the server:
+
+```bash
+TURN_URLS=turn:turn.example.com:3478
+TURN_USERNAME=kids
+TURN_CREDENTIAL=secret
+```
+
+The client loads these from `GET /api/ice`. Without TURN, many home/mobile calls still work via STUN alone.

@@ -342,7 +342,28 @@ export function logCall(
 }
 
 export function endCallLog(db: Database.Database, callId: string, outcome: string): void {
-  db.prepare(`UPDATE call_logs SET ended_at = ?, outcome = ? WHERE id = ?`).run(nowIso(), outcome, callId);
+  const existing = db.prepare(`SELECT outcome FROM call_logs WHERE id = ?`).get(callId) as
+    | { outcome: string }
+    | undefined;
+  let final = outcome;
+  if (outcome === "ended") {
+    if (existing?.outcome === "answered") final = "completed";
+    else if (existing?.outcome === "ringing") final = "cancelled";
+  }
+  db.prepare(`UPDATE call_logs SET ended_at = ?, outcome = ? WHERE id = ?`).run(nowIso(), final, callId);
+}
+
+/** Mark unanswered ringing calls older than `maxAgeMs` as missed. */
+export function expireStaleRings(db: Database.Database, maxAgeMs = 45_000): number {
+  const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+  const result = db
+    .prepare(
+      `UPDATE call_logs
+       SET ended_at = ?, outcome = 'missed'
+       WHERE outcome = 'ringing' AND ended_at IS NULL AND started_at < ?`
+    )
+    .run(nowIso(), cutoff);
+  return result.changes;
 }
 
 export function householdSnapshot(db: Database.Database, userId: string) {
