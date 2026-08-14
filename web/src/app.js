@@ -43,6 +43,7 @@ const state = {
   wakeLock: null,
   ringTimer: null,
   tickTimer: null,
+  connectWatch: null,
   error: "",
   screen: "boot",
   mode: "host",
@@ -73,6 +74,7 @@ function ensureWs() {
   if (state.ws && state.ws.readyState <= 1) return;
   const ws = new WebSocket(wsUrl());
   state.ws = ws;
+  let chain = Promise.resolve();
   ws.onopen = () => {
     ws.send(
       JSON.stringify({
@@ -82,27 +84,41 @@ function ensureWs() {
       })
     );
   };
-  ws.onmessage = async (ev) => {
-    const msg = JSON.parse(ev.data);
-    if (msg.type === "call.offer") await onIncomingOffer(msg);
-    if (msg.type === "call.answer") await onAnswer(msg);
-    if (msg.type === "call.ice" && msg.candidate) await addRemoteIce(msg.candidate);
-    if (msg.type === "call.hangup") {
-      stopRing();
-      endCallUi("Call ended");
-    }
-    if (msg.type === "call.rejected") {
-      stopRing();
-      state.flash = msg.reason || "Call could not connect";
-      endCallUi();
-      render();
-    }
-    if (msg.type === "call.ringing") {
-      state.call = { ...(state.call || {}), status: "ringing", callId: msg.callId };
-      paintCallLayer();
-    }
+  ws.onmessage = (ev) => {
+    // Serialize handlers — overlapping async onmessage drops/races ICE + SDP.
+    chain = chain
+      .then(() => handleSignal(JSON.parse(ev.data)))
+      .catch((err) => console.warn("[signal]", err));
   };
   ws.onclose = () => setTimeout(ensureWs, 1500);
+}
+
+async function handleSignal(msg) {
+  if (msg.type === "call.offer") await onIncomingOffer(msg);
+  else if (msg.type === "call.answer") await onAnswer(msg);
+  else if (msg.type === "call.ice") await addRemoteIce(msg.candidate);
+  else if (msg.type === "call.hangup") {
+    stopRing();
+    endCallUi("Call ended");
+    render();
+  } else if (msg.type === "call.rejected") {
+    stopRing();
+    state.flash = msg.reason || "Call could not connect";
+    endCallUi();
+    render();
+  } else if (msg.type === "call.ringing") {
+    state.call = { ...(state.call || {}), status: "ringing", callId: msg.callId };
+    paintCallLayer();
+  }
+}
+
+function sdpPayload(desc) {
+  return { type: desc.type, sdp: desc.sdp };
+}
+
+function icePayload(candidate) {
+  if (!candidate) return null;
+  return typeof candidate.toJSON === "function" ? candidate.toJSON() : candidate;
 }
 
 async function refresh() {
@@ -139,14 +155,17 @@ async function iceServers() {
 }
 
 async function addRemoteIce(candidate) {
-  if (!state.pc) return;
-  if (!state.remoteReady) {
-    state.pendingIce.push(candidate);
+  // candidate may be null (= end of candidates). Still must not drop early trickle.
+  if (candidate === undefined) return;
+  if (!state.pc || !state.remoteReady) {
+    if (candidate) state.pendingIce.push(candidate);
     return;
   }
   try {
-    await state.pc.addIceCandidate(candidate);
-  } catch {}
+    await state.pc.addIceCandidate(candidate ? new RTCIceCandidate(candidate) : null);
+  } catch (e) {
+    console.warn("[ice] add failed", e);
+  }
 }
 
 async function flushIce() {
@@ -154,9 +173,28 @@ async function flushIce() {
   const queued = state.pendingIce.splice(0);
   for (const c of queued) {
     try {
-      await state.pc.addIceCandidate(c);
-    } catch {}
+      await state.pc.addIceCandidate(new RTCIceCandidate(c));
+    } catch (e) {
+      console.warn("[ice] flush failed", e);
+    }
   }
+}
+
+function clearConnectWatch() {
+  if (state.connectWatch) clearTimeout(state.connectWatch);
+  state.connectWatch = null;
+}
+
+function armConnectWatch() {
+  clearConnectWatch();
+  state.connectWatch = setTimeout(() => {
+    if (!state.call) return;
+    if (state.iceState === "connected") return;
+    state.flash =
+      "Voice didn’t connect. Hang up and try again — both phones need the tab open on a solid network.";
+    hangup();
+    render();
+  }, 25_000);
 }
 
 async function requestWakeLock() {
@@ -218,36 +256,51 @@ function formatDuration(ms) {
 }
 
 async function makePc(peer) {
-  state.pendingIce = [];
   state.remoteReady = false;
   state.iceState = "starting";
   state.muted = false;
-  const pc = new RTCPeerConnection({ iceServers: await iceServers() });
+  const pc = new RTCPeerConnection({
+    iceServers: await iceServers(),
+    iceCandidatePoolSize: 4,
+  });
   state.pc = pc;
-  state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  // Keep any ICE that arrived before Answer / before PC existed.
+  state.localStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+    video: false,
+  });
   for (const track of state.localStream.getTracks()) pc.addTrack(track, state.localStream);
 
   pc.ontrack = (ev) => {
     const audio = remoteAudio();
     if (audio) {
-      audio.srcObject = ev.streams[0];
-      audio.play().catch(() => {});
+      audio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+      const kick = () => audio.play().catch(() => {});
+      kick();
+      audio.onloadedmetadata = kick;
     }
   };
   pc.onicecandidate = (ev) => {
-    if (!ev.candidate || !state.ws) return;
+    if (!state.ws || state.ws.readyState !== 1) return;
+    const payload = icePayload(ev.candidate);
+    // null candidate = gathering complete; still useful for some peers
     state.ws.send(
       JSON.stringify({
         type: "call.ice",
         fromLineId: state.activeLineId,
         toLineId: peer,
-        candidate: ev.candidate,
+        candidate: payload,
       })
     );
   };
   pc.onconnectionstatechange = () => {
     state.iceState = pc.connectionState;
     if (pc.connectionState === "connected") {
+      clearConnectWatch();
       if (state.call && state.call.status !== "active") {
         state.call = { ...state.call, status: "active" };
       }
@@ -255,9 +308,12 @@ async function makePc(peer) {
         state.callStartedAt = Date.now();
         startCallTicker();
       }
+      const audio = remoteAudio();
+      if (audio) audio.play().catch(() => {});
       paintCallLayer();
     }
     if (pc.connectionState === "failed") {
+      clearConnectWatch();
       state.flash = "Couldn’t connect voice. Try again — both phones need a good network.";
       hangup();
       render();
@@ -273,22 +329,26 @@ async function placeCall(toLineId) {
   if (state.call) return;
   state.flash = "";
   state.callStartedAt = 0;
+  state.pendingIce = [];
   state.call = { status: "calling", toLineId, fromLineId: state.activeLineId };
   paintCallLayer();
   try {
     await requestWakeLock();
     const pc = await makePc(toLineId);
-    const offer = await pc.createOffer({ offerToReceiveAudio: true });
+    const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    if (!state.ws || state.ws.readyState !== 1) throw new Error("Not connected to the network yet — wait a second and try again");
+    if (!state.ws || state.ws.readyState !== 1) {
+      throw new Error("Not connected to the network yet — wait a second and try again");
+    }
     state.ws.send(
       JSON.stringify({
         type: "call.offer",
         fromLineId: state.activeLineId,
         toLineId,
-        sdp: offer,
+        sdp: sdpPayload(offer),
       })
     );
+    armConnectWatch();
   } catch (e) {
     state.flash = e.message || "Microphone permission needed";
     endCallUi();
@@ -297,6 +357,8 @@ async function placeCall(toLineId) {
 }
 
 async function onIncomingOffer(msg) {
+  // New inbound call — keep early ICE for this call, drop leftovers from a prior one only if idle
+  if (!state.call) state.pendingIce = [];
   state.callStartedAt = 0;
   state.call = {
     status: "incoming",
@@ -316,7 +378,7 @@ async function acceptCall() {
   try {
     await requestWakeLock();
     const pc = await makePc(msg.fromLineId);
-    await pc.setRemoteDescription(msg.sdp);
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
     await flushIce();
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -326,10 +388,11 @@ async function acceptCall() {
         callId: msg.callId,
         fromLineId: msg.fromLineId,
         toLineId: msg.toLineId,
-        sdp: answer,
+        sdp: sdpPayload(answer),
       })
     );
     state.call = { ...msg, status: "connecting" };
+    armConnectWatch();
     paintCallLayer();
   } catch (e) {
     state.flash = e.message || "Could not answer";
@@ -340,9 +403,13 @@ async function acceptCall() {
 
 async function onAnswer(msg) {
   if (!state.pc) return;
-  await state.pc.setRemoteDescription(msg.sdp);
+  if (state.pc.signalingState !== "have-local-offer") {
+    console.warn("[signal] unexpected answer in state", state.pc.signalingState);
+  }
+  await state.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
   await flushIce();
   state.call = { ...(state.call || {}), status: "connecting", callId: msg.callId };
+  armConnectWatch();
   paintCallLayer();
 }
 
@@ -372,6 +439,7 @@ function hangup() {
 function endCallUi(flash) {
   stopRing();
   stopCallTicker();
+  clearConnectWatch();
   releaseWakeLock();
   if (state.pc) {
     try {

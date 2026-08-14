@@ -224,8 +224,26 @@ function send(ws: WebSocket, msg: unknown) {
 }
 
 function findByLine(lineId: string): Client | undefined {
-  for (const c of clients) if (c.lineId === lineId) return c;
-  return undefined;
+  let found: Client | undefined;
+  for (const c of clients) {
+    if (c.lineId === lineId) found = c; // prefer latest registration order
+  }
+  return found;
+}
+
+function claimLine(client: Client, lineId: string) {
+  for (const c of [...clients]) {
+    if (c !== client && c.lineId === lineId) {
+      console.log(`[ws] replacing stale socket for ${lineId}`);
+      try {
+        c.ws.close();
+      } catch {
+        /* ignore */
+      }
+      clients.delete(c);
+    }
+  }
+  client.lineId = lineId;
 }
 
 wss.on("connection", (ws) => {
@@ -249,9 +267,10 @@ wss.on("connection", (ws) => {
         return;
       }
       client.userId = user.id;
-      client.lineId = String(msg.lineId || "");
-      if (client.lineId) {
-        db.prepare(`UPDATE lines SET online = 1 WHERE id = ?`).run(client.lineId);
+      const lineId = String(msg.lineId || "");
+      if (lineId) {
+        claimLine(client, lineId);
+        db.prepare(`UPDATE lines SET online = 1 WHERE id = ?`).run(lineId);
       }
       send(ws, { type: "welcome", userId: user.id, lineId: client.lineId });
       console.log(`[ws] hello line=${client.lineId} user=${user.display_name}`);
@@ -272,7 +291,10 @@ wss.on("connection", (ws) => {
       if (!target) {
         endCallLog(db, call.id, "offline");
         console.log(`[call] offline ${call.id} ${fromLineId}→${toLineId}`);
-        send(ws, { type: "call.rejected", reason: "Their phone isn’t open right now. Ask them to keep the Kids Landline tab open." });
+        send(ws, {
+          type: "call.rejected",
+          reason: "Their phone isn’t open right now. Ask them to keep the Kids Landline tab open.",
+        });
         return;
       }
       send(target.ws, {
@@ -291,7 +313,14 @@ wss.on("connection", (ws) => {
       const otherId =
         client.lineId === String(msg.fromLineId) ? String(msg.toLineId) : String(msg.fromLineId);
       const target = findByLine(otherId);
-      if (target) send(target.ws, msg);
+      if (!target) {
+        console.log(`[call] ${type} no peer for ${otherId} (from ${client.lineId})`);
+        if (type === "call.answer") {
+          send(ws, { type: "call.rejected", reason: "Caller disconnected before answer" });
+        }
+      } else {
+        send(target.ws, msg);
+      }
       if (type === "call.hangup" && msg.callId) {
         endCallLog(db, String(msg.callId), "ended");
         console.log(`[call] hangup ${msg.callId}`);
@@ -308,31 +337,33 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     if (client.lineId) {
-      db.prepare(`UPDATE lines SET online = 0 WHERE id = ?`).run(client.lineId);
-      // If they drop mid-ring as callee, mark open rings as missed and notify caller
-      const open = db
-        .prepare(
-          `SELECT id, from_line_id, to_line_id FROM call_logs
-           WHERE outcome = 'ringing' AND ended_at IS NULL AND to_line_id = ?`
-        )
-        .all(client.lineId) as { id: string; from_line_id: string; to_line_id: string }[];
-      for (const row of open) {
-        endCallLog(db, row.id, "missed");
-        const caller = findByLine(row.from_line_id);
-        if (caller) {
-          send(caller.ws, {
-            type: "call.rejected",
-            callId: row.id,
-            reason: "They closed the page before answering",
-          });
+      // Only mark offline if this was still the active socket for the line
+      const still = findByLine(client.lineId);
+      if (!still || still === client) {
+        db.prepare(`UPDATE lines SET online = 0 WHERE id = ?`).run(client.lineId);
+        const open = db
+          .prepare(
+            `SELECT id, from_line_id, to_line_id FROM call_logs
+             WHERE outcome = 'ringing' AND ended_at IS NULL AND to_line_id = ?`
+          )
+          .all(client.lineId) as { id: string; from_line_id: string; to_line_id: string }[];
+        for (const row of open) {
+          endCallLog(db, row.id, "missed");
+          const caller = findByLine(row.from_line_id);
+          if (caller) {
+            send(caller.ws, {
+              type: "call.rejected",
+              callId: row.id,
+              reason: "They closed the page before answering",
+            });
+          }
+          console.log(`[call] missed (disconnect) ${row.id}`);
         }
-        console.log(`[call] missed (disconnect) ${row.id}`);
       }
     }
     clients.delete(client);
   });
 });
-
 setInterval(() => {
   const n = expireStaleRings(db);
   if (n) console.log(`[call] expired ${n} stale ring(s)`);
