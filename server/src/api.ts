@@ -25,10 +25,14 @@ function safeEqualHex(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
-export function bootstrapAdmin(db: Database.Database): { user: User; setupCode: string } {
+export function bootstrapAdmin(db: Database.Database): { user: User; setupCode: string; fresh: boolean } {
   const existing = db.prepare(`SELECT * FROM users LIMIT 1`).get() as User | undefined;
   if (existing) {
-    return { user: existing, setupCode: "(already initialized — use existing session or reset data/)" };
+    return {
+      user: existing,
+      setupCode: "",
+      fresh: false,
+    };
   }
   const setupCode = String(randomInt(100000, 999999));
   const user: User = {
@@ -40,7 +44,7 @@ export function bootstrapAdmin(db: Database.Database): { user: User; setupCode: 
   db.prepare(
     `INSERT INTO users (id, display_name, setup_code_hash, created_at) VALUES (@id, @display_name, @setup_code_hash, @created_at)`
   ).run(user);
-  return { user, setupCode };
+  return { user, setupCode, fresh: true };
 }
 
 export function loginWithSetupCode(db: Database.Database, code: string, displayName?: string) {

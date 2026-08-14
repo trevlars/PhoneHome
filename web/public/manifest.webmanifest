@@ -3,7 +3,7 @@
   "short_name": "Landline",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f1f19",
-  "theme_color": "#1a3a2f",
+  "background_color": "#07110e",
+  "theme_color": "#0c1814",
   "description": "Private family softphones — allowlisted calls only"
 }

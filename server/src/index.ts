@@ -288,17 +288,26 @@ wss.on("connection", (ws) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`kids-landline Stage 1 listening on http://0.0.0.0:${PORT}`);
-  if (boot.setupCode !== "(already initialized — use existing session or reset data/)") {
-    console.log(`HOST SETUP CODE (first boot): ${boot.setupCode}`);
-    console.log(`Save this code — parents use it once to sign in as host.`);
+  console.log("");
+  console.log(`Kids Landline → http://127.0.0.1:${PORT}`);
+  if (boot.fresh && boot.setupCode) {
+    console.log("");
+    console.log("╔══════════════════════════════════════╗");
+    console.log(`║  HOST SETUP CODE:  ${boot.setupCode}           ║`);
+    console.log("╚══════════════════════════════════════╝");
+    console.log("Open the site → “I’m hosting” → enter this code.");
+    console.log("");
+    fs.writeFileSync(path.join(DATA_DIR, "HOST_CODE.txt"), `${boot.setupCode}\n`);
+  } else {
+    console.log("Database already initialized. Fresh start: rm -rf data && restart.");
+    console.log("");
   }
   fs.writeFileSync(
     path.join(DATA_DIR, "bootstrap.json"),
     JSON.stringify(
       {
         port: PORT,
-        setupCode: boot.setupCode.startsWith("(") ? undefined : boot.setupCode,
+        setupCode: boot.fresh ? boot.setupCode : undefined,
         createdAt: new Date().toISOString(),
       },
       null,
