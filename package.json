@@ -2,7 +2,7 @@
   "name": "kids-landline",
   "version": "0.1.0",
   "private": true,
-  "description": "Open kids/family landline network — Stage 1 softphones (Digits-inspired). Maintained by trevlars.",
+  "description": "PhoneHome — the home phone, remixed. Private family softphones (Digits-inspired). Maintained by trevlars.",
   "workspaces": [
     "server",
     "web"

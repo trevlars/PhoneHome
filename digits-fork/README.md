@@ -14,7 +14,7 @@ Upstream: [justinlindh/digits](https://github.com/justinlindh/digits) (AGPL-3.0)
 
 This repo’s `server/` + `web/` are a **Digits-inspired Stage 1 softphone trunk**:
 
-| Digits | Kids Landline Stage 1 |
+| Digits | PhoneHome Stage 1 |
 | --- | --- |
 | `signald` (Go) + Postgres | Node signaling + SQLite (lab-friendly) |
 | `digitsd` on Pi Zero handsets | **Browser softphone** line type |

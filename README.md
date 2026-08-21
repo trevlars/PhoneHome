@@ -1,8 +1,22 @@
-# Kids Landline (trevlars)
+# PhoneHome (kids-landline)
 
-Open, Digits-inspired private family voice network. **Stage 1** ships now: a shared signaling server (“Minecraft clubhouse”) plus mobile-friendly **web softphones** with households, invites, allowlists, quiet hours, kill switch, and encrypted WebRTC calls.
+Open, Digits-inspired private family voice network — **PhoneHome**: the home phone, remixed. **Stage 1** ships now: a shared signaling server (“Minecraft clubhouse”) plus mobile-friendly **web softphones** with households, invites, allowlists, quiet hours, kill switch, and encrypted WebRTC calls.
+
+**iOS CallKit shell (in progress):** Capacitor app in [`mobile/`](mobile/) — see [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
 
 Hardware (Grandstream / BT landline / Home Hub) is Stage 2+ — see `docs/`.
+
+## Pillar: privacy & encryption
+
+Kids’ and families’ conversations are the product. **Encryption and security are not optional extras** — they are a release pillar (legal and ethical sensitivity, not just “nice crypto”).
+
+| Surface | Baseline |
+| --- | --- |
+| Softphones | HTTPS + WebRTC **DTLS-SRTP** (server brokers ring/setup; no call-audio archive by default) |
+| Analog ATA (HT801) | **SIP TLS + SRTP** — cleartext public SIP/RTP is not a supported path |
+| Who can call | Allowlists, invites, quiet hours, kill switch |
+
+Doctrine, threats, and contributor rules: **[`docs/privacy-security.md`](docs/privacy-security.md)**, **[`docs/threat-model.md`](docs/threat-model.md)**, **[`SECURITY.md`](SECURITY.md)**.
 
 ## Quick start (lab)
 
@@ -38,7 +52,7 @@ Share that URL + an invite code. Host setup code is printed on first boot (`data
 | --- | --- |
 | `server/` | Stage 1 signaling + REST API (SQLite) |
 | `web/` | Parent PWA / softphone UI |
-| `docs/` | Specs: Digits fork, portal, mesh, Hub, BT, provisioning, prior art |
+| `docs/` | Specs + **[`privacy-security.md`](docs/privacy-security.md)** pillar, threat model, hosting, Hub/BT |
 | `hardware/` | Stage 2 HW stubs (hub, satellite, bt-landline) |
 | `hub-os/` | Future appliance image notes |
 | `bridged/` | Future SIP↔WebRTC / FXS gateway notes |
@@ -50,7 +64,7 @@ Share that URL + an invite code. Host setup code is printed on first boot (`data
 
 - **Trunk** = this server (you host on Proxmox/VPS/Pi).
 - **Leaves** = softphones now; ATA / BT / Hub later.
-- **Voice** = WebRTC (DTLS-SRTP); server brokers ring/setup only.
+- **Voice** = encrypted WebRTC (DTLS-SRTP); analog = SIP TLS + SRTP; server brokers ring/setup only — see privacy pillar.
 - **GitHub:** [trevlars](https://github.com/trevlars)
 
 ## License

@@ -1,0 +1,28 @@
+{
+	# LAN split-DNS (AdGuard) may point y5876647.eero.online → 10.0.5.31.
+	# Serve :80 here so Night Watch HTTP still works on-LAN via the hostname.
+	# eero still forwards public :80 → 10.0.5.80:3080 for WAN clients.
+	auto_https disable_redirects
+}
+
+# Night Watch HTTP (LAN split-DNS / optional)
+http://y5876647.eero.online {
+	encode gzip
+	reverse_proxy 10.0.5.80:3080
+}
+
+# Night Watch HTTPS (same hostname as :80)
+y5876647.eero.online {
+	encode gzip
+	reverse_proxy 10.0.5.80:3080
+}
+
+y5876647.eero.online:8443 {
+	encode gzip
+	reverse_proxy 10.0.5.106:8787
+}
+
+y5876647.eero.online:8920 {
+	encode gzip
+	reverse_proxy 10.0.5.56:8096
+}

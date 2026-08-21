@@ -2,9 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c1814" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="PhoneHome" />
+    <meta name="application-name" content="PhoneHome" />
+    <meta name="description" content="PhoneHome — the home phone, remixed. Private family calling with approved contacts only." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,7 +17,7 @@
     />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon.svg" />
-    <title>Kids Landline</title>
+    <title>PhoneHome</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
@@ -22,6 +25,15 @@
     <div id="app"></div>
     <!-- Persist across screen re-renders so WebRTC audio isn't torn down mid-call -->
     <audio id="remote-audio" autoplay playsinline></audio>
+    <audio id="vm-monitor-audio" autoplay playsinline></audio>
+    <div id="group-audio-root" hidden></div>
+    <div id="toast-root" hidden aria-live="polite"></div>
+    <div id="ptr-root" class="ptr-root" hidden aria-hidden="true">
+      <div class="ptr-pill">
+        <span class="ptr-ring" aria-hidden="true"></span>
+        <span class="ptr-label">Pull to refresh</span>
+      </div>
+    </div>
     <div id="call-root"></div>
     <script type="module" src="/app.js"></script>
   </body>

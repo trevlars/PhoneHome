@@ -18,15 +18,16 @@ npm run start -w server
 
 Bind is `0.0.0.0:8787`. Open `http://<host-lan-ip>:8787` from phones on the same Wi‑Fi. For cousins off-LAN, put a reverse proxy / tunnel in front (Caddy) — still no VPN on their phone.
 
-## Stage 2 — HT801 attach (when ready)
+## Stage 2 — HT801 attach (lab)
 
-1. Keep Stage 1 trunk running (or Digits/`bridged` SIP gateway).  
-2. Factory HT801 → LAN.  
-3. Provision SIP toward Hub SIP realm (see `docs/hub-provisioning.md`).  
-4. Add line type `ata` in parent app.  
-5. Allowlist kitchen line ↔ cousin softphone.
+See **`docs/ht801-lab.md`**.
 
-FreePBX at `10.0.5.105` remains optional SIP glue until `bridged/` lands.
+1. FreePBX extension **2001** is provisioned on `10.0.5.105` for the HT801.  
+2. Configure the HT801 via its **web UI** (no Grandstream app) — SIP server `10.0.5.105`, user/pass in that doc.  
+3. Plug RJ11 phone into the HT801 FXS port.  
+4. Softphone bridging (`bridged/` SIP↔WebRTC → PhoneHome) is still TODO.
+
+FreePBX at `10.0.5.105` is the SIP registrar until `bridged/` lands.
 
 ## Automated checks
 

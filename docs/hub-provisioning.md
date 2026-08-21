@@ -14,11 +14,17 @@ Non-technical parent: power on → WiFi/Ethernet → pair line in under 10 minut
 
 ## Grandstream HT801 auto-provision
 
-1. Hub DHCP + option 66 / TR-069 / Grandstream zero-config XML.  
-2. Push SIP credentials pointing at Hub `bridged` SIP realm (LAN only).  
-3. Dialplan: allowlist enforced on Hub, not ATA.  
-4. Admin password randomized; UI not exposed to parent.  
-5. Status LEDs documented in parent guide.
+PhoneHome can generate HT801 `config.xml` (P-values) and serve it over HTTPS:
+
+1. Parent → **Analog Phone / HT801** → save SIP extension/password → **Download config.xml** or copy **Config Server Path** (or **Set up adapter** one-tap when PhoneHome at your house / the home hub is on the same LAN as the ATA — the parent app being on Wi‑Fi is not enough).
+2. ATA: Maintenance → Upload Configuration, **or** set Config Server Path to  
+   `host:port/provision/<token>` (device requests `cfg{mac}.xml` then `cfg.xml`).
+3. SIP credentials point at household FreePBX / Hub SIP realm (lab: `10.0.5.105`).
+4. Dialplan + `bridged/` enforce allowlist speed-dial; ATA does not store the family directory.
+
+XML sets **Config Server Path** (`P237`) and **clears Firmware Server Path** (`P192`). Status **“Firmware server is not configured”** is expected and does **not** block SIP or config provision — see `docs/ht801-lab.md` § “Firmware server is not configured”.
+
+See `docs/ht801-lab.md` and `bridged/README.md`.
 
 ## Security
 

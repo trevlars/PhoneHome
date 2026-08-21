@@ -1,0 +1,21 @@
+{
+  "name": "@kids-landline/bridged",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PhoneHome SIP↔WebRTC bridge (FreePBX ARI + softphone WS)",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "dev": "node --watch src/index.mjs",
+    "test": "node --test src/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ari-client": "^2.2.0",
+    "opusscript": "^0.1.1",
+    "werift": "^0.22.9",
+    "ws": "^8.21.3"
+  }
+}

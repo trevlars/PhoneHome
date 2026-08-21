@@ -1,0 +1,13 @@
+[Unit]
+Description=PhoneHome FreePBX SIP secret sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/sbin/phonehome-freepbx-syncd
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

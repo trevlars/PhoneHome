@@ -1,11 +1,11 @@
 {
-  "name": "Kids Landline",
-  "short_name": "Landline",
+  "name": "PhoneHome",
+  "short_name": "PhoneHome",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#07110e",
   "theme_color": "#0c1814",
-  "description": "Private family softphones — allowlisted calls only",
+  "description": "The home phone, remixed — private family calling, approved contacts only",
   "icons": [
     {
       "src": "/icon.svg",
