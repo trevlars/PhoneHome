@@ -238,7 +238,7 @@ function ataLanPushEnabled(): boolean {
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    service: "kids-landline",
+    service: "phonehome",
     stage: 1,
     publicBaseUrl: (process.env.PUBLIC_BASE_URL || "").trim().replace(/\/$/, "") || null,
     /** True when this host (home hub) can attempt HT801 LAN push — not the parent app client. */

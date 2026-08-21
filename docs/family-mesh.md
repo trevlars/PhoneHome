@@ -2,7 +2,7 @@
 
 ## Stage 1 (one trunk) — shipped
 
-Minecraft model: one `kids-landline` server; all softphones are clients.
+Minecraft model: one **PhoneHome** server; all softphones are clients.
 
 1. Parent A creates invite → 6-digit code (48h, single-use).  
 2. Parent B redeems → new household on **same** server.  

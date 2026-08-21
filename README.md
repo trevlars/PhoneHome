@@ -1,10 +1,12 @@
-# PhoneHome (kids-landline)
+# PhoneHome
 
 Open, Digits-inspired private family voice network — **PhoneHome**: the home phone, remixed. **Stage 1** ships now: a shared signaling server (“Minecraft clubhouse”) plus mobile-friendly **web softphones** with households, invites, allowlists, quiet hours, kill switch, and encrypted WebRTC calls.
 
 **iOS CallKit shell (in progress):** Capacitor app in [`mobile/`](mobile/) — see [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
 
 Hardware (Grandstream / BT landline / Home Hub) is Stage 2+ — see `docs/`.
+
+> **Naming:** Product and GitHub repo are **PhoneHome** (`github.com/trevlars/PhoneHome`). Lab deploy paths (`/opt/kids-landline`, `kids-landline.service`, CT hostname) are legacy host names and stay as-is so production boxes don’t break.
 
 ## Pillar: privacy & encryption
 

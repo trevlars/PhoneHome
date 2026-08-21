@@ -28,8 +28,8 @@ Spoken flow (Piper amy WAVs in `bridged/sounds/`): count first (“You have N ne
 
 - FreePBX ARI enabled (`ari show status` → Enabled: Yes). Lab fix: do **not** redeclare `[general]` in `ari_general_custom.conf`.
 - ARI user `phonehome` / password in `/var/lib/kids-landline/bridge.env`.
-- PhoneHome `BRIDGE_SECRET` set on both the API (`kids-landline` / env) and bridge.
-- `BRIDGE_URL=http://127.0.0.1:8790` on kids-landline (softphone→ATA claim).
+- PhoneHome `BRIDGE_SECRET` set on both the API (PhoneHome hub / env) and bridge.
+- `BRIDGE_URL=http://127.0.0.1:8790` on the PhoneHome hub (softphone→ATA claim).
 - HT801 linked in Parent → **Analog Phone / HT801** (extension `2001` in lab).
 
 ## FreePBX (CT 121)

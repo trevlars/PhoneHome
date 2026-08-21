@@ -17,10 +17,10 @@
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/trevlars/kids-landline.git"
+    "url": "git+https://github.com/trevlars/PhoneHome.git"
   },
   "bugs": {
-    "url": "https://github.com/trevlars/kids-landline/issues"
+    "url": "https://github.com/trevlars/PhoneHome/issues"
   },
   "keywords": [
     "capacitor",

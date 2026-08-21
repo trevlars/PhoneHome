@@ -2,7 +2,7 @@
 
 **PhoneHome** Stage 1 needs **HTTPS** so phones can use the microphone (secure context). Cousins only need the public URL + an invite — no VPN.
 
-Repo / deploy paths still use `kids-landline` (CT name, systemd unit, `/opt/kids-landline`) — that’s intentional.
+Repo / deploy **host paths** still use `kids-landline` (CT hostname, systemd unit, `/opt/kids-landline`) — intentional so lab boxes don’t need a migrate. The **product and GitHub repo** are **PhoneHome** (`https://github.com/trevlars/PhoneHome`).
 
 ## Lab / always-on (Proxmox LXC)
 

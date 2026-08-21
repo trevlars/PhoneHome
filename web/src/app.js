@@ -9507,7 +9507,7 @@ function renderControls() {
           <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer">GNU Affero General Public License v3</a>
           (or later).</p>
         <p>Provided <strong>without warranty</strong> — use at your own risk. Not a substitute for 911 or carrier emergency service. Family calls stay on your private network; you’re responsible for who you invite and approve.</p>
-        <p class="tiny">Source and license: github.com/trevlars/kids-landline · Inspired by Digits (AGPL-3.0).</p>
+        <p class="tiny">Source and license: github.com/trevlars/PhoneHome · Inspired by Digits (AGPL-3.0).</p>
       </footer>
   `);
 

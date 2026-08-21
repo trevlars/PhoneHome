@@ -1,5 +1,5 @@
 services:
-  kids-landline:
+  phonehome:
     build:
       context: ..
       dockerfile: Dockerfile

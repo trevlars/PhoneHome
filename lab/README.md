@@ -3,7 +3,7 @@
 ## Softphone pilot (required)
 
 ```bash
-cd /Users/trevor/Projects/kids-landline
+cd /Users/trevor/Projects/PhoneHome
 npm install
 npm run build -w web
 npm run start -w server

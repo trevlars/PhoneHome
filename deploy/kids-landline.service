@@ -1,5 +1,5 @@
 [Unit]
-Description=PhoneHome (kids-landline Stage 1)
+Description=PhoneHome Stage 1 softphone hub
 After=network-online.target
 Wants=network-online.target
 
