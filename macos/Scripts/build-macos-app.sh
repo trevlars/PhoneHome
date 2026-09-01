@@ -29,17 +29,17 @@ fi
 cd "$MACOS"
 xcodegen generate
 
-TEAM="${APPLE_TEAM_ID:-}"
-if [[ -n "$TEAM" ]]; then
-  export DEVELOPMENT_TEAM="$TEAM"
-fi
+TEAM="${APPLE_TEAM_ID:-ABG342Z7V2}"
+export DEVELOPMENT_TEAM="$TEAM"
 
 xcodebuild \
   -project PhoneHomeMothership.xcodeproj \
   -scheme Mothership \
   -configuration Release \
   -derivedDataPath "$BUILD/DerivedData" \
+  -allowProvisioningUpdates \
   MARKETING_VERSION="$(node -p "require('$ROOT/package.json').version")" \
+  DEVELOPMENT_TEAM="$TEAM" \
   build
 
 APP_SRC="$BUILD/DerivedData/Build/Products/Release/$APP_NAME.app"
@@ -48,8 +48,15 @@ rm -rf "$APP_OUT"
 cp -R "$APP_SRC" "$APP_OUT"
 
 if [[ "$SIGN" -eq 1 ]]; then
-  IDENTITY="${DEVELOPER_ID_APP:?Set DEVELOPER_ID_APP=\"Developer ID Application: …\"}"
-  echo "==> codesign"
+  IDENTITY="${DEVELOPER_ID_APP:-}"
+  if [[ -z "$IDENTITY" ]]; then
+    IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+  fi
+  if [[ -z "$IDENTITY" ]]; then
+    echo "No Developer ID Application cert — set DEVELOPER_ID_APP or create one in Xcode (Signing & Capabilities)" >&2
+    exit 1
+  fi
+  echo "==> codesign with: $IDENTITY"
   codesign --force --options runtime --timestamp \
     --entitlements "$MACOS/Mothership/App/Mothership.entitlements" \
     --sign "$IDENTITY" \
