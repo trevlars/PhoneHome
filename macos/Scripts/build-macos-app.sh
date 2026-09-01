@@ -47,27 +47,43 @@ APP_OUT="$BUILD/$APP_NAME.app"
 rm -rf "$APP_OUT"
 cp -R "$APP_SRC" "$APP_OUT"
 
-if [[ "$SIGN" -eq 1 ]]; then
-  IDENTITY="${DEVELOPER_ID_APP:-}"
-  if [[ -z "$IDENTITY" ]]; then
-    IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')"
-  fi
-  if [[ -z "$IDENTITY" ]]; then
-    echo "No Developer ID Application cert — set DEVELOPER_ID_APP or create one in Xcode (Signing & Capabilities)" >&2
-    exit 1
-  fi
-  echo "==> codesign with: $IDENTITY"
+# XcodeGen often skips large resource trees — copy explicitly.
+if [[ -d "$MACOS/Mothership/Resources/mothership" ]]; then
+  echo "==> embed server resources into app bundle"
+  mkdir -p "$APP_OUT/Contents/Resources"
+  rm -rf "$APP_OUT/Contents/Resources/mothership" "$APP_OUT/Contents/Resources/node"
+  cp -R "$MACOS/Mothership/Resources/mothership" "$APP_OUT/Contents/Resources/"
+  cp -R "$MACOS/Mothership/Resources/node" "$APP_OUT/Contents/Resources/"
+fi
+
+sign_app() {
+  local identity="$1"
+  echo "==> codesign with: $identity"
   codesign --force --options runtime --timestamp \
     --entitlements "$MACOS/Mothership/App/Mothership.entitlements" \
-    --sign "$IDENTITY" \
+    --sign "$identity" \
     "$APP_OUT/Contents/Resources/node/bin/node"
   find "$APP_OUT/Contents/Resources/mothership" -type f \( -name "*.node" -o -perm -111 \) -print0 2>/dev/null \
-    | xargs -0 -I{} codesign --force --options runtime --timestamp --sign "$IDENTITY" "{}" 2>/dev/null || true
+    | xargs -0 -I{} codesign --force --options runtime --timestamp --sign "$identity" "{}" 2>/dev/null || true
   codesign --force --options runtime --timestamp \
     --entitlements "$MACOS/Mothership/App/Mothership.entitlements" \
-    --sign "$IDENTITY" \
+    --sign "$identity" \
     "$APP_OUT"
   codesign --verify --deep --strict "$APP_OUT"
+}
+
+IDENTITY="${DEVELOPER_ID_APP:-$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')}"
+if [[ -z "$IDENTITY" ]]; then
+  IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/{print $2; exit}')"
+  if [[ -n "$IDENTITY" ]]; then
+    echo "==> no Developer ID cert — signing with Apple Development (local/testing only)"
+  fi
+fi
+
+if [[ -n "$IDENTITY" ]]; then
+  sign_app "$IDENTITY"
+else
+  echo "==> warning: app not re-signed after embedding resources"
 fi
 
 if [[ "$DMG" -eq 1 ]]; then
