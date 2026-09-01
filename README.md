@@ -13,8 +13,8 @@ One **Mothership** (always-on server) hosts many **Pods** (families). Each paren
 | --- | --- |
 | **Repo** | [github.com/trevlars/PhoneHome](https://github.com/trevlars/PhoneHome) |
 | **License** | [AGPL-3.0-or-later](LICENSE) (Digits-compatible ethos) |
-| **Status** | Stage 1 shipped — softphones + analog HT801 lab path; iOS shell in progress |
-| **Releases** | [Mothership download bundles](https://github.com/trevlars/PhoneHome/releases) (macOS / Linux / Windows) |
+| **Status** | Stage 1 shipped — softphones + analog HT801 lab path; [iOS TestFlight beta](https://testflight.apple.com/join/4SWCTNec) |
+| **Releases** | [Mothership download bundles](https://github.com/trevlars/PhoneHome/releases) (macOS / Linux / Windows) · [iOS / iPad / Apple silicon Mac (TestFlight)](https://testflight.apple.com/join/4SWCTNec) |
 
 > **Naming:** Product and GitHub repo are **PhoneHome**. Lab deploy paths (`/opt/kids-landline`, `kids-landline.service`, CT hostname) are legacy host names and stay as-is so production boxes don't break.
 
@@ -98,7 +98,7 @@ Most parents **join** someone else's Mothership as a new Pod. You only run a Mot
 
 ### In progress
 
-- **iOS native shell** ([`mobile/`](mobile/)) — Capacitor + CallKit/PushKit (opt-in lock-screen answer). See [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
+- **iOS native app** ([TestFlight](https://testflight.apple.com/join/4SWCTNec) — iPhone, iPad, Apple silicon Mac) — Capacitor + CallKit/PushKit (opt-in lock-screen answer). See [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
 
 ### Planned (not Stage 1)
 
@@ -195,9 +195,12 @@ Lab runbook: [`lab/README.md`](lab/README.md) · smoke checklist: [`lab/SMOKE.md
 
 ## iOS app
 
-Capacitor shell around the PWA for notifications and optional CallKit lock-screen answer.
+**Try the beta:** [TestFlight — iPhone, iPad, and Apple silicon Mac](https://testflight.apple.com/join/4SWCTNec)
+
+Capacitor shell around the PWA for notifications and optional CallKit lock-screen answer. Point the app at your Mothership HTTPS URL and sign in like the browser PWA.
 
 ```bash
+# build from source (contributors)
 # from repo root
 npm run build -w web
 cd mobile && npm install && npx cap sync ios && npx cap open ios
