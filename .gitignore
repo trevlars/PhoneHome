@@ -22,5 +22,8 @@ mobile/ios/DerivedData/
 mobile/plugins/phonehome-callkit/node_modules/
 mobile/plugins/**/example-app/
 *.xcuserstate
-xcuserdata/
+macos/build/
+macos/PhoneHomeMothership.xcodeproj/
+macos/Mothership/Resources/node/
+macos/Mothership/Resources/mothership/
 
