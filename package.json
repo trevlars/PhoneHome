@@ -17,10 +17,14 @@
     "phonehome:install": "bash deploy/install-service.sh",
     "phonehome:analog": "bash deploy/setup-analog.sh",
     "lab": "npm run build -w web && npm run start -w server",
-    "test": "npm run test -w server"
+    "test": "npm run test -w server",
+    "screenshots": "npm run build -w web && node scripts/capture-readme-screenshots.mjs"
   },
   "engines": {
     "node": ">=20"
   },
-  "license": "AGPL-3.0-or-later"
+  "license": "AGPL-3.0-or-later",
+  "devDependencies": {
+    "playwright": "^1.51.0"
+  }
 }

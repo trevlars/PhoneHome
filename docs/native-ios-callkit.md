@@ -6,6 +6,10 @@ PhoneHome’s Stage‑1 softphone is a PWA. Cap iOS wraps it for notifications a
 
 **[Join the beta](https://testflight.apple.com/join/4SWCTNec)** — iPhone, iPad, and Apple silicon Mac (M-series). Install from TestFlight, open PhoneHome, and sign in to your Mothership **HTTPS** URL (same as the browser PWA).
 
+<p align="center">
+  <img src="screenshots/03-phone-pad.png" width="260" alt="PhoneHome softphone on iOS" />
+</p>
+
 | Layer | Role |
 | --- | --- |
 | `mobile/` | Capacitor iOS app (`app.phonehome.ios`) |

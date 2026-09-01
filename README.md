@@ -9,6 +9,12 @@
 
 One **Mothership** (always-on server) hosts many **Pods** (families). Each parent curates **Circles** (who their kids can call). Cousins join with your HTTPS link + invite code — **no VPN, no carrier plan, no random internet dialing**.
 
+<p align="center">
+  <img src="docs/screenshots/01-splash.png" width="280" alt="PhoneHome splash — the home phone, reborn" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/03-phone-pad.png" width="280" alt="PhoneHome speed dial pad with TreeHouse and FamilyRoom" />
+</p>
+
 | | |
 | --- | --- |
 | **Repo** | [github.com/trevlars/PhoneHome](https://github.com/trevlars/PhoneHome) |
@@ -23,6 +29,10 @@ One **Mothership** (always-on server) hosts many **Pods** (families). Each paren
 ## Why PhoneHome?
 
 Kids need a way to call grandma, cousins, and school friends' parents — without handing them a smartphone, a public number, or an unmoderated chat app.
+
+<p align="center">
+  <img src="docs/screenshots/06-kid-landline.jpg" width="560" alt="A kid talking on a house landline phone" />
+</p>
 
 PhoneHome gives parents:
 
@@ -77,6 +87,16 @@ Most parents **join** someone else's Mothership as a new Pod. You only run a Mot
 
 ## What's in Stage 1 (shipped)
 
+<p align="center">
+  <img src="docs/screenshots/02-tutorial-your-people.png" width="220" alt="How it works — your people" />
+  &nbsp;
+  <img src="docs/screenshots/03-phone-pad.png" width="220" alt="Speed dial phone pad" />
+  &nbsp;
+  <img src="docs/screenshots/04-parent-settings.png" width="220" alt="Parent settings" />
+  &nbsp;
+  <img src="docs/screenshots/05-activity.png" width="220" alt="Activity log" />
+</p>
+
 ### For kids & parents
 
 - Mobile-first **PWA softphone** — speed dial, themes, Add to Home Screen
@@ -95,6 +115,12 @@ Most parents **join** someone else's Mothership as a new Pod. You only run a Mot
 - **HTTPS + TURN** guides — Cloudflare Tunnel, Caddy, coturn
 - **HT801 analog path** — FreePBX sync, one-tap provision, SIP TLS + SRTP forced
 - **Invite card PDF** — [`deploy/invite-card.html`](deploy/invite-card.html) for printing QR + code for relatives
+
+<p align="center">
+  <img src="docs/screenshots/07-invite-family.jpg" width="420" alt="Two parents sharing a PhoneHome invite QR code" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/08-ht801-adapter.png" width="180" alt="Grandstream HT801 v2 analog adapter" />
+</p>
 
 ### In progress
 
@@ -136,19 +162,23 @@ Doctrine, threats, and contributor rules:
 
 **No Git or Node.js required.**
 
-1. Download **`PhoneHome-Mothership-*-macos.dmg`** (Mac) or your OS bundle from **[GitHub Releases](https://github.com/trevlars/PhoneHome/releases)**.
-2. **Mac:** drag to Applications → launch → phone icon in menu bar → Preferences.
-   **Linux/Windows:** run `install-mothership.sh` / `install-mothership.ps1`.
-3. Set a **public HTTPS URL** (Cloudflare quick tunnel is fastest).
-4. Open that URL on your phone → **Mothership setup code** → create Pod → invite family.
+1. Download your OS bundle from **[GitHub Releases](https://github.com/trevlars/PhoneHome/releases)**.
+2. Run the installer (`Install PhoneHome Mothership.command` on Mac, `install-mothership.sh` on Linux, `install-mothership.ps1` on Windows).
+3. Set a **public HTTPS URL** during setup (Cloudflare quick tunnel is the fastest path).
+4. Open that URL on your phone → enter the **Mothership setup code** → create your Pod → invite family.
 
-Full guide: **[`docs/download-mothership.md`](docs/download-mothership.md)** · **Mac app:** [`docs/macos-mothership.md`](docs/macos-mothership.md)
+<p align="center">
+  <img src="docs/screenshots/01-splash.png" width="260" alt="Open your Mothership URL on a phone" />
+</p>
 
-| OS | Download |
+Full guide: **[`docs/download-mothership.md`](docs/download-mothership.md)** · **[`docs/self-host.md`](docs/self-host.md)**
+
+| OS | Archive |
 | --- | --- |
-| **Mac (Apple Silicon)** | `PhoneHome-Mothership-*-macos.dmg` (menu bar app) |
-| Linux x64 | `phonehome-mothership-v*-linux-x64.zip` |
-| Linux ARM64 (Pi) | `phonehome-mothership-v*-linux-arm64.zip` |
+| Mac (Apple Silicon) | `phonehome-mothership-v*-darwin-arm64.tar.gz` |
+| Mac (Intel) | `phonehome-mothership-v*-darwin-x64.tar.gz` |
+| Linux x64 | `phonehome-mothership-v*-linux-x64.tar.gz` |
+| Linux ARM64 (Pi) | `phonehome-mothership-v*-linux-arm64.tar.gz` |
 | Windows | `phonehome-mothership-v*-win-x64.zip` |
 
 **Share with cousins:** your HTTPS URL + invite code. Print a card from [`deploy/invite-card.html`](deploy/invite-card.html).
@@ -197,6 +227,10 @@ Lab runbook: [`lab/README.md`](lab/README.md) · smoke checklist: [`lab/SMOKE.md
 
 **Try the beta:** [TestFlight — iPhone, iPad, and Apple silicon Mac](https://testflight.apple.com/join/4SWCTNec)
 
+<p align="center">
+  <img src="docs/screenshots/03-phone-pad.png" width="260" alt="PhoneHome on iOS — same softphone UI as the PWA" />
+</p>
+
 Capacitor shell around the PWA for notifications and optional CallKit lock-screen answer. Point the app at your Mothership HTTPS URL and sign in like the browser PWA.
 
 ```bash
@@ -230,6 +264,7 @@ Default: **in-app calling** (tap notification → Answer in PhoneHome). Lock-scr
 | [`docs/listen-in-future.md`](docs/listen-in-future.md) | Future listen-in constraints |
 | [`docs/hub-hardware-brief.md`](docs/hub-hardware-brief.md) | Stage 2 hardware SKUs |
 | [`docs/digits-fork-scope.md`](docs/digits-fork-scope.md) | Digits alignment path |
+| [`docs/screenshots/README.md`](docs/screenshots/README.md) | Regenerate README screenshots |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting |
 
 ---
@@ -243,6 +278,7 @@ Default: **in-app calling** (tap notification → Answer in PhoneHome). Lock-scr
 | [`mobile/`](mobile/) | Capacitor iOS app + CallKit plugin |
 | [`deploy/`](deploy/) | Init scripts, service installers, Docker Compose, Mothership bundles, invite card |
 | [`docs/`](docs/) | Specs, glossary, self-host, privacy, threat model |
+| [`docs/screenshots/`](docs/screenshots/) | README marketing + UI captures |
 | [`bridged/`](bridged/) | SIP↔WebRTC bridge notes (live with FreePBX) |
 | [`hardware/`](hardware/) | Stage 2 HW stubs (hub, satellite, bt-landline) |
 | [`hub-os/`](hub-os/) | Future appliance image notes |
@@ -259,6 +295,7 @@ npm run dev:web      # web assets watch
 npm run build        # web + server
 npm test             # server tests
 npm run lab          # build web + start server
+npm run screenshots  # refresh docs/screenshots for README
 ```
 
 | Script | Purpose |

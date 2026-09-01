@@ -6,6 +6,10 @@ Native shell around the existing softphone for **CallKit + PushKit**.
 
 **[Join the beta](https://testflight.apple.com/join/4SWCTNec)** — install from TestFlight, open the app, and sign in to your Mothership HTTPS URL.
 
+<p align="center">
+  <img src="../docs/screenshots/03-phone-pad.png" width="240" alt="PhoneHome speed dial on iOS" />
+</p>
+
 See **[`docs/native-ios-callkit.md`](../docs/native-ios-callkit.md)** for Apple setup and server env.
 
 ## Build from source

@@ -14320,6 +14320,7 @@ function mothershipCapacityBanner() {
   return "";
 }
 
+function renderControls() {
   if (isGrandparentExperience() && !state._forceFullParentSettings) {
     renderGrandparentSettings();
     return;
