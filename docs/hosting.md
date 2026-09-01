@@ -1,7 +1,7 @@
 # Hosting for parent testing
 
-> **Self-host (anyone):** start with **[`self-host.md`](./self-host.md)** — background app on macOS/Windows/Linux, Docker, env-based URLs.  
-> **This page** documents the **trevlars lab** layout (Proxmox, eero DDNS, specific CT IDs).
+> **Self-host (anyone):** start with **[`self-host.md`](./self-host.md)** — run your **Mothership** as a background app on macOS/Windows/Linux.  
+> **This page** documents the **trevlars lab** Mothership layout (Proxmox, eero DDNS, specific CT IDs).
 
 **PhoneHome** Stage 1 needs **HTTPS** so phones can use the microphone (secure context). Cousins only need the public URL + an invite — no VPN.
 
@@ -92,7 +92,7 @@ Verify LE on FreePBX: `pct exec 121 -- openssl x509 -in /etc/asterisk/keys/phone
 
 PhoneHome CT env: `SIP_PUBLIC_HOST=y5876647.eero.online` (see `deploy/kids-landline.service`). Existing ATA rows may still have `10.0.5.105` — open **Analog Phone → Advanced**, set server to the public host, **Save**, then push/download config again. Escape hatch: `SIP_TLS_VALIDATE_CERT=0` forces validation off in generated XML.
 
-**Analog one-tap vs download:** One-tap “Set up adapter” only works when **PhoneHome at your house** (this CT / home hub) shares a LAN with the HT801 — not when the parent’s phone app is merely on that Wi‑Fi. Set `ATA_LAN_PUSH=0` on shared/cloud hosts so the Parent UI leads with **Download config**. If a push can’t reach the adapter, the UI flips to download-first automatically.
+**Analog one-tap vs download:** One-tap “Set up adapter” only works when the **Mothership** at your house shares a LAN with the HT801 — not when the parent’s phone app is merely on that Wi‑Fi. Set `ATA_LAN_PUSH=0` on shared/cloud Motherships so the Parent UI leads with **Download config**. If a push can’t reach the adapter, the UI flips to download-first automatically.
 
 After forwards are in:
 
@@ -124,9 +124,9 @@ Example:
 DATA_DIR=/var/lib/kids-landline node /opt/kids-landline/server/scripts/reset-password.mjs trevor 'correct-horse'
 ```
 
-Tell them the new password privately. The UI also says “Forgot password? Ask the host.”
+Tell them the new password privately. The UI also says “Forgot password? Ask whoever runs the Mothership.”
 
-Legacy 6-digit **setup codes** still work for host bootstrap and old accounts (Sign in → “Use host setup code instead”). After a code login, parents should **Settings → Create username & password**. To mint fresh codes only:
+Legacy 6-digit **setup codes** still work for Mothership bootstrap and old accounts (Sign in → “Use Mothership setup code instead”). After a code login, parents should **Settings → Create username & password**. To mint fresh codes only:
 
 ```bash
 DATA_DIR=/var/lib/kids-landline node /opt/kids-landline/server/scripts/reissue-codes.mjs
@@ -135,7 +135,7 @@ DATA_DIR=/var/lib/kids-landline node /opt/kids-landline/server/scripts/reissue-c
 ## Parent invite flow
 
 1. Open the **public HTTPS** URL on your phone (not `http://10.0.5.x` — that breaks iPad mic and invite shares).
-2. First parent (host): **Host bootstrap** with the **HOST SETUP CODE** from the server (`HOST_CODE.txt`), create household → softphone, then **Settings → Create username & password**.
+2. First parent: **Mothership setup** with the **setup code** from the Mothership (`HOST_CODE.txt`), create household → softphone, then **Settings → Create username & password**.
 3. Day-to-day: **Sign in** with username/password. **Invite family** → share the 6-digit invite code (invites are still codes; accounts are not).
 4. Other parents: **I was invited** (or Create account) → username/password → redeem invite → add softphone.
 5. Both sides approve each other → **Call**.

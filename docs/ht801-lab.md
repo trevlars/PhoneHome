@@ -13,7 +13,7 @@
 
 ## Super-easy parent flow (preferred)
 
-In the app: **Parent → Analog Phone**. The parent phone app can be anywhere. **One-tap / Set up adapter** only works when **PhoneHome at your house** (the home hub / CT running the service) shares Wi‑Fi with the HT801 — not because the parent’s phone is on that LAN. Otherwise: plug Ethernet, open the adapter’s web page by IP, **Download config** from the app, upload on the HT801 (from any device that can reach the adapter’s local UI), reboot, plug a phone, dial **0** (TreeHouse), **1** (Home/parent), or **2–9** (speed dial). Contacts stay in PhoneHome (changing a speed dial in the app updates the handset; no re-upload). Config Server Path is optional/advanced.
+In the app: **Parent → Analog Phone**. The parent phone app can be anywhere. **One-tap / Set up adapter** only works when the **Mothership** at your house shares Wi‑Fi with the HT801 — not because the parent’s phone is on that LAN. Otherwise: plug Ethernet, open the adapter’s web page by IP, **Download config** from the app, upload on the HT801 (from any device that can reach the adapter’s local UI), reboot, plug a phone, dial **0** (TreeHouse), **1** (Home/parent), or **2–9** (speed dial). Contacts stay in PhoneHome (changing a speed dial in the app updates the handset; no re-upload). Config Server Path is optional/advanced.
 
 **SIP extensions are auto-assigned** unique per ATA/line (starting at `2001`) when you save the connection — Gemma and cousins never share a number. PhoneHome also auto-generates the SIP password. Parents cannot edit or override the extension (anti-takeover). On Save (and before Download/push), PhoneHome **creates or updates the matching FreePBX PJSIP extension** via `phonehome-freepbx-syncd` → `phonehome-set-sip-secret` (TLS + SRTP; `rewrite_contact=yes` for remote public SIP hosts, `no` for lab LAN). Manual FreePBX clicking is no longer required for new ATAs.
 
@@ -228,7 +228,7 @@ Greeting audio is stored in PhoneHome `greetings/<lineId>.*` — same source sof
 
 ## One-tap setup (no Grandstream UI)
 
-Parent → Analog Phone → pick **Adapter for this line** (kid) → **Set up adapter** (requires home hub ↔ HT801 on the same LAN):
+Parent → Analog Phone → pick **Adapter for this line** (kid) → **Set up adapter** (requires Mothership ↔ HT801 on the same LAN):
 
 If login fails with “tries left” / “locked”, wait ~2 minutes. After a successful setup, the sticker password no longer works — use the new admin password you chose.
 
@@ -236,7 +236,7 @@ If login fails with “tries left” / “locked”, wait ~2 minutes. After a su
 2. Enter adapter LAN IP, password printed on the box, and a new admin password (8–30 chars, upper+lower+digit, **no symbols**).
 3. **PhoneHome at your house** (the hub/host process — not the parent’s phone browser) logs into the HT801 (`/cgi-bin/dologin`), sets the new password, uploads config XML (`/cgi-bin/upload_cfg`), and reboots.
 
-The browser/app never talks to the ATA (CORS / HTTPS→HTTP). Only the home hub on the ATA’s LAN does. Public IPs are rejected (SSRF guard). Parent phone can be remote; the hub cannot.
+The browser/app never talks to the ATA (CORS / HTTPS→HTTP). Only the Mothership on the ATA’s LAN does. Public IPs are rejected (SSRF guard). Parent phone can be remote; the Mothership cannot.
 
 **Download config** is the path when the hub is shared, cloud, or not next to the ATA — parent still needs some device that can open the adapter’s local web UI to upload.
 

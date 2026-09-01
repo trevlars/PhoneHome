@@ -806,9 +806,9 @@ const state = {
   /** In-flight ata-status fetches (dedupe). */
   ataStatusFetching: {},
   /**
-   * From /api/health — whether this PhoneHome home hub can one-tap push to an HT801 on LAN.
-   * null = not loaded yet; false = remote/shared host (use Download config).
-   * Parent app being on Wi‑Fi is irrelevant — only the hub↔ATA LAN matters.
+   * From /api/health — whether this Mothership can one-tap push to an HT801 on LAN.
+   * null = not loaded yet; false = remote/shared Mothership (use Download config).
+   * Parent app being on Wi‑Fi is irrelevant — only Mothership↔ATA LAN matters.
    * @type {boolean|null}
    */
   ataLanPush: null,
@@ -1804,7 +1804,7 @@ function armConnectWatch() {
     const onlyHost = state.iceGatherHint === "host-only";
     setFlash(
       onlyHost
-        ? "Couldn’t connect — network may need TURN (relay). Try again on Wi‑Fi or cellular, or ask the host to check TURN."
+        ? "Couldn’t connect — network may need TURN (relay). Try again on Wi‑Fi or cellular, or ask whoever runs the Mothership to check TURN."
         : "Couldn’t connect — network may need TURN. Hang up and try again with both phones on a solid network.",
       "error");
     hangup();
@@ -9388,9 +9388,9 @@ function renderWelcome() {
         </nav>
         ${
           showHost
-            ? `<button class="linkish auth-link" type="button" id="go-host">Host setup (bootstrap code)</button>`
+            ? `<button class="linkish auth-link" type="button" id="go-host">Set up a Mothership (setup code)</button>`
             : `<details class="welcome-advanced"><summary>Advanced</summary>
-                <button class="linkish auth-link" type="button" id="go-host">Host setup (bootstrap code)</button>
+                <button class="linkish auth-link" type="button" id="go-host">Set up a Mothership (setup code)</button>
               </details>`
         }
       </div>
@@ -9455,7 +9455,7 @@ function renderReturning() {
         <p class="tiny auth-hint" id="forget-saved-login" hidden>
           <button type="button" class="linkish" id="forget-login">Forget saved sign-in on this iPhone</button>
         </p>
-        <p class="tiny auth-hint">Forgot password? Ask the host — they can reset it.</p>
+        <p class="tiny auth-hint">Forgot password? Ask whoever runs the Mothership — they can reset it.</p>
         <nav class="auth-alt" aria-label="Other sign-in options">
           <button type="button" class="linkish auth-link" id="go-register">Create an account</button>
           <button type="button" class="linkish auth-link" id="use-code">Use 6-digit code instead</button>
@@ -9464,7 +9464,7 @@ function renderReturning() {
       <div class="sheet auth-sheet auth-code-sheet" id="code-sheet" hidden>
         <div class="auth-head">
           <h2>6-digit code</h2>
-          <p class="auth-lede">Host bootstrap, or an older one-time login code.</p>
+          <p class="auth-lede">Mothership setup code, or an older one-time login code.</p>
         </div>
         <form id="login-code-form" class="auth-form">
           <div class="auth-field">
@@ -9824,7 +9824,7 @@ function renderSetPassword() {
           </div>
           <button class="primary btn-block" type="submit" id="save-pass">Save</button>
         </form>
-        <p class="tiny auth-hint">Forgot later? Ask the host to reset your password.</p>
+        <p class="tiny auth-hint">Forgot later? Ask the Mothership admin to reset your password.</p>
       </div>
     </div>
   `;
@@ -10508,7 +10508,7 @@ function renderHost() {
       ${dots(3, Math.min(step, 2))}
       <div class="auth-head join-head">
         <h1 class="auth-title">Set up your network</h1>
-        <p class="auth-lede">${needsAuth ? "Enter the host setup code from the server." : needsFamily ? "Name your household." : "Name this phone’s line."}</p>
+        <p class="auth-lede">${needsAuth ? "Enter the Mothership setup code (from whoever runs the server)." : needsFamily ? "Name your household." : "Name this phone’s line."}</p>
       </div>
       <div class="sheet auth-sheet">
         ${flashHtml("inline")}
@@ -10517,7 +10517,7 @@ function renderHost() {
             ? `
           <form id="host-login-form" class="auth-form">
             <div class="auth-field">
-              <label for="code">Host setup code</label>
+              <label for="code">Mothership setup code</label>
               <input id="code" class="mono" inputmode="numeric" maxlength="6" placeholder="······" autocomplete="one-time-code" enterkeyhint="next" />
             </div>
             <div class="auth-field">
@@ -14777,8 +14777,8 @@ function renderControls() {
             <h3 class="parent-subhead">Download config</h3>
             <p class="tiny">${
               lanPushKnownOff
-                ? "Home hub isn’t on the adapter’s Wi‑Fi. Download the file, then upload it in the box’s admin page."
-                : "When the home hub can’t reach the adapter, download the file and upload it in the box’s admin page."
+                ? "The Mothership isn’t on the adapter’s Wi‑Fi. Download the file, then upload it in the box’s admin page."
+                : "When the Mothership can’t reach the adapter, download the file and upload it in the box’s admin page."
             }</p>
             <button type="button" class="${lanPushKnownOff ? "primary" : "ghost"}" id="ata-download" ${canPush ? "" : "disabled"}>Download config</button>
             ${
@@ -14800,12 +14800,12 @@ function renderControls() {
             const lanCard = isHt801
               ? `
           <div class="ata-mode-card ata-mode-lan ${lanPushKnownOff ? "ata-mode-unavailable" : "ata-mode-preferred"}" id="ata-push-box">
-            <div class="ata-mode-badge">${lanPushKnownOff ? "Needs home hub nearby" : "Home hub on Wi‑Fi"}</div>
+            <div class="ata-mode-badge">${lanPushKnownOff ? "Needs Mothership nearby" : "Mothership on Wi‑Fi"}</div>
             <h3 class="parent-subhead">Set up adapter</h3>
             ${
               lanPushKnownOff
-                ? `<p class="tiny ata-lan-warn">One-tap needs the home hub on the same Wi‑Fi as the HT801. Use <strong>Download config</strong> instead.</p>`
-                : `<p class="tiny">Home hub on the same Wi‑Fi as the HT801 uploads config for you. App can be anywhere.</p>
+                ? `<p class="tiny ata-lan-warn">One-tap needs the Mothership on the same Wi‑Fi as the HT801. Use <strong>Download config</strong> instead.</p>`
+                : `<p class="tiny">Mothership on the same Wi‑Fi as the HT801 uploads config for you. Your phone app can be anywhere.</p>
             <label>Adapter IP address</label>
             <input id="ata-ip" class="mono" inputmode="decimal" placeholder="192.168.1.50" autocomplete="off" value="${escAttr(state.ataFormDraft?.ip)}" />
             <label style="margin-top:8px">Current admin password</label>
@@ -14886,12 +14886,12 @@ function renderControls() {
               status.kind === "offline"
                 ? lanPushKnownOff || isFanvil
                   ? "Download config again and upload it on the adapter, then reboot the box. Status turns live when it registers."
-                  : "Prefer Set up adapter if the home hub shares Wi‑Fi with the box. Otherwise Download config → upload → reboot."
+                  : "Prefer Set up adapter if the Mothership shares Wi‑Fi with the box. Otherwise Download config → upload → reboot."
                 : status.kind === "online" && keepFormOpen
                   ? "Push or download config again so the adapter re-registers."
                   : isFanvil
                     ? "Download config and import it on the adapter."
-                    : "Set up via home hub, or download and upload on the adapter.";
+                    : "Set up via Mothership, or download and upload on the adapter.";
 
             return `
           <div class="ata-primary">
@@ -15748,7 +15748,7 @@ function renderControls() {
     } catch (err) {
       const msg = err.message || "Could not set up adapter";
       // If PhoneHome couldn't reach the ATA, switch UI to remote-first so Download is primary.
-      if (/can.?t reach|same (home network|Wi)|Download config instead|home hub|LAN/i.test(msg)) {
+      if (/can.?t reach|same (home network|Wi)|Download config instead|Mothership|home hub|LAN/i.test(msg)) {
         state.ataLanPush = false;
       }
       // Grandstream lockout / wrong password: stop cold — no auto-retry, disable Set up briefly.
@@ -16591,7 +16591,7 @@ function renderQuietHours() {
     </div>
     <div class="sheet">
       <h2>Your family’s Quiet Time window</h2>
-      <p>Calls are blocked during this window in <strong>your</strong> timezone — not the host’s server clock.</p>
+      <p>Calls are blocked during this window in <strong>your</strong> timezone — not the Mothership’s clock.</p>
       <label class="check-row">
         <input type="checkbox" id="q-on" ${enabled ? "checked" : ""} />
         <span>Enable Quiet Time</span>

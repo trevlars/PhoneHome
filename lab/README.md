@@ -9,7 +9,7 @@ npm run build -w web
 npm run start -w server
 ```
 
-1. Note **HOST SETUP CODE** from console / `data/bootstrap.json`.
+1. Note **Mothership setup code** from console / `data/HOST_CODE.txt`.
 2. Browser A: `http://localhost:8787` → sign in with code → create household → add softphone → Invite.
 3. Browser B (private window): Register parent → redeem invite → add softphone.
 4. Both allowlist → Call (allow microphone).

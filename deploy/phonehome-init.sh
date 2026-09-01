@@ -35,7 +35,7 @@ prompt() {
   printf -v "$var" '%s' "$val"
 }
 
-echo "==> PhoneHome host setup"
+echo "==> PhoneHome Mothership setup"
 echo "    Repo: $ROOT"
 echo "    Data: $DATA_DIR"
 echo ""

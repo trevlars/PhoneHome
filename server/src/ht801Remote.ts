@@ -249,7 +249,7 @@ export function ht801UnreachableMessage(host: string, errMsg: string): string {
   if (/ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|ENOTFOUND|ECONNRESET|ETIMEDOUT|abort|timeout/i.test(msg)) {
     return (
       `Can't reach the adapter at ${ip}. Check the IP on the router or adapter sticker — ` +
-      "PhoneHome must be on the same home network. Use Download config if the hub can't reach it."
+      "PhoneHome Mothership must be on the same home network. Use Download config if it can't reach the adapter."
     );
   }
   if (/certificate|TLS|SSL|UNABLE_TO_VERIFY|self.?signed|CERT_/i.test(msg)) {

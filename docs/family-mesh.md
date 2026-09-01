@@ -1,16 +1,16 @@
 # Family mesh / invites (Stage 1 + future)
 
-## Stage 1 (one trunk) — shipped
+## Stage 1 (one Mothership) — shipped
 
-Minecraft model: one **PhoneHome** server; all softphones are clients.
+One **Mothership** per circle; all softphones and analog lines are leaves on it.
 
 1. Parent A creates invite → 6-digit code (48h, single-use).  
-2. Parent B redeems → new household on **same** server.  
+2. Parent B redeems → new household on the **same** Mothership.  
 3. Both allowlist lines.  
 4. Call: WebRTC offer via `/ws`; STUN; media peer-to-peer.  
 5. **No VPN** for Parent B.
 
-Peer server table `peer_servers` is reserved for Stage 3 federation.
+Peer server table `peer_servers` is reserved for Stage 3 federation (Mothership↔Mothership).
 
 ## TreeHouse (softphone-first)
 
@@ -63,18 +63,18 @@ Pad **#** is **FamilyRoom** — mixed family talk (kids **and** adult family acc
 
 > Historical: TreeHouse was also nicknamed FamilyRoom. That alias still works for TreeHouse APIs. The **# pad** is the mixed family room.
 
-## Stage 3 — trunk↔trunk (planned)
+## Stage 3 — Mothership↔Mothership (planned)
 
 ```
 Household A tree                Household B tree
-leaves → Trunk A  ←invite peer→  Trunk B ← leaves
+leaves → Mothership A  ←invite peer→  Mothership B ← leaves
               \                    /
                WebRTC leaf↔leaf when possible
 ```
 
 1. Invite encodes trust material + signaling URL (via outbound tunnel / DDNS).  
 2. Mutual TLS / pinned keys in `peer_servers`.  
-3. Cross-allowlist still enforced on each trunk.  
+3. Cross-allowlist still enforced on each Mothership.  
 4. TURN only if ICE fails.  
 5. Optional connectivity helper = intro + TURN only — not household DB.
 

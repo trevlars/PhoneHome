@@ -1,6 +1,8 @@
-# Self-host PhoneHome (full stack)
+# Self-host your Mothership
 
-Run your own **PhoneHome trunk** — like a private Minecraft server for family voice. You keep household data on your box; call audio for softphones stays encrypted peer-to-peer (WebRTC). Analog (HT801) adds FreePBX on your LAN or a nearby VM.
+Run your circle’s **Mothership** — the always-on PhoneHome server at home (like a private Minecraft realm for family voice). You keep household data on your box; softphone call audio stays encrypted peer-to-peer (WebRTC). Analog (HT801) adds FreePBX on your LAN or a nearby VM.
+
+**Terms:** [`glossary.md`](./glossary.md) — *PhoneHome* = product, *Mothership* = your server.
 
 **Privacy pillar:** [`privacy-security.md`](./privacy-security.md) — no cleartext public SIP, HTTPS required off-LAN.
 
@@ -9,16 +11,16 @@ Run your own **PhoneHome trunk** — like a private Minecraft server for family 
 | Host | Good for |
 | --- | --- |
 | **Always-on home PC / Mac / Linux** | Parents who want “install and forget” — background service |
-| **Raspberry Pi / NUC / mini PC** | Low-power 24/7 trunk |
+| **Raspberry Pi / NUC / mini PC** | Low-power 24/7 Mothership |
 | **Proxmox LXC / VPS** | Power users; see also [`hosting.md`](./hosting.md) (lab notes) |
 
-Each family (or friend group) runs **one trunk**. Cousins join with your **HTTPS URL + invite code** — no VPN.
+Each family (or friend group) runs **one Mothership** per circle. Cousins join with your **HTTPS URL + invite code** — no VPN.
 
 ## What you install
 
 | Piece | Role | Required? |
 | --- | --- | --- |
-| **PhoneHome hub** | Signaling, households, invites, PWA | Yes |
+| **PhoneHome hub** | Signaling on the Mothership | Yes |
 | **Bridge** | FreePBX ARI ↔ WebRTC / HT801 | Yes for analog; runs with hub |
 | **HTTPS** | Mic + sessions on phones | Yes for remote users |
 | **coturn (TURN)** | Cross-NAT softphone calls | Strongly recommended |
@@ -86,7 +88,7 @@ If the URL changes (new tunnel), edit `phonehome.env` and restart the service.
 ### 5. First parent
 
 1. Open **PUBLIC_BASE_URL** on your phone.
-2. **Host bootstrap** with code from `~/.phonehome/HOST_CODE.txt` (or server log on first boot).
+2. **Mothership setup** with code from `~/.phonehome/HOST_CODE.txt` (or log on first boot).
 3. Create household → softphone → **Invite family**.
 
 ---
@@ -203,9 +205,9 @@ No hardcoded hostnames in the app — everything reads from your env files.
 
 ---
 
-## Connecting two trunks (future)
+## Connecting two Motherships (future)
 
-Stage 1: one server, all households. **Stage 3** (planned): trunk↔trunk federation via `peer_servers` — each family keeps their own database; see [`family-mesh.md`](./family-mesh.md).
+Stage 1: one Mothership, all households on it. **Stage 3** (planned): Mothership↔Mothership federation via `peer_servers` — each circle keeps its own database; see [`family-mesh.md`](./family-mesh.md).
 
 Optional future **connectivity helper** = TURN/rendezvous only, not household data.
 

@@ -1,10 +1,10 @@
 # PhoneHome
 
-Open, Digits-inspired private family voice network — **PhoneHome**: the home phone, reborn. **Stage 1** ships now: a shared signaling server (“Minecraft clubhouse”) plus mobile-friendly **web softphones** with households, invites, allowlists, quiet hours, kill switch, and encrypted WebRTC calls.
+Open, Digits-inspired private family voice network — **PhoneHome**: the home phone, reborn. **Stage 1** ships now: each circle runs one **Mothership** (the always-on home server) plus mobile-friendly **web softphones** with households, invites, allowlists, quiet hours, kill switch, and encrypted WebRTC calls.
 
 **iOS CallKit shell (in progress):** Capacitor app in [`mobile/`](mobile/) — see [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
 
-Hardware (Grandstream / BT landline / Home Hub) is Stage 2+ — see `docs/`.
+Hardware (Grandstream / BT landline / Home Hub) is Stage 2+ — see `docs/`. Terminology: [`docs/glossary.md`](docs/glossary.md).
 
 > **Naming:** Product and GitHub repo are **PhoneHome** (`github.com/trevlars/PhoneHome`). Lab deploy paths (`/opt/kids-landline`, `kids-landline.service`, CT hostname) are legacy host names and stay as-is so production boxes don’t break.
 
@@ -28,15 +28,15 @@ npm run build -w web
 npm run start -w server
 ```
 
-Open **http://localhost:8787**. On first boot the server prints a **HOST SETUP CODE** (also written to `data/bootstrap.json`).
+Open **http://localhost:8787**. On first boot the Mothership prints a **setup code** (also written to `data/HOST_CODE.txt`).
 
 1. Parent A: sign in with setup code → create household → add softphone → **Invite family**.
 2. Parent B: register (or second browser/profile) → redeem invite → add softphone.
 3. Both: allowlist each other’s lines → **Call**.
 
-Cousins need **no VPN** — only the server URL + invite code.
+Cousins need **no VPN** — only your Mothership URL + invite code.
 
-## Host for other parents
+## Run a Mothership (for other parents)
 
 Remote phones need **HTTPS**. See **[`docs/self-host.md`](docs/self-host.md)** for the full guide (background service on Mac/Windows/Linux, Docker, analog stack).
 
@@ -54,7 +54,7 @@ cloudflared tunnel --url http://127.0.0.1:8787
 # set PUBLIC_BASE_URL to the printed https://….trycloudflare.com URL
 ```
 
-Share that URL + an invite code. Host setup code is printed on first boot (`DATA_DIR/HOST_CODE.txt`).
+Share that URL + an invite code. The Mothership setup code is printed on first boot (`DATA_DIR/HOST_CODE.txt`).
 
 **Invite card:** open [`deploy/invite-card.html`](deploy/invite-card.html) in a browser → enter URL + code → Print / Save PDF for cousins.
 
@@ -66,19 +66,22 @@ Share that URL + an invite code. Host setup code is printed on first boot (`DATA
 | --- | --- |
 | `server/` | Stage 1 signaling + REST API (SQLite) |
 | `web/` | Parent PWA / softphone UI |
-| `docs/` | Specs + **[`self-host.md`](docs/self-host.md)**, privacy pillar, threat model, lab hosting |
+| `docs/` | Specs + **[`glossary.md`](docs/glossary.md)**, **[`self-host.md`](docs/self-host.md)**, privacy pillar, threat model |
 | `hardware/` | Stage 2 HW stubs (hub, satellite, bt-landline) |
 | `hub-os/` | Future appliance image notes |
 | `bridged/` | Future SIP↔WebRTC / FXS gateway notes |
 | `digits-fork/` | Soft-fork scope vs upstream Digits |
 | `lab/` | Lab runbook (softphone + later HT801) |
-| `deploy/` | Docker Compose for always-on host |
+| `deploy/` | Docker Compose + scripts to run your Mothership |
 
 ## Product model
 
-- **Trunk** = this server (you host on Proxmox/VPS/Pi).
-- **Leaves** = softphones now; ATA / BT / Hub later.
-- **Voice** = encrypted WebRTC (DTLS-SRTP); analog = SIP TLS + SRTP; server brokers ring/setup only — see privacy pillar.
+See **[`docs/glossary.md`](docs/glossary.md)** for full definitions.
+
+- **PhoneHome** = the product (app + brand).
+- **Mothership** = your circle’s always-on server (one per circle).
+- **Leaves** = softphones now; ATA / BT / Hub hardware later.
+- **Voice** = encrypted WebRTC (DTLS-SRTP); analog = SIP TLS + SRTP; the Mothership brokers ring/setup only — see privacy pillar.
 - **GitHub:** [trevlars](https://github.com/trevlars)
 
 ## License
