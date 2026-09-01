@@ -1,0 +1,1 @@
+Phone.Home is a family calling app. Sign in with Apple, add contacts from your allowlist, and place encrypted WebRTC calls. No demo account required — reviewers can use Sign in with Apple on a test device.

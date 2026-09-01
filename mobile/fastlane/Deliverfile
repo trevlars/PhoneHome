@@ -1,0 +1,11 @@
+# PhoneHome App Store listing — metadata + screenshots only (no IPA upload).
+
+app_identifier("app.phonehome.ios")
+metadata_path("app-store/metadata")
+screenshots_path("app-store/screenshots-deliver")
+
+skip_binary_upload(true)
+skip_app_version_update(false)
+force(true)
+submit_for_review(false)
+run_precheck_before_submit(false)

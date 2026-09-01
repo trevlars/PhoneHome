@@ -22,9 +22,26 @@ Output: `mobile/app-store/screenshots/`
 
 Upload order matches filenames (`01-hero.png` … `07-private-by-design.png`).
 
-## Upload in App Store Connect
+## Upload via App Store Connect API (fastlane)
 
-1. [App Store Connect](https://appstoreconnect.apple.com) → **Apps** → **PhoneHome** (`app.phonehome.ios`)
+Reuses the same **App Store Connect API key** as GameSphere (`~/GameSphere/Scripts/asc.env`: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`).
+
+```bash
+cd mobile
+# optional: cp scripts/asc.env.example scripts/asc.env
+./scripts/asc-upload.sh              # metadata + screenshots (default)
+./scripts/asc-upload.sh upload_listing   # screenshots only
+./scripts/asc-upload.sh upload_metadata  # copy + review contact only
+fastlane ios asc_info                # verify app.phonehome.ios record
+```
+
+Lanes live in `mobile/fastlane/`. `upload_all` runs metadata then screenshots separately (fastlane quirk on first App Store version).
+
+**ASC app name:** `Phone.Home` (global `PhoneHome` is taken). Bundle ID: `app.phonehome.ios`.
+
+## Manual upload in App Store Connect
+
+1. [App Store Connect](https://appstoreconnect.apple.com) → **Apps** → **Phone.Home** (`app.phonehome.ios`)
 2. **Distribution** → version → **App Store** tab (screenshots apply to App Store and TestFlight listing preview)
 3. **iPhone 6.7″** — drag all files from `screenshots/iphone-6.7/`
 4. **iPad 12.9″** — drag all files from `screenshots/ipad-12.9/`
@@ -36,7 +53,7 @@ Upload order matches filenames (`01-hero.png` … `07-private-by-design.png`).
 
 | File | App Store Connect field |
 | --- | --- |
-| `name.txt` | Name |
+| `name.txt` | Name (`Phone.Home`) |
 | `subtitle.txt` | Subtitle |
 | `promotional_text.txt` | Promotional Text (170 chars, editable anytime) |
 | `description.txt` | Description |
@@ -49,7 +66,9 @@ Upload order matches filenames (`01-hero.png` … `07-private-by-design.png`).
 
 Update `privacy_url.txt` when a public privacy policy page is live.
 
-## Review notes
+## Review contact (`metadata/review_information/`)
+
+Uploaded with `upload_metadata`. Update `phone_number.txt` to your real contact number (`+1 …` format) before App Review submission.
 
 - Sign in with your Mothership **HTTPS** URL (same as the PWA).
 - Server-side review account: see `server/src/api.ts` (`APP_STORE_REVIEW_*` env on the hub).

@@ -13,6 +13,7 @@ lab/runtime/
 *.log
 mobile/app-store/screenshots/_raw/
 docs/screenshots/_raw/
+mobile/app-store/screenshots-deliver/
 .vscode/
 .idea/
 

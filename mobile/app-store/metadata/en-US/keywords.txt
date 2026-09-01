@@ -1,1 +1,1 @@
-family,kids,phone,calling,parental,softphone,voip,grandparents,cousins,allowlist,privacy,webrtc,landline
+family,kids,phone,parental,softphone,voip,grandparents,allowlist,privacy,landline

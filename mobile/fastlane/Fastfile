@@ -1,0 +1,95 @@
+# PhoneHome — App Store Connect listing upload
+#
+#   source scripts/asc.env    # or source ~/GameSphere/Scripts/asc.env
+#   fastlane ios asc_info
+#   fastlane ios prepare_deliver
+#   fastlane ios upload_listing
+
+default_platform(:ios)
+
+def asc_api_key_hash
+  key_id = ENV["ASC_KEY_ID"]
+  issuer_id = ENV["ASC_ISSUER_ID"]
+  key_path = ENV["ASC_KEY_PATH"]
+  UI.user_error!("Set ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_PATH (see scripts/asc.env.example)") unless key_id && issuer_id && key_path
+  UI.user_error!("ASC_KEY_PATH not found: #{key_path}") unless File.exist?(key_path)
+
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key_filepath: key_path,
+    duration: 1200,
+    in_house: false
+  )
+end
+
+def connect_spaceship
+  key_id = ENV["ASC_KEY_ID"]
+  issuer_id = ENV["ASC_ISSUER_ID"]
+  key_path = ENV["ASC_KEY_PATH"]
+  token = Spaceship::ConnectAPI::Token.create(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    filepath: key_path,
+    duration: 1200,
+    in_house: false
+  )
+  Spaceship::ConnectAPI.token = token
+end
+
+platform :ios do
+  desc "Print App Store Connect app record for app.phonehome.ios"
+  lane :asc_info do
+    connect_spaceship
+    app = Spaceship::ConnectAPI::App.find("app.phonehome.ios")
+    UI.user_error!("App app.phonehome.ios not found — create it in App Store Connect first") unless app
+    UI.success("App: #{app.name} (#{app.id}) bundle=#{app.bundle_id}")
+  end
+
+  desc "Map generated screenshots into fastlane deliver folder layout"
+  lane :prepare_deliver do
+    sh(File.expand_path("../scripts/prepare-deliver-screenshots.sh", __dir__))
+  end
+
+  desc "Upload metadata + screenshots to App Store Connect (no binary)"
+  lane :upload_listing do
+    prepare_deliver
+    api_key = asc_api_key_hash
+
+    deliver(
+      api_key: api_key,
+      app_identifier: "app.phonehome.ios",
+      metadata_path: "app-store/metadata",
+      screenshots_path: "app-store/screenshots-deliver",
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      skip_metadata: true,
+      force: true,
+      submit_for_review: false,
+      precheck_include_in_app_purchases: false,
+      overwrite_screenshots: true
+    )
+  end
+
+  desc "Upload metadata text only"
+  lane :upload_metadata do
+    api_key = asc_api_key_hash
+    deliver(
+      api_key: api_key,
+      app_identifier: "app.phonehome.ios",
+      metadata_path: "app-store/metadata",
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      skip_metadata: false,
+      force: true,
+      submit_for_review: false,
+      precheck_include_in_app_purchases: false
+    )
+  end
+
+  desc "Prepare deliver folders + upload screenshots and metadata"
+  lane :upload_all do
+    upload_metadata
+    upload_listing
+  end
+end
