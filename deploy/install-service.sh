@@ -5,10 +5,15 @@ set -euo pipefail
 
 ROOT="${PHONEHOME_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 DATA_DIR="${DATA_DIR:-$HOME/.phonehome}"
-NODE="$(command -v node || true)"
+NODE=""
+if [[ -x "$ROOT/node/bin/node" ]]; then
+  NODE="$ROOT/node/bin/node"
+elif command -v node >/dev/null 2>&1; then
+  NODE="$(command -v node)"
+fi
 
 if [[ -z "$NODE" ]]; then
-  echo "node not found in PATH — install Node.js 20+ first" >&2
+  echo "node not found — use a Mothership download bundle (includes Node) or install Node.js 20+" >&2
   exit 1
 fi
 

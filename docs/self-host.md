@@ -27,9 +27,21 @@ Each family (or friend group) joins as its own **Pod** on one Mothership. Cousin
 | **FreePBX** | SIP registrar for HT801 | Only for analog landline |
 | **Reverse proxy** | Caddy, Traefik, Cloudflare Tunnel | Yes (or tunnel URL) |
 
-## Fast path — background app (macOS / Windows / Linux)
+## Fast path — download (recommended for parents)
 
-Best for parents: one setup, runs at login, no terminal after that.
+**No Git or Node.js required.** See **[`docs/download-mothership.md`](./download-mothership.md)** for per-OS archives from [GitHub Releases](https://github.com/trevlars/PhoneHome/releases).
+
+| OS | After unzip |
+| --- | --- |
+| **macOS** | Double-click `Install PhoneHome Mothership.command` |
+| **Linux** | `./install-mothership.sh` |
+| **Windows** | `.\install-mothership.ps1` |
+
+Each bundle includes Node.js, hub, bridge, and web UI.
+
+## Fast path — git clone (developers)
+
+Best for contributors or bleeding-edge `master`:
 
 ### 1. Prerequisites
 

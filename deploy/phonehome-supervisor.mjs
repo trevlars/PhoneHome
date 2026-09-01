@@ -78,11 +78,24 @@ function shutdown(code = 0) {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-const node = process.execPath;
+function bundledNode() {
+  const win = process.platform === "win32";
+  const rel = win ? path.join("node", "node.exe") : path.join("node", "bin", "node");
+  const candidate = path.join(REPO_ROOT, rel);
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
+const node = bundledNode() || process.execPath;
+const hubDist = path.join(REPO_ROOT, "server/dist/index.js");
 
 console.log(`[supervisor] PhoneHome data dir: ${process.env.DATA_DIR}`);
+console.log(`[supervisor] Node: ${node}`);
 console.log(`[supervisor] PUBLIC_BASE_URL=${process.env.PUBLIC_BASE_URL || "(not set — set in phonehome.env)"}`);
 
-start("hub", npm, ["run", "start", "-w", "server"], REPO_ROOT);
+if (fs.existsSync(hubDist)) {
+  start("hub", node, [hubDist], path.join(REPO_ROOT, "server"));
+} else {
+  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+  start("hub", npm, ["run", "start", "-w", "server"], REPO_ROOT);
+}
 start("bridge", node, ["src/index.mjs"], path.join(REPO_ROOT, "bridged"));

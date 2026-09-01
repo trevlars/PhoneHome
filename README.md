@@ -40,7 +40,9 @@ Cousins need **no VPN** — only your Mothership URL + invite code.
 
 Remote phones need **HTTPS**. See **[`docs/self-host.md`](docs/self-host.md)** for the full guide (background service on Mac/Windows/Linux, Docker, analog stack).
 
-Quick path:
+**Easiest:** download a Mothership bundle for your OS from **[GitHub Releases](https://github.com/trevlars/PhoneHome/releases)** ([`docs/download-mothership.md`](docs/download-mothership.md)) — no Git or Node install.
+
+**From source:**
 
 ```bash
 ./deploy/phonehome-init.sh    # writes ~/.phonehome/phonehome.env

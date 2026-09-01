@@ -1,0 +1,80 @@
+name: Mothership release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: darwin-arm64
+            runner: macos-latest
+          - platform: darwin-x64
+            runner: macos-13
+          - platform: win-x64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build Mothership bundle
+        shell: bash
+        env:
+          MOTHERSHIP_PLATFORM: ${{ matrix.platform }}
+        run: |
+          chmod +x deploy/build-mothership-bundle.sh
+          ./deploy/build-mothership-bundle.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mothership-${{ matrix.platform }}
+          path: dist/phonehome-mothership-*
+
+  release:
+    needs: bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/**/*
+          body: |
+            ## PhoneHome Mothership downloads
+
+            Pick the archive for your OS, unzip, then run the installer inside:
+
+            | OS | File |
+            | --- | --- |
+            | **macOS (Apple Silicon)** | `*-darwin-arm64.tar.gz` — double-click `Install PhoneHome Mothership.command` |
+            | **macOS (Intel)** | `*-darwin-x64.tar.gz` |
+            | **Linux x64** | `*-linux-x64.tar.gz` — `./install-mothership.sh` |
+            | **Linux ARM64** | `*-linux-arm64.tar.gz` |
+            | **Windows** | `*-win-x64.zip` — `install-mothership.ps1` |
+
+            No separate Node.js install required — each bundle includes Node 22.
+
+            Docs: [Download Mothership](https://github.com/${{ github.repository }}/blob/master/docs/download-mothership.md) · [Self-host guide](https://github.com/${{ github.repository }}/blob/master/docs/self-host.md)

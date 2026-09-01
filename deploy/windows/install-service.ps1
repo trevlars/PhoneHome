@@ -20,9 +20,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$node = (Get-Command node -ErrorAction SilentlyContinue)
-if (-not $node) {
-  Write-Error "Node.js 20+ not found in PATH. Install from https://nodejs.org/"
+$bundledNode = Join-Path $PhoneHomeRoot "node\node.exe"
+if (Test-Path $bundledNode) {
+  $nodeExe = $bundledNode
+} else {
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $nodeCmd) {
+    Write-Error "Node.js not found. Use a Mothership download bundle or install Node.js 20+ from https://nodejs.org/"
+  }
+  $nodeExe = $nodeCmd.Source
 }
 
 $supervisor = Join-Path $PhoneHomeRoot "deploy\phonehome-supervisor.mjs"
@@ -37,13 +43,14 @@ $logOut = Join-Path $DataDir "phonehome.log"
 $logErr = Join-Path $DataDir "phonehome.err.log"
 
 # Wrapper batch so Scheduled Task has a stable command line.
+$nodeDir = Split-Path $nodeExe
 $wrapper = Join-Path $DataDir "phonehome-run.cmd"
 @"
 @echo off
 set DATA_DIR=$DataDir
-set PATH=$($env:PATH)
+set PATH=$nodeDir;%PATH%
 cd /d "$PhoneHomeRoot"
-"$($node.Source)" "$supervisor" >> "$logOut" 2>> "$logErr"
+"$nodeExe" "$supervisor" >> "$logOut" 2>> "$logErr"
 "@ | Set-Content -Encoding ASCII $wrapper
 
 $action = New-ScheduledTaskAction -Execute $wrapper
