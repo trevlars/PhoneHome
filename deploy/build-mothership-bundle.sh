@@ -8,7 +8,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="$(node -p "require('$ROOT/package.json').version")"
+cd "$ROOT"
+VERSION="$(node -p "require('./package.json').version")"
 NODE_VERSION="${NODE_VERSION:-22.14.0}"
 OUT_DIR="${OUT_DIR:-$ROOT/dist}"
 PLATFORM="${MOTHERSHIP_PLATFORM:-}"
@@ -74,19 +75,24 @@ npm run build
 (cd bridged && npm ci --omit=dev)
 
 echo "==> Copy app tree"
-rsync -a \
-  --exclude .git \
-  --exclude node_modules \
-  --exclude mobile \
-  --exclude hardware \
-  --exclude hub-os \
-  --exclude digits-fork \
-  --exclude lab \
-  --exclude data \
-  --exclude dist \
-  --exclude coverage \
-  --exclude '**/.DS_Store' \
-  "$ROOT/" "$BUNDLE/"
+COPY_EXCLUDES=(
+  --exclude .git
+  --exclude node_modules
+  --exclude mobile
+  --exclude hardware
+  --exclude hub-os
+  --exclude digits-fork
+  --exclude lab
+  --exclude data
+  --exclude dist
+  --exclude coverage
+  --exclude '**/.DS_Store'
+)
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a "${COPY_EXCLUDES[@]}" "$ROOT/" "$BUNDLE/"
+else
+  (cd "$ROOT" && tar -c "${COPY_EXCLUDES[@]}" .) | (cd "$BUNDLE" && tar -x)
+fi
 
 echo "==> Production node_modules"
 cd "$BUNDLE"
