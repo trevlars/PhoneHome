@@ -1,0 +1,24 @@
+PhoneHome is the home phone, reborn: a private, parent-controlled voice network for kids and extended family.
+
+YOUR PEOPLE ONLY
+• Mutual allowlist — both sides approve before anyone rings
+• 6-digit invite codes for cousins; no VPN or public phone number
+• Kid-friendly speed dial, TreeHouse hangout rooms, and grandparent-simple mode
+
+PARENT CONTROLS
+• Quiet Time (Bedtime, School, custom schedules + US holiday skip)
+• Daily talk cap and household Timeout (pause all calls)
+• Parent PIN, Activity log, and co-parent invites
+
+REAL HOUSE PHONES
+• Optional Grandstream HT801 analog adapter (SIP TLS + SRTP)
+• Same family rules for app and wall phone
+
+PRIVATE BY DESIGN
+• Softphones use HTTPS + WebRTC (DTLS-SRTP)
+• Analog uses encrypted SIP TLS + SRTP — not cleartext public SIP
+• No call recording by default; you host your own Mothership server
+
+PhoneHome is inspired by the open Digits project (AGPL). Most families join someone else's Mothership as a new Pod; tech-savvy relatives can self-host.
+
+TestFlight: https://testflight.apple.com/join/4SWCTNec

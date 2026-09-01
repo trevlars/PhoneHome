@@ -276,6 +276,7 @@ Default: **in-app calling** (tap notification → Answer in PhoneHome). Lock-scr
 | [`server/`](server/) | Mothership — signaling, REST API, WebSocket, SQLite, APNs, FreePBX sync |
 | [`web/`](web/) | Parent PWA / softphone UI |
 | [`mobile/`](mobile/) | Capacitor iOS app + CallKit plugin |
+| [`mobile/app-store/`](mobile/app-store/) | App Store / TestFlight screenshots + listing copy |
 | [`deploy/`](deploy/) | Init scripts, service installers, Docker Compose, Mothership bundles, invite card |
 | [`docs/`](docs/) | Specs, glossary, self-host, privacy, threat model |
 | [`docs/screenshots/`](docs/screenshots/) | README marketing + UI captures |
@@ -295,7 +296,8 @@ npm run dev:web      # web assets watch
 npm run build        # web + server
 npm test             # server tests
 npm run lab          # build web + start server
-npm run screenshots  # refresh docs/screenshots for README
+npm run screenshots  # refresh docs/screenshots + mobile/app-store/screenshots
+npm run app-store:screenshots  # App Store / TestFlight frames only
 ```
 
 | Script | Purpose |

@@ -10,6 +10,8 @@ PhoneHome’s Stage‑1 softphone is a PWA. Cap iOS wraps it for notifications a
   <img src="screenshots/03-phone-pad.png" width="260" alt="PhoneHome softphone on iOS" />
 </p>
 
+**App Store / TestFlight listing screenshots:** [`mobile/app-store/README.md`](../mobile/app-store/README.md) — run `npm run app-store:screenshots` to regenerate iPhone, iPad, and Mac marketing frames.
+
 | Layer | Role |
 | --- | --- |
 | `mobile/` | Capacitor iOS app (`app.phonehome.ios`) |

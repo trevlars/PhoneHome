@@ -11,6 +11,8 @@ coverage/
 data/
 lab/runtime/
 *.log
+mobile/app-store/screenshots/_raw/
+docs/screenshots/_raw/
 .vscode/
 .idea/
 

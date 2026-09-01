@@ -1,0 +1,11 @@
+First TestFlight build.
+
+Please sign in with the review Mothership URL and credentials provided in App Review Notes.
+
+Focus areas:
+• Speed-dial softphone and Parent → Quiet Time / Timeout
+• Invite flow (6-digit code) between two households on the same Mothership
+• Optional Parent → This phone → Answer from lock screen (CallKit — off by default)
+• Mic permission on first call; Face ID sign-in is optional
+
+Known: killed-app incoming call delivery is less reliable without CallKit; in-app calling works once the app is open.

@@ -10,6 +10,8 @@ Native shell around the existing softphone for **CallKit + PushKit**.
   <img src="../docs/screenshots/03-phone-pad.png" width="240" alt="PhoneHome speed dial on iOS" />
 </p>
 
+**App Store listing assets:** [`app-store/README.md`](app-store/README.md) — screenshots (`npm run app-store:screenshots`) and metadata for App Store Connect.
+
 See **[`docs/native-ios-callkit.md`](../docs/native-ios-callkit.md)** for Apple setup and server env.
 
 ## Build from source

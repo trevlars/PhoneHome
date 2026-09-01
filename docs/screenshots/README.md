@@ -16,7 +16,8 @@ Marketing and UI captures for the GitHub README.
 ## Regenerate UI shots
 
 ```bash
-npm run screenshots
+npm run screenshots              # README + App Store / TestFlight frames
+npm run app-store:screenshots    # App Store only (mobile/app-store/screenshots/)
 ```
 
 Requires Playwright Chromium (`npx playwright install chromium` on first run). Lifestyle/product images are copied from `web/public/assets/`.

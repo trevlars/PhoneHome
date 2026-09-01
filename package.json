@@ -18,7 +18,8 @@
     "phonehome:analog": "bash deploy/setup-analog.sh",
     "lab": "npm run build -w web && npm run start -w server",
     "test": "npm run test -w server",
-    "screenshots": "npm run build -w web && node scripts/capture-readme-screenshots.mjs"
+    "screenshots": "npm run build -w web && node scripts/capture-readme-screenshots.mjs && node scripts/generate-app-store-screenshots.mjs",
+    "app-store:screenshots": "npm run build -w web && node scripts/generate-app-store-screenshots.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -1,0 +1,4 @@
+• iPhone, iPad, and Apple silicon Mac TestFlight build
+• Sign in with your Mothership HTTPS URL + household account
+• Speed dial, Parent controls, invites, and optional lock-screen answer (CallKit opt-in)
+• Privacy pillar: encrypted voice paths; no call recording
