@@ -1,8 +1,8 @@
 # Self-host your Mothership
 
-Run your circle’s **Mothership** — the always-on PhoneHome server at home (like a private Minecraft realm for family voice). You keep household data on your box; softphone call audio stays encrypted peer-to-peer (WebRTC). Analog (HT801) adds FreePBX on your LAN or a nearby VM.
+Run your circle’s **Mothership** — the always-on PhoneHome server at home. Many **Pods** (families) can share one Mothership; each parent curates **Circles** for their kids.
 
-**Terms:** [`glossary.md`](./glossary.md) — *PhoneHome* = product, *Mothership* = your server.
+**Terms:** [`glossary.md`](./glossary.md) — Mothership → Pod → Circle.
 
 **Privacy pillar:** [`privacy-security.md`](./privacy-security.md) — no cleartext public SIP, HTTPS required off-LAN.
 
@@ -14,7 +14,7 @@ Run your circle’s **Mothership** — the always-on PhoneHome server at home (l
 | **Raspberry Pi / NUC / mini PC** | Low-power 24/7 Mothership |
 | **Proxmox LXC / VPS** | Power users; see also [`hosting.md`](./hosting.md) (lab notes) |
 
-Each family (or friend group) runs **one Mothership** per circle. Cousins join with your **HTTPS URL + invite code** — no VPN.
+Each family (or friend group) joins as its own **Pod** on one Mothership. Cousins use your **HTTPS URL + invite code** — no VPN, no second server.
 
 ## What you install
 
@@ -202,6 +202,21 @@ Templates: `deploy/phonehome.env.example`, `deploy/bridge.env.example`.
 5. Re-share invites — old LAN-only bookmarks won’t carry sessions.
 
 No hardcoded hostnames in the app — everything reads from your env files.
+
+---
+
+## Mothership size (defaults)
+
+Designed for extended family — not open server farms. Defaults (override in `phonehome.env`):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MOTHERSHIP_MAX_PODS` | 50 | Hard cap on Pods (households) |
+| `MOTHERSHIP_WARN_PODS` | 25 | Parents see a warning in the app |
+| `MOTHERSHIP_MAX_LINES` | 250 | Hard cap on lines (softphones + ATAs) |
+| `MOTHERSHIP_WARN_LINES` | 150 | Warning threshold |
+
+When full, invite redemption fails with a clear message — start another Mothership for a new branch of the family.
 
 ---
 

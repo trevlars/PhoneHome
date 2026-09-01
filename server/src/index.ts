@@ -141,7 +141,7 @@ import {
   type AtaStatusKind,
   type BridgeSipStatus,
 } from "./ataStatus.js";
-import { freepbxSyncConfigured, syncAtaSipSecretToFreepbx } from "./freepbxSync.js";
+import { getMothershipStats } from "./mothershipLimits.js";
 import { openDb, type Household, type LineType } from "./db.js";
 import {
   deleteIosVoipTokensForLine,
@@ -323,8 +323,9 @@ app.get("/api/health", (_req, res) => {
     service: "phonehome",
     stage: 1,
     publicBaseUrl: (process.env.PUBLIC_BASE_URL || "").trim().replace(/\/$/, "") || null,
-    /** True when this host (home hub) can attempt HT801 LAN push — not the parent app client. */
+    /** True when this Mothership can attempt HT801 LAN push — not the parent app client. */
     ataLanPush: ataLanPushEnabled(),
+    mothership: getMothershipStats(db),
   });
 });
 

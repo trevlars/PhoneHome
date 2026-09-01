@@ -109,6 +109,7 @@ SIP_SERVER=${SIP_SERVER}
 BRIDGE_URL=http://127.0.0.1:8790
 ATA_LAN_PUSH=${ATA_LAN_PUSH}
 ${TURN_BLOCK}
+# SIP_TLS_VALIDATE_CERT=0   # escape hatch for raw LAN IP only — not for production FQDN
 EOF
 
 if [[ -f "$BRIDGE_FILE" ]] && grep -q '^BRIDGE_SECRET=' "$BRIDGE_FILE"; then

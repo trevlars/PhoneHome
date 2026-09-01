@@ -704,6 +704,8 @@ const state = {
   user: null,
   households: [],
   directory: [],
+  /** Mothership capacity from /api/me (Pods, lines, limits). */
+  mothership: null,
   activeLineId: localStorage.getItem("kl_line") || "",
   /** Profile/controls edit target — does not change softphone WS registration. */
   editLineId: "",
@@ -1429,6 +1431,7 @@ async function refresh() {
   state.user = data.user;
   state.households = data.households || [];
   state.directory = data.directory || [];
+  state.mothership = data.mothership || null;
   const lines = allAccessibleLines();
   const kidLineId = preferredChildLineId();
   const activeOk = lines.some((l) => l.id === state.activeLineId);
@@ -3868,7 +3871,7 @@ function startAdultFamilyRoomIvr() {
         ? "No FamilyRoom available"
         : isKidExperience()
           ? "Ask a parent to approve you for FamilyRoom"
-          : "Ask the household admin to approve you for FamilyRoom",
+          : "Ask your Pod admin to approve you for FamilyRoom",
       anyApproved ? "info" : "warn"
     );
     return;
@@ -4934,7 +4937,7 @@ function renderParentCirclesBlock(hh, kidLines) {
       : "";
   return `<div class="parent-field" style="margin-top:0;padding-top:0;border-top:0">
     <h3 class="parent-subhead">Your circle</h3>
-    <p class="tiny">Your circle is <strong>your</strong> list of people — not a shared phone book. The other parent has their own list. Kids only see the lists you attach below.</p>
+    <p class="tiny"><strong>Mothership</strong> = the shared server. <strong>Pod</strong> = your family on it. <strong>Circle</strong> = <em>your</em> approved people for your kids — not a shared phone book. The other parent in your Pod has their own Circle.</p>
     <label>Circle name</label>
     <input id="sphere-name" maxlength="64" value="${name.replace(/"/g, "&quot;")}" placeholder="e.g. Trevor’s people" />
     <p class="tiny parent-inline-meta">${memberCount} ${memberCount === 1 ? "person" : "people"} · invite first, then both families approve</p>
@@ -5032,7 +5035,7 @@ function renderTreeHouseParentBlock(hh) {
       const aName = String(a.name || "").replace(/</g, "");
       const bName = String(b.name || "").replace(/</g, "");
       talkRows += `<li class="familyroom-approve-row${bothHouseKids ? " is-always" : ""}">
-        <span>${aName} ↔ ${bName}${bothHouseKids ? `<small class="tiny"> · household kids</small>` : ""}</span>
+        <span>${aName} ↔ ${bName}${bothHouseKids ? `<small class="tiny"> · kids in this Pod</small>` : ""}</span>
         ${
           bothHouseKids
             ? `<span class="tiny familyroom-locked-chip">Always talk</span>`
@@ -5097,7 +5100,7 @@ function renderTreeHouseParentBlock(hh) {
 /** Household admin → FamilyRoom (# IVR): approve kids and adults. */
 function renderAdultFamilyRoomParentBlock(hh) {
   if (!isHouseholdAdmin(hh)) {
-    return `<p class="tiny">Only the household admin can choose who may enter FamilyRoom (the <strong>#</strong> button).</p>`;
+    return `<p class="tiny">Only the Pod admin can choose who may enter FamilyRoom (the <strong>#</strong> button).</p>`;
   }
   const approved = adultFamilyRoomApprovedIds(hh);
   const candidates = [];
@@ -10508,7 +10511,7 @@ function renderHost() {
       ${dots(3, Math.min(step, 2))}
       <div class="auth-head join-head">
         <h1 class="auth-title">Set up your network</h1>
-        <p class="auth-lede">${needsAuth ? "Enter the Mothership setup code (from whoever runs the server)." : needsFamily ? "Name your household." : "Name this phone’s line."}</p>
+        <p class="auth-lede">${needsAuth ? "Enter the Mothership setup code (from whoever runs the server)." : needsFamily ? "Name your Pod — your family on this Mothership." : "Name this phone’s line."}</p>
       </div>
       <div class="sheet auth-sheet">
         ${flashHtml("inline")}
@@ -10531,10 +10534,10 @@ function renderHost() {
               ? `
           <form id="host-hh-form" class="auth-form">
             <div class="auth-field">
-              <label for="hh-name">Family name</label>
+              <label for="hh-name">Pod name</label>
               <input id="hh-name" placeholder="e.g. Carlston" enterkeyhint="go" />
             </div>
-            <button class="primary btn-block" type="submit" id="create-hh">Create household</button>
+            <button class="primary btn-block" type="submit" id="create-hh">Create your Pod</button>
           </form>`
               : needsLine
                 ? `
@@ -14302,7 +14305,21 @@ function renderGrandparentSettings() {
   }
 }
 
-function renderControls() {
+function mothershipCapacityBanner() {
+  const m = state.mothership;
+  if (!m || state.childMode) return "";
+  if (m.atPodLimit) {
+    return `<p class="flash warn" role="status">This Mothership is full (${m.podCount}/${m.maxPods} Pods). New families need another Mothership.</p>`;
+  }
+  if (m.warnPodsReached || m.warnLinesReached) {
+    const bits = [];
+    if (m.warnPodsReached) bits.push(`${m.podCount} Pods`);
+    if (m.warnLinesReached) bits.push(`${m.lineCount} lines`);
+    return `<p class="flash warn tiny" role="status">Large Mothership (${bits.join(", ")}). For distant branches, consider starting a second Mothership.</p>`;
+  }
+  return "";
+}
+
   if (isGrandparentExperience() && !state._forceFullParentSettings) {
     renderGrandparentSettings();
     return;
@@ -14330,7 +14347,8 @@ function renderControls() {
     ? `<span class="parent-summary-chip"><strong>${kidLines.length}</strong><span>kid${kidLines.length === 1 ? "" : "s"}</span></span>`
     : `<span class="parent-summary-chip parent-summary-chip-warn"><strong>0</strong><span>kids yet</span></span>`;
   setAppPage(`
-      <p class="lede tight">Timeout and Quiet Time stay up top. Then kids, people, rooms, household rules, and this phone.</p>
+      <p class="lede tight">Timeout and Quiet Time stay up top. Then kids, people, rooms, Pod rules, and this phone.</p>
+      ${mothershipCapacityBanner()}
       ${liveCallBannerHtml(hh)}
 
       <div class="parent-search">

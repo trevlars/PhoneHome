@@ -27,6 +27,11 @@ import {
   spokenFor,
   type UnavailableVoice,
 } from "./unavailableVoice.js";
+import {
+  assertMothershipCanAddLine,
+  assertMothershipCanAddPod,
+  getMothershipStats,
+} from "./mothershipLimits.js";
 
 const MIN_PASSWORD_LEN = 8;
 const SCRYPT_N = 16384;
@@ -1374,7 +1379,7 @@ function publicChildUserForLine(db: Database.Database, line: Line): PublicUser |
 
 const RINGER_STYLES = new Set(["classic", "chirp", "modern", "chime", "urgent"]);
 
-// —— Spheres (one circle per parent) ——————————————————————————————————————
+// —— Spheres (parent Circles — one per parent in a Pod) ————————————————————
 
 /** Create the parent’s sphere if missing (idempotent). */
 export function ensureSphereForParent(db: Database.Database, userId: string): Sphere {
@@ -1728,6 +1733,7 @@ export function canViewerSeeLine(
 }
 
 export function createHousehold(db: Database.Database, userId: string, name: string): Household {
+  assertMothershipCanAddPod(db);
   const household: Household = {
     id: newId("hh"),
     name: name.trim() || "Family",
@@ -1771,6 +1777,7 @@ export function addLine(
   type: LineType = "softphone",
   opts?: { mode?: "parent" | "child"; child_label?: string | null }
 ): Line {
+  assertMothershipCanAddLine(db);
   const mode = opts?.mode === "child" ? "child" : "parent";
   let child_label = opts?.child_label === undefined ? null : opts.child_label;
   if (child_label === "") child_label = null;
@@ -4414,7 +4421,7 @@ export function householdSnapshot(db: Database.Database, userId: string) {
     return a.access === "member" ? -1 : 1;
   });
 
-  return { households, directory };
+  return { households, directory, mothership: getMothershipStats(db) };
 }
 
 // —— ATA / HT801 bindings ————————————————————————————————————————————————

@@ -1,6 +1,6 @@
 # PhoneHome
 
-Open, Digits-inspired private family voice network — **PhoneHome**: the home phone, reborn. **Stage 1** ships now: each circle runs one **Mothership** (the always-on home server) plus mobile-friendly **web softphones** with households, invites, allowlists, quiet hours, kill switch, and encrypted WebRTC calls.
+Open, Digits-inspired private family voice network — **PhoneHome**: the home phone, reborn. Each extended family runs one **Mothership** (server); each family joins as a **Pod**; parents curate **Circles** for their kids.
 
 **iOS CallKit shell (in progress):** Capacitor app in [`mobile/`](mobile/) — see [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
 
@@ -79,8 +79,10 @@ Share that URL + an invite code. The Mothership setup code is printed on first b
 See **[`docs/glossary.md`](docs/glossary.md)** for full definitions.
 
 - **PhoneHome** = the product (app + brand).
-- **Mothership** = your circle’s always-on server (one per circle).
-- **Leaves** = softphones now; ATA / BT / Hub hardware later.
+- **Mothership** = always-on server (one per extended-family network).
+- **Pod** = one family’s parent cluster on that Mothership.
+- **Circle** = a parent’s kid-approved contact sphere.
+- **Leaves** = softphones and analog phones — not the server.
 - **Voice** = encrypted WebRTC (DTLS-SRTP); analog = SIP TLS + SRTP; the Mothership brokers ring/setup only — see privacy pillar.
 - **GitHub:** [trevlars](https://github.com/trevlars)
 

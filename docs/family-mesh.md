@@ -2,11 +2,11 @@
 
 ## Stage 1 (one Mothership) — shipped
 
-One **Mothership** per circle; all softphones and analog lines are leaves on it.
+One **Mothership** hosts many **Pods** (invited families). Each Pod’s parents manage their own **Circles** (approved contacts for their kids).
 
 1. Parent A creates invite → 6-digit code (48h, single-use).  
-2. Parent B redeems → new household on the **same** Mothership.  
-3. Both allowlist lines.  
+2. Parent B redeems → new **Pod** (household) on the **same** Mothership.  
+3. Both allowlist lines (within their Circles).  
 4. Call: WebRTC offer via `/ws`; STUN; media peer-to-peer.  
 5. **No VPN** for Parent B.
 

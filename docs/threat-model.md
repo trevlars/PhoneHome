@@ -12,7 +12,7 @@
 | Stolen ATA / Hub | Physical access ≈ landline risk; rotate SIP secret; change admin password on setup |
 | Stolen / unlocked iPhone | Session + saved password live in the **device Keychain** (not iCloud). Face ID is required to read the password. Treat a stolen unlocked phone like a stolen house key. |
 | Invited family abuse | Per-line allowlist; revoke; quiet hours; kill switch |
-| Bad-actor adult harvesting kids’ friends | **Parent circles** (one per parent); invite-first add; no global kid directory; directory/presence scoped to **viewer’s own circle** (not co-members of a host’s circle); kids cannot approve/add contacts |
+| Bad-actor adult harvesting kids’ friends | **Parent Circles** (one per parent); invite-first add; no global kid directory; directory/presence scoped to **viewer’s own Circle** (not everyone on the Mothership); kids cannot approve/add contacts |
 | Soft-hub phone away | Explicit offline state |
 | Silent surveillance feature creep | TreeHouse parent listen-only is **announced room-wide** + child-mirrored mix (`docs/family-mesh.md`, `listen-in-future.md`). No silent god-mix. 1:1 parallel pickup still future/opt-in/audited |
 | Weak or factory ATA passwords | Push-provision sets strong admin + generated SIP secret |
