@@ -9,7 +9,12 @@
 #   SIP_HOST=y5876647.eero.online FREEPBX_CT=121 ./deploy/sync-phonehome-sip-cert.sh
 set -euo pipefail
 
-SIP_HOST="${SIP_HOST:-y5876647.eero.online}"
+SIP_HOST="${SIP_HOST:-}"
+if [[ -z "$SIP_HOST" ]]; then
+  echo "SIP_HOST is required (your PUBLIC_BASE_URL / SIP_PUBLIC_HOST hostname)" >&2
+  echo "Example: SIP_HOST=phonehome.example.com $0" >&2
+  exit 1
+fi
 FREEPBX_CT="${FREEPBX_CT:-121}"
 CADDY_CERT_DIR="${CADDY_CERT_DIR:-/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${SIP_HOST}}"
 SRC_CRT="${CADDY_CERT_DIR}/${SIP_HOST}.crt"

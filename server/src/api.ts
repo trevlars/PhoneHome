@@ -12,6 +12,7 @@ import {
   Invite,
   Line,
   LineType,
+  Sphere,
   User,
   createSession,
   getSessionUser,
@@ -132,6 +133,10 @@ export type PublicUser = {
   username: string | null;
   has_password: boolean;
   created_at: string;
+  /** Mom / Dad label preference for parent lines; null = use display name. */
+  parent_title?: string | null;
+  /** parent | grandparent — drives Settings chrome for relatives. */
+  profile_role?: string | null;
   /** Dedicated kid login / child-only account — never parent setup UX. */
   is_child_only?: boolean;
 };
@@ -143,6 +148,8 @@ export function publicUser(user: User, opts?: { isChildOnly?: boolean }): Public
     username: user.username ?? null,
     has_password: Boolean(user.password_hash),
     created_at: user.created_at,
+    parent_title: user.parent_title ?? null,
+    profile_role: user.profile_role ?? null,
   };
   if (opts?.isChildOnly !== undefined) out.is_child_only = opts.isChildOnly;
   return out;
@@ -153,8 +160,8 @@ function insertUser(
   user: User
 ): void {
   db.prepare(
-    `INSERT INTO users (id, display_name, username, password_hash, setup_code_hash, created_at)
-     VALUES (@id, @display_name, @username, @password_hash, @setup_code_hash, @created_at)`
+    `INSERT INTO users (id, display_name, username, password_hash, setup_code_hash, parent_title, profile_role, created_at)
+     VALUES (@id, @display_name, @username, @password_hash, @setup_code_hash, @parent_title, @profile_role, @created_at)`
   ).run(user);
 }
 
@@ -174,6 +181,8 @@ export function bootstrapAdmin(db: Database.Database): { user: User; setupCode: 
     username: null,
     password_hash: null,
     setup_code_hash: hashCode(setupCode),
+    parent_title: null,
+    profile_role: null,
     created_at: nowIso(),
   };
   insertUser(db, user);
@@ -217,7 +226,7 @@ export function reissueSetupCode(db: Database.Database, userId: string): string 
 export function registerParent(
   db: Database.Database,
   displayName: string,
-  opts: { username?: string; password?: string } = {}
+  opts: { username?: string; password?: string; profile_role?: ProfileRole } = {}
 ): { user: User; setupCode: string; sessionId: string } {
   const username = opts.username
     ? validateUsername(opts.username)
@@ -232,6 +241,8 @@ export function registerParent(
     username,
     password_hash: hashPassword(password),
     setup_code_hash: hashCode(setupCode),
+    parent_title: null,
+    profile_role: opts.profile_role ?? null,
     created_at: nowIso(),
   };
   insertUser(db, user);
@@ -332,6 +343,174 @@ export function isChildOnlyAccount(db: Database.Database, userId: string): boole
   return !ownsParent;
 }
 
+/** App Store / TestFlight review login — hard-locked to one contact forever. */
+export const TEST_REVIEW_USERNAME = "test";
+/** Only contact the review account may see or call — and the only person who may see Test. */
+export const TEST_REVIEW_CONTACT_USERNAME = "trevor";
+
+export function isTestReviewAccount(db: Database.Database, userId: string): boolean {
+  const u = db.prepare(`SELECT username FROM users WHERE id = ?`).get(userId) as
+    | { username: string | null }
+    | undefined;
+  return Boolean(u?.username && u.username.toLowerCase() === TEST_REVIEW_USERNAME);
+}
+
+export function isTestReviewContactAccount(db: Database.Database, userId: string): boolean {
+  const u = db.prepare(`SELECT username FROM users WHERE id = ?`).get(userId) as
+    | { username: string | null }
+    | undefined;
+  return Boolean(u?.username && u.username.toLowerCase() === TEST_REVIEW_CONTACT_USERNAME);
+}
+
+function testReviewUserIdForLine(db: Database.Database, line: Line): string | null {
+  if (line.owner_user_id && isTestReviewAccount(db, line.owner_user_id)) return line.owner_user_id;
+  if (line.child_user_id && isTestReviewAccount(db, line.child_user_id)) return line.child_user_id;
+  return null;
+}
+
+export function isTestReviewLineId(db: Database.Database, lineId: string): boolean {
+  const line = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line | undefined;
+  return Boolean(line && testReviewUserIdForLine(db, line));
+}
+
+/** Own lines + every line owned by username `trevor`. Nothing else — ever. */
+export function testReviewAllowedLineIds(db: Database.Database, testUserId: string): Set<string> {
+  const ids = new Set<string>();
+  for (const row of db
+    .prepare(`SELECT id FROM lines WHERE owner_user_id = ? OR child_user_id = ?`)
+    .all(testUserId, testUserId) as { id: string }[]) {
+    ids.add(row.id);
+  }
+  const trevor = db
+    .prepare(`SELECT id FROM users WHERE lower(IFNULL(username, '')) = ?`)
+    .get(TEST_REVIEW_CONTACT_USERNAME) as { id: string } | undefined;
+  if (trevor) {
+    for (const row of db
+      .prepare(`SELECT id FROM lines WHERE owner_user_id = ?`)
+      .all(trevor.id) as { id: string }[]) {
+      ids.add(row.id);
+    }
+  }
+  return ids;
+}
+
+function listTestReviewLineIds(db: Database.Database): string[] {
+  const testUsers = db
+    .prepare(`SELECT id FROM users WHERE lower(IFNULL(username, '')) = ?`)
+    .all(TEST_REVIEW_USERNAME) as { id: string }[];
+  const ids: string[] = [];
+  for (const u of testUsers) {
+    for (const row of db
+      .prepare(`SELECT id FROM lines WHERE owner_user_id = ? OR child_user_id = ?`)
+      .all(u.id, u.id) as { id: string }[]) {
+      ids.push(row.id);
+    }
+  }
+  return ids;
+}
+
+/** Review softphone is invisible to everyone except Test and Trevor. */
+export function canViewerAccessTestReviewLine(
+  db: Database.Database,
+  viewerUserId: string,
+  targetLineId: string
+): boolean {
+  if (!isTestReviewLineId(db, targetLineId)) return true;
+  return isTestReviewAccount(db, viewerUserId) || isTestReviewContactAccount(db, viewerUserId);
+}
+
+export function assertTestReviewMayContactLine(
+  db: Database.Database,
+  userId: string,
+  lineId: string
+): void {
+  if (isTestReviewAccount(db, userId)) {
+    if (!testReviewAllowedLineIds(db, userId).has(lineId)) {
+      throw new Error("Test account may only contact Trevor");
+    }
+    return;
+  }
+  if (isTestReviewLineId(db, lineId) && !isTestReviewContactAccount(db, userId)) {
+    throw new Error("Test account is only available to Trevor");
+  }
+}
+
+/**
+ * Self-heal bidirectional isolation:
+ * - Test’s allowlist/circle → Trevor + self only
+ * - Test’s line stripped from every other family’s allowlist/circle (Trevor kept)
+ */
+export function scrubTestReviewVisibility(db: Database.Database, userId: string): void {
+  if (isTestReviewAccount(db, userId)) {
+    const allowed = testReviewAllowedLineIds(db, userId);
+    const hhs = db
+      .prepare(`SELECT household_id FROM household_members WHERE user_id = ?`)
+      .all(userId) as { household_id: string }[];
+    for (const { household_id } of hhs) {
+      const rows = db
+        .prepare(`SELECT id, target_line_id FROM allowlist WHERE household_id = ?`)
+        .all(household_id) as { id: string; target_line_id: string }[];
+      for (const r of rows) {
+        if (!allowed.has(r.target_line_id)) {
+          db.prepare(`DELETE FROM allowlist WHERE id = ?`).run(r.id);
+        }
+      }
+    }
+    const sphere = getSphereByOwner(db, userId);
+    if (sphere) {
+      const members = db
+        .prepare(`SELECT line_id FROM sphere_members WHERE sphere_id = ?`)
+        .all(sphere.id) as { line_id: string }[];
+      for (const m of members) {
+        if (!allowed.has(m.line_id)) {
+          db.prepare(`DELETE FROM sphere_members WHERE sphere_id = ? AND line_id = ?`).run(
+            sphere.id,
+            m.line_id
+          );
+        }
+      }
+    }
+  }
+
+  for (const testLineId of listTestReviewLineIds(db)) {
+    const sphereRows = db
+      .prepare(
+        `SELECT sm.sphere_id, s.owner_user_id
+         FROM sphere_members sm
+         JOIN spheres s ON s.id = sm.sphere_id
+         WHERE sm.line_id = ?`
+      )
+      .all(testLineId) as { sphere_id: string; owner_user_id: string }[];
+    for (const row of sphereRows) {
+      // Never attach the review softphone to a parent circle (kids inherit those).
+      // Only Test’s own circle may list it.
+      if (isTestReviewAccount(db, row.owner_user_id)) continue;
+      db.prepare(`DELETE FROM sphere_members WHERE sphere_id = ? AND line_id = ?`).run(
+        row.sphere_id,
+        testLineId
+      );
+    }
+
+    const allowRows = db
+      .prepare(
+        `SELECT a.id, h.owner_user_id
+         FROM allowlist a
+         JOIN households h ON h.id = a.household_id
+         WHERE a.target_line_id = ?`
+      )
+      .all(testLineId) as { id: string; owner_user_id: string }[];
+    for (const row of allowRows) {
+      if (
+        isTestReviewAccount(db, row.owner_user_id) ||
+        isTestReviewContactAccount(db, row.owner_user_id)
+      ) {
+        continue;
+      }
+      db.prepare(`DELETE FROM allowlist WHERE id = ?`).run(row.id);
+    }
+  }
+}
+
 /** Parents/guardians on the household — never child-only accounts. */
 export function canCreateHouseholdInvite(
   db: Database.Database,
@@ -350,12 +529,13 @@ export function canManageChild(db: Database.Database, userId: string, lineId: st
   return userInHousehold(db, line.household_id, userId);
 }
 
-/** Household allowlist/rules: members OR any guardian of a child line in that household. */
+/** Household allowlist/rules/circles: parents & co-parent guardians — never kid accounts. */
 export function canManageHouseholdChildState(
   db: Database.Database,
   userId: string,
   householdId: string
 ): boolean {
+  if (isChildOnlyAccount(db, userId)) return false;
   if (userInHousehold(db, householdId, userId)) return true;
   return Boolean(
     db
@@ -366,6 +546,16 @@ export function canManageHouseholdChildState(
       )
       .get(householdId, userId)
   );
+}
+
+/**
+ * Parent-only gate for invite / approve / circle membership mutations.
+ * Throws if the actor is a kid softphone / child-login account.
+ */
+export function assertParentContactAdmin(db: Database.Database, userId: string): void {
+  if (isChildOnlyAccount(db, userId)) {
+    throw new Error("Only parents can manage contacts and circles");
+  }
 }
 
 export function ensureGuardian(db: Database.Database, lineId: string, userId: string): ChildGuardian {
@@ -405,7 +595,7 @@ export function addGuardianByUsername(
   if (!canManageChild(db, actorUserId, lineId)) throw new Error("Not authorized to manage this child line");
   const line = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line | undefined;
   if (!line) throw new Error("Line not found");
-  if ((line.mode || "parent") !== "child") throw new Error("Line must be in Child mode first");
+  if ((line.mode || "parent") !== "child") throw new Error("Pick a kid line — add a kid under Kids first");
 
   const username = validateUsername(usernameRaw);
   const target = findUserByUsername(db, username);
@@ -450,7 +640,7 @@ export function createGuardianInvite(
   if (!canManageChild(db, actorUserId, lineId)) throw new Error("Not authorized to manage this child line");
   const line = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line | undefined;
   if (!line) throw new Error("Line not found");
-  if ((line.mode || "parent") !== "child") throw new Error("Line must be in Child mode first");
+  if ((line.mode || "parent") !== "child") throw new Error("Pick a kid line — add a kid under Kids first");
 
   const invite: GuardianInvite = {
     id: newId("ginv"),
@@ -473,6 +663,7 @@ export function redeemGuardianInvite(
   userId: string,
   codeRaw: string
 ): { line: Line; guardians: PublicGuardian[] } {
+  assertParentContactAdmin(db, userId);
   const code = String(codeRaw || "").trim();
   if (!/^\d{6}$/.test(code)) throw new Error("Enter the 6-digit guardian invite code");
   const invite = db.prepare(`SELECT * FROM guardian_invites WHERE code = ?`).get(code) as
@@ -487,6 +678,15 @@ export function redeemGuardianInvite(
   if ((line.mode || "parent") !== "child") throw new Error("Line is no longer in Child mode");
 
   ensureGuardian(db, line.id, userId);
+  // Co-parents should share the same household UI (contacts, Quiet Time, etc.).
+  if (!userInHousehold(db, line.household_id, userId)) {
+    db.prepare(
+      `INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, 'member')`
+    ).run(line.household_id, userId);
+  }
+  const coSphere = ensureSphereForParent(db, userId);
+  // New co-parent’s circle is available on this kid’s pad until parents narrow it.
+  grantLineSphereAccess(db, line.id, coSphere.id);
   db.prepare(`UPDATE guardian_invites SET redeemed_by_user_id = ? WHERE id = ?`).run(userId, invite.id);
   return { line: normalizeLine(line), guardians: listGuardians(db, line.id) };
 }
@@ -501,7 +701,7 @@ export function setChildLineLogin(
   if (!canManageChild(db, actorUserId, lineId)) throw new Error("Not authorized to manage this child line");
   const line = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line | undefined;
   if (!line) throw new Error("Line not found");
-  if ((line.mode || "parent") !== "child") throw new Error("Line must be in Child mode first");
+  if ((line.mode || "parent") !== "child") throw new Error("Pick a kid line — add a kid under Kids first");
 
   const username = validateUsername(opts.username);
   const password = validatePassword(opts.password);
@@ -536,6 +736,8 @@ export function setChildLineLogin(
       username,
       password_hash: hashPassword(password),
       setup_code_hash: null,
+      parent_title: null,
+      profile_role: null,
       created_at: nowIso(),
     };
     insertUser(db, childUser);
@@ -580,6 +782,348 @@ export function resetChildPasswordByGuardian(
     childUser: publicUser(refreshed),
     message: `Password reset by parent for ${refreshed.username}`,
   };
+}
+
+export type ProvisionedRelativeRow = {
+  id: string;
+  from_household_id: string;
+  relative_user_id: string;
+  relative_line_id: string;
+  relative_household_id: string;
+  display_label: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export type PublicProvisionedRelative = {
+  id: string;
+  display_name: string;
+  username: string | null;
+  display_label: string | null;
+  household_name: string;
+  line_id: string;
+  household_id: string;
+  profile_role: ProfileRole;
+  created_at: string;
+  kid_line_ids: string[];
+};
+
+function publicProvisionedRelative(
+  db: Database.Database,
+  row: ProvisionedRelativeRow,
+  fromHouseholdId: string
+): PublicProvisionedRelative | null {
+  const user = db.prepare(`SELECT * FROM users WHERE id = ?`).get(row.relative_user_id) as
+    | User
+    | undefined;
+  const hh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(row.relative_household_id) as
+    | Household
+    | undefined;
+  if (!user || !hh) return null;
+  const kidRows = db
+    .prepare(
+      `SELECT l.id FROM lines l
+       JOIN allowlist a ON a.target_line_id = l.id
+       WHERE l.household_id = ? AND l.mode = 'child' AND a.household_id = ?`
+    )
+    .all(fromHouseholdId, row.relative_household_id) as { id: string }[];
+  return {
+    id: row.id,
+    display_name: user.display_name,
+    username: user.username,
+    display_label: row.display_label,
+    household_name: hh.name,
+    line_id: row.relative_line_id,
+    household_id: row.relative_household_id,
+    profile_role: normalizeProfileRole(user.profile_role),
+    created_at: row.created_at,
+    kid_line_ids: kidRows.map((k) => k.id),
+  };
+}
+
+export function listProvisionedRelatives(
+  db: Database.Database,
+  fromHouseholdId: string
+): PublicProvisionedRelative[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM provisioned_relatives WHERE from_household_id = ? ORDER BY created_at DESC`
+    )
+    .all(fromHouseholdId) as ProvisionedRelativeRow[];
+  return rows
+    .map((r) => publicProvisionedRelative(db, r, fromHouseholdId))
+    .filter((r): r is PublicProvisionedRelative => Boolean(r));
+}
+
+/**
+ * Parent creates a grandparent (or relative) account with username/password,
+ * bridges circles like a family invite, and optionally mutual-allowlists kids.
+ * Password is returned once so the parent can write it down / tell Grandma.
+ */
+export function provisionGrandparent(
+  db: Database.Database,
+  actorUserId: string,
+  fromHouseholdId: string,
+  opts: {
+    displayName: string;
+    username: string;
+    password: string;
+    householdName?: string;
+    label?: string;
+    kidLineIds?: string[];
+  }
+): {
+  relative: PublicProvisionedRelative;
+  username: string;
+  password: string;
+  line: Line;
+  household: Household;
+} {
+  assertParentContactAdmin(db, actorUserId);
+  if (!canCreateHouseholdInvite(db, actorUserId, fromHouseholdId)) {
+    throw new Error("Only parents can set up grandparents for this household");
+  }
+
+  const displayName = String(opts.displayName || "").trim().slice(0, 64) || "Grandparent";
+  const username = validateUsername(opts.username);
+  const password = validatePassword(opts.password);
+  if (isUsernameTaken(db, username)) throw new Error("That username is taken");
+
+  const label =
+    String(opts.label || "").trim().slice(0, 64) ||
+    displayName.replace(/\s+phone$/i, "").trim() ||
+    "Grandparent";
+
+  const user: User = {
+    id: newId("user"),
+    display_name: displayName,
+    username,
+    password_hash: hashPassword(password),
+    setup_code_hash: null,
+    parent_title: null,
+    profile_role: "grandparent",
+    created_at: nowIso(),
+  };
+  insertUser(db, user);
+
+  const hhName =
+    String(opts.householdName || "").trim().slice(0, 64) || `${displayName}'s house`;
+  const household = createHousehold(db, user.id, hhName);
+
+  // Same bridge as redeemInvite: GP household “redeemed” an invite from the parent house.
+  const invite: Invite = {
+    id: newId("inv"),
+    code: String(randomInt(100000, 999999)),
+    from_household_id: fromHouseholdId,
+    created_by: actorUserId,
+    expires_at: new Date(Date.now() + 48 * 3600e3).toISOString(),
+    redeemed_by_household_id: household.id,
+    created_at: nowIso(),
+  };
+  db.prepare(
+    `INSERT INTO invites (id, code, from_household_id, created_by, expires_at, redeemed_by_household_id, created_at)
+     VALUES (@id, @code, @from_household_id, @created_by, @expires_at, @redeemed_by_household_id, @created_at)`
+  ).run(invite);
+
+  const line = addLine(db, household.id, user.id, `${displayName}'s phone`, "softphone", {
+    mode: "parent",
+  });
+
+  const kidIds = [...new Set((opts.kidLineIds || []).filter((id) => typeof id === "string" && id))];
+  addAllowlist(db, fromHouseholdId, line.id, label, {
+    actorUserId,
+    favorite: true,
+  });
+  for (const kidLineId of kidIds) {
+    const kid = db
+      .prepare(`SELECT * FROM lines WHERE id = ? AND household_id = ?`)
+      .get(kidLineId, fromHouseholdId) as Line | undefined;
+    if (!kid || (kid.mode || "parent") !== "child") {
+      throw new Error("Pick a kid from this household");
+    }
+    const kidLabel = kid.child_label || kid.name || "Grandchild";
+    addAllowlist(db, household.id, kid.id, kidLabel, {
+      actorUserId: user.id,
+      favorite: true,
+    });
+  }
+
+  const row: ProvisionedRelativeRow = {
+    id: newId("prov"),
+    from_household_id: fromHouseholdId,
+    relative_user_id: user.id,
+    relative_line_id: line.id,
+    relative_household_id: household.id,
+    display_label: label,
+    created_by: actorUserId,
+    created_at: nowIso(),
+  };
+  db.prepare(
+    `INSERT INTO provisioned_relatives (id, from_household_id, relative_user_id, relative_line_id, relative_household_id, display_label, created_by, created_at)
+     VALUES (@id, @from_household_id, @relative_user_id, @relative_line_id, @relative_household_id, @display_label, @created_by, @created_at)`
+  ).run(row);
+
+  console.log(
+    `[audit] grandparent provisioned by user_id=${actorUserId} relative_user=${username} from_hh=${fromHouseholdId} at ${nowIso()}`
+  );
+
+  const relative = publicProvisionedRelative(db, row, fromHouseholdId);
+  if (!relative) throw new Error("Could not create grandparent account");
+
+  return {
+    relative,
+    username,
+    password,
+    line: normalizeLine(line),
+    household,
+  };
+}
+
+/** Parent resets login password for a relative they provisioned. */
+export function resetProvisionedRelativePassword(
+  db: Database.Database,
+  actorUserId: string,
+  fromHouseholdId: string,
+  relativeId: string,
+  newPassword: string
+): { relative: PublicProvisionedRelative; message: string } {
+  assertParentContactAdmin(db, actorUserId);
+  if (!canCreateHouseholdInvite(db, actorUserId, fromHouseholdId)) {
+    throw new Error("Only parents can reset this login");
+  }
+  const row = db
+    .prepare(`SELECT * FROM provisioned_relatives WHERE id = ? AND from_household_id = ?`)
+    .get(relativeId, fromHouseholdId) as ProvisionedRelativeRow | undefined;
+  if (!row) throw new Error("Grandparent setup not found");
+  const password = validatePassword(newPassword);
+  db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(
+    hashPassword(password),
+    row.relative_user_id
+  );
+  const relative = publicProvisionedRelative(db, row, fromHouseholdId);
+  if (!relative) throw new Error("Grandparent account missing");
+  console.log(
+    `[audit] grandparent password reset by user_id=${actorUserId} relative_user=${relative.username} at ${nowIso()}`
+  );
+  return {
+    relative,
+    message: `Password updated for ${relative.username || relative.display_name}`,
+  };
+}
+
+/** Parent can rename display / nickname / username for a provisioned relative. */
+export function updateProvisionedRelativeLogin(
+  db: Database.Database,
+  actorUserId: string,
+  fromHouseholdId: string,
+  relativeId: string,
+  opts: {
+    displayName?: string;
+    username?: string;
+    label?: string;
+    password?: string;
+    /** Replace which kids this grandparent can call (mutual allowlist on their house). */
+    kidLineIds?: string[];
+  }
+): { relative: PublicProvisionedRelative; password?: string } {
+  assertParentContactAdmin(db, actorUserId);
+  if (!canCreateHouseholdInvite(db, actorUserId, fromHouseholdId)) {
+    throw new Error("Only parents can update this login");
+  }
+  const row = db
+    .prepare(`SELECT * FROM provisioned_relatives WHERE id = ? AND from_household_id = ?`)
+    .get(relativeId, fromHouseholdId) as ProvisionedRelativeRow | undefined;
+  if (!row) throw new Error("Grandparent setup not found");
+  const user = db.prepare(`SELECT * FROM users WHERE id = ?`).get(row.relative_user_id) as
+    | User
+    | undefined;
+  if (!user) throw new Error("Grandparent account missing");
+
+  let username = user.username;
+  if (opts.username !== undefined) {
+    username = validateUsername(opts.username);
+    if (isUsernameTaken(db, username, user.id)) throw new Error("That username is taken");
+  }
+  const displayName =
+    opts.displayName !== undefined
+      ? String(opts.displayName || "").trim().slice(0, 64) || user.display_name
+      : user.display_name;
+  let passwordOut: string | undefined;
+  if (opts.password !== undefined && String(opts.password).length > 0) {
+    passwordOut = validatePassword(opts.password);
+    db.prepare(`UPDATE users SET username = ?, password_hash = ?, display_name = ? WHERE id = ?`).run(
+      username,
+      hashPassword(passwordOut),
+      displayName,
+      user.id
+    );
+  } else {
+    db.prepare(`UPDATE users SET username = ?, display_name = ? WHERE id = ?`).run(
+      username,
+      displayName,
+      user.id
+    );
+  }
+
+  if (opts.label !== undefined) {
+    const label = String(opts.label || "").trim().slice(0, 64) || null;
+    db.prepare(`UPDATE provisioned_relatives SET display_label = ? WHERE id = ?`).run(label, row.id);
+    if (label) {
+      db.prepare(
+        `UPDATE allowlist SET label = ? WHERE household_id = ? AND target_line_id = ?`
+      ).run(label, fromHouseholdId, row.relative_line_id);
+    }
+  }
+
+  if (opts.kidLineIds !== undefined) {
+    const wanted = [
+      ...new Set(
+        (opts.kidLineIds || []).filter((id) => typeof id === "string" && id)
+      ),
+    ];
+    if (!wanted.length) throw new Error("Pick at least one kid they can call");
+    for (const kidLineId of wanted) {
+      const kid = db
+        .prepare(`SELECT * FROM lines WHERE id = ? AND household_id = ?`)
+        .get(kidLineId, fromHouseholdId) as Line | undefined;
+      if (!kid || (kid.mode || "parent") !== "child") {
+        throw new Error("Pick a kid from this household");
+      }
+    }
+    const current = db
+      .prepare(
+        `SELECT a.id AS entry_id, a.target_line_id AS id FROM allowlist a
+         JOIN lines l ON l.id = a.target_line_id
+         WHERE a.household_id = ? AND l.household_id = ? AND l.mode = 'child'`
+      )
+      .all(row.relative_household_id, fromHouseholdId) as { entry_id: string; id: string }[];
+    const currentIds = new Set(current.map((c) => c.id));
+    const wantedSet = new Set(wanted);
+    for (const rowCur of current) {
+      if (!wantedSet.has(rowCur.id)) {
+        db.prepare(`DELETE FROM allowlist WHERE id = ? AND household_id = ?`).run(
+          rowCur.entry_id,
+          row.relative_household_id
+        );
+      }
+    }
+    for (const kidLineId of wanted) {
+      if (currentIds.has(kidLineId)) continue;
+      const kid = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(kidLineId) as Line;
+      const kidLabel = kid.child_label || kid.name || "Grandchild";
+      addAllowlist(db, row.relative_household_id, kid.id, kidLabel, {
+        actorUserId: user.id,
+        favorite: true,
+      });
+    }
+  }
+
+  const refreshed = db
+    .prepare(`SELECT * FROM provisioned_relatives WHERE id = ?`)
+    .get(row.id) as ProvisionedRelativeRow;
+  const relative = publicProvisionedRelative(db, refreshed, fromHouseholdId);
+  if (!relative) throw new Error("Grandparent account missing");
+  return passwordOut ? { relative, password: passwordOut } : { relative };
 }
 
 function normalizeLine(line: Line): Line {
@@ -830,6 +1374,359 @@ function publicChildUserForLine(db: Database.Database, line: Line): PublicUser |
 
 const RINGER_STYLES = new Set(["classic", "chirp", "modern", "chime", "urgent"]);
 
+// —— Spheres (one circle per parent) ——————————————————————————————————————
+
+/** Create the parent’s sphere if missing (idempotent). */
+export function ensureSphereForParent(db: Database.Database, userId: string): Sphere {
+  const existing = db.prepare(`SELECT * FROM spheres WHERE owner_user_id = ?`).get(userId) as
+    | Sphere
+    | undefined;
+  if (existing) return existing;
+  const user = db.prepare(`SELECT display_name FROM users WHERE id = ?`).get(userId) as
+    | { display_name: string }
+    | undefined;
+  const label = (user?.display_name || "Parent").trim() || "Parent";
+  const sphere: Sphere = {
+    id: newId("sph"),
+    owner_user_id: userId,
+    name: `${label}'s circle`,
+    created_at: nowIso(),
+  };
+  db.prepare(
+    `INSERT INTO spheres (id, owner_user_id, name, created_at) VALUES (@id, @owner_user_id, @name, @created_at)`
+  ).run(sphere);
+  return sphere;
+}
+
+export function getSphereByOwner(db: Database.Database, userId: string): Sphere | undefined {
+  return db.prepare(`SELECT * FROM spheres WHERE owner_user_id = ?`).get(userId) as Sphere | undefined;
+}
+
+export function renameSphere(
+  db: Database.Database,
+  userId: string,
+  name: string
+): Sphere {
+  const sphere = ensureSphereForParent(db, userId);
+  const clean = String(name || "").trim().slice(0, 64);
+  if (!clean) throw new Error("Circle name required");
+  db.prepare(`UPDATE spheres SET name = ? WHERE id = ?`).run(clean, sphere.id);
+  return db.prepare(`SELECT * FROM spheres WHERE id = ?`).get(sphere.id) as Sphere;
+}
+
+export function addLineToSphere(
+  db: Database.Database,
+  sphereId: string,
+  lineId: string,
+  addedByUserId?: string | null
+): void {
+  const sphere = db.prepare(`SELECT id, owner_user_id FROM spheres WHERE id = ?`).get(sphereId) as
+    | { id: string; owner_user_id: string }
+    | undefined;
+  if (!sphere) throw new Error("Circle not found");
+  const line = db.prepare(`SELECT id FROM lines WHERE id = ?`).get(lineId);
+  if (!line) throw new Error("Unknown line");
+  // Silent skip for invite/sync paths — review account circle stays Trevor-only.
+  if (
+    isTestReviewAccount(db, sphere.owner_user_id) &&
+    !testReviewAllowedLineIds(db, sphere.owner_user_id).has(lineId)
+  ) {
+    return;
+  }
+  // Review softphone must never join a parent circle (kids inherit those lists).
+  // Only the test account’s own circle may contain it; Trevor keeps it on allowlist only.
+  if (isTestReviewLineId(db, lineId) && !isTestReviewAccount(db, sphere.owner_user_id)) {
+    return;
+  }
+  db.prepare(
+    `INSERT OR IGNORE INTO sphere_members (sphere_id, line_id, added_by_user_id, created_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(sphereId, lineId, addedByUserId ?? null, nowIso());
+}
+
+export function removeLineFromSphere(db: Database.Database, sphereId: string, lineId: string): void {
+  db.prepare(`DELETE FROM sphere_members WHERE sphere_id = ? AND line_id = ?`).run(sphereId, lineId);
+}
+
+/** Add a contact line into a parent’s circle (their sphere). Parent-only. */
+export function addContactToParentSphere(
+  db: Database.Database,
+  parentUserId: string,
+  lineId: string
+): Sphere {
+  assertParentContactAdmin(db, parentUserId);
+  assertTestReviewMayContactLine(db, parentUserId, lineId);
+  const sphere = ensureSphereForParent(db, parentUserId);
+  addLineToSphere(db, sphere.id, lineId, parentUserId);
+  return sphere;
+}
+
+/**
+ * Link an existing identity into this parent’s circle — only if already visible
+ * to them (invite bridge / already in circle). Never a global search oracle.
+ */
+export function linkVisibleContactToParentSphere(
+  db: Database.Database,
+  parentUserId: string,
+  lineId: string
+): Sphere {
+  assertParentContactAdmin(db, parentUserId);
+  if (!canViewerSeeLine(db, parentUserId, lineId)) {
+    // Same message whether missing or out-of-sphere — no existence oracle.
+    throw new Error("Contact not found");
+  }
+  return addContactToParentSphere(db, parentUserId, lineId);
+}
+
+/**
+ * After a line is created: put parent lines in the owner’s sphere; bridge invite
+ * households so both sides can discover each other for mutual approve.
+ */
+export function syncLineIntoSpheres(db: Database.Database, line: Line): void {
+  const mode = line.mode || "parent";
+  if (mode !== "child") {
+    const sphere = ensureSphereForParent(db, line.owner_user_id);
+    addLineToSphere(db, sphere.id, line.id, line.owner_user_id);
+  }
+
+  // This household redeemed an invite → add line to inviter’s circle; mirror inviter lines here.
+  const asRedeemer = db
+    .prepare(
+      `SELECT created_by, from_household_id FROM invites WHERE redeemed_by_household_id = ?`
+    )
+    .get(line.household_id) as { created_by: string; from_household_id: string } | undefined;
+  if (asRedeemer) {
+    const inviterSphere = ensureSphereForParent(db, asRedeemer.created_by);
+    addLineToSphere(db, inviterSphere.id, line.id, asRedeemer.created_by);
+    const redeemerSphere = ensureSphereForParent(db, line.owner_user_id);
+    const inviterLines = db
+      .prepare(`SELECT id FROM lines WHERE household_id = ?`)
+      .all(asRedeemer.from_household_id) as { id: string }[];
+    for (const l of inviterLines) {
+      addLineToSphere(db, redeemerSphere.id, l.id, line.owner_user_id);
+    }
+  }
+
+  // This household sent invites that were redeemed → add this new line into redeemers’ circles.
+  const asInviter = db
+    .prepare(
+      `SELECT redeemed_by_household_id, created_by FROM invites
+       WHERE from_household_id = ? AND redeemed_by_household_id IS NOT NULL`
+    )
+    .all(line.household_id) as { redeemed_by_household_id: string; created_by: string }[];
+  for (const inv of asInviter) {
+    const redeemedOwner = db
+      .prepare(`SELECT owner_user_id FROM households WHERE id = ?`)
+      .get(inv.redeemed_by_household_id) as { owner_user_id: string } | undefined;
+    if (!redeemedOwner) continue;
+    const redeemerSphere = ensureSphereForParent(db, redeemedOwner.owner_user_id);
+    addLineToSphere(db, redeemerSphere.id, line.id, inv.created_by);
+  }
+
+  // New child line: default access to every household parent’s circle (host can narrow later).
+  if (mode === "child") {
+    const parents = db
+      .prepare(`SELECT user_id FROM household_members WHERE household_id = ?`)
+      .all(line.household_id) as { user_id: string }[];
+    for (const p of parents) {
+      const sph = ensureSphereForParent(db, p.user_id);
+      grantLineSphereAccess(db, line.id, sph.id);
+    }
+  }
+}
+
+export function grantLineSphereAccess(db: Database.Database, lineId: string, sphereId: string): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO line_sphere_access (line_id, sphere_id, created_at) VALUES (?, ?, ?)`
+  ).run(lineId, sphereId, nowIso());
+}
+
+export function revokeLineSphereAccess(db: Database.Database, lineId: string, sphereId: string): void {
+  db.prepare(`DELETE FROM line_sphere_access WHERE line_id = ? AND sphere_id = ?`).run(
+    lineId,
+    sphereId
+  );
+}
+
+/** Replace which parent circles appear on a kid line’s speed dial. */
+export function setLineSphereAccess(
+  db: Database.Database,
+  householdId: string,
+  lineId: string,
+  sphereIds: string[]
+): string[] {
+  const line = db.prepare(`SELECT * FROM lines WHERE id = ? AND household_id = ?`).get(lineId, householdId) as
+    | Line
+    | undefined;
+  if (!line) throw new Error("Line not found");
+  if ((line.mode || "parent") !== "child") {
+    throw new Error("Only kid lines use circle speed-dial assignment");
+  }
+  const allowed = new Set(
+    listHouseholdParentSpheres(db, householdId).map((s) => s.id)
+  );
+  const unique = [
+    ...new Set(
+      (sphereIds || []).filter((id) => typeof id === "string" && id.length > 0 && allowed.has(id))
+    ),
+  ];
+  db.prepare(`DELETE FROM line_sphere_access WHERE line_id = ?`).run(lineId);
+  for (const id of unique) grantLineSphereAccess(db, lineId, id);
+  return unique;
+}
+
+export function listHouseholdParentSpheres(db: Database.Database, householdId: string): Array<
+  Sphere & { owner_display_name: string }
+> {
+  const members = db
+    .prepare(
+      `SELECT hm.user_id, u.display_name
+       FROM household_members hm
+       JOIN users u ON u.id = hm.user_id
+       WHERE hm.household_id = ?
+       ORDER BY CASE hm.role WHEN 'owner' THEN 0 ELSE 1 END, lower(u.display_name)`
+    )
+    .all(householdId) as { user_id: string; display_name: string }[];
+  const out: Array<Sphere & { owner_display_name: string }> = [];
+  for (const m of members) {
+    const sph = ensureSphereForParent(db, m.user_id);
+    out.push({ ...sph, owner_display_name: m.display_name });
+  }
+  return out;
+}
+
+export function listSphereMemberLineIds(db: Database.Database, sphereId: string): string[] {
+  return (
+    db.prepare(`SELECT line_id FROM sphere_members WHERE sphere_id = ?`).all(sphereId) as {
+      line_id: string;
+    }[]
+  ).map((r) => r.line_id);
+}
+
+export function listLineSphereAccessIds(db: Database.Database, lineId: string): string[] {
+  return (
+    db.prepare(`SELECT sphere_id FROM line_sphere_access WHERE line_id = ?`).all(lineId) as {
+      sphere_id: string;
+    }[]
+  ).map((r) => r.sphere_id);
+}
+
+/**
+ * Sphere IDs that “count” for a line: explicit membership, kid speed-dial access,
+ * and (for parent lines) the owner’s own circle.
+ */
+export function sphereIdsForLine(db: Database.Database, lineId: string): Set<string> {
+  const ids = new Set<string>();
+  const memberRows = db
+    .prepare(`SELECT sphere_id FROM sphere_members WHERE line_id = ?`)
+    .all(lineId) as { sphere_id: string }[];
+  for (const r of memberRows) ids.add(r.sphere_id);
+  for (const id of listLineSphereAccessIds(db, lineId)) ids.add(id);
+
+  const line = db.prepare(`SELECT owner_user_id, mode FROM lines WHERE id = ?`).get(lineId) as
+    | { owner_user_id: string; mode: string | null }
+    | undefined;
+  if (line && (line.mode || "parent") !== "child") {
+    const owned = getSphereByOwner(db, line.owner_user_id);
+    if (owned) ids.add(owned.id);
+  }
+  return ids;
+}
+
+/** True when two lines share at least one circle (membership and/or kid access). */
+export function linesShareSphere(db: Database.Database, lineA: string, lineB: string): boolean {
+  const a = sphereIdsForLine(db, lineA);
+  if (!a.size) return false;
+  const b = sphereIdsForLine(db, lineB);
+  for (const id of a) {
+    if (b.has(id)) return true;
+  }
+  return false;
+}
+
+/** Sphere IDs that currently list this line as a member (not counting kid access alone). */
+export function sphereIdsContainingLine(db: Database.Database, lineId: string): string[] {
+  return (
+    db.prepare(`SELECT sphere_id FROM sphere_members WHERE line_id = ?`).all(lineId) as {
+      sphere_id: string;
+    }[]
+  ).map((r) => r.sphere_id);
+}
+
+/**
+ * Directory / discovery: a viewer may see a line if same household, they guard
+ * that line, the line is in **their own** circle, or it’s already on their
+ * household allowlist (presence for approved contacts).
+ *
+ * Never grant visibility just because two lines co-exist in someone else’s
+ * circle — that leaked cousins to grandparents (and other invitees).
+ */
+export function canViewerSeeLine(
+  db: Database.Database,
+  viewerUserId: string,
+  targetLineId: string
+): boolean {
+  const target = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(targetLineId) as Line | undefined;
+  if (!target) return false;
+
+  // Review account: Trevor + self only — never transitive circle / invite discovery.
+  if (isTestReviewAccount(db, viewerUserId)) {
+    return testReviewAllowedLineIds(db, viewerUserId).has(targetLineId);
+  }
+  // Everyone except Trevor: Test’s softphone does not exist.
+  if (testReviewUserIdForLine(db, target)) {
+    return isTestReviewContactAccount(db, viewerUserId);
+  }
+
+  if (userInHousehold(db, target.household_id, viewerUserId)) return true;
+  if (isGuardian(db, viewerUserId, targetLineId)) return true;
+
+  // Own circle only — not transitive co-membership in a host parent’s circle.
+  const owned = getSphereByOwner(db, viewerUserId);
+  if (owned) {
+    const inMine = db
+      .prepare(`SELECT 1 FROM sphere_members WHERE sphere_id = ? AND line_id = ?`)
+      .get(owned.id, targetLineId);
+    if (inMine) return true;
+  }
+
+  // Already approved on a household this viewer belongs to (labels / presence).
+  const onMyAllowlist = db
+    .prepare(
+      `SELECT 1 FROM allowlist a
+       JOIN household_members hm ON hm.household_id = a.household_id
+       WHERE hm.user_id = ? AND a.target_line_id = ?
+       LIMIT 1`
+    )
+    .get(viewerUserId, targetLineId);
+  if (onMyAllowlist) return true;
+
+  // Child login: same allowlist enrichment for their linked household.
+  const childLoginAllow = db
+    .prepare(
+      `SELECT 1 FROM allowlist a
+       JOIN lines cl ON cl.household_id = a.household_id AND cl.child_user_id = ?
+       WHERE a.target_line_id = ?
+       LIMIT 1`
+    )
+    .get(viewerUserId, targetLineId);
+  if (childLoginAllow) return true;
+
+  // Guardian-only co-parent: see contacts already approved on the kid’s household.
+  const guardianAllow = db
+    .prepare(
+      `SELECT 1 FROM allowlist a
+       JOIN lines kid ON kid.household_id = a.household_id AND IFNULL(kid.mode, 'parent') = 'child'
+       JOIN child_guardians g ON g.line_id = kid.id
+       WHERE g.user_id = ? AND a.target_line_id = ?
+       LIMIT 1`
+    )
+    .get(viewerUserId, targetLineId);
+  if (guardianAllow) return true;
+
+  return false;
+}
+
 export function createHousehold(db: Database.Database, userId: string, name: string): Household {
   const household: Household = {
     id: newId("hh"),
@@ -845,18 +1742,24 @@ export function createHousehold(db: Database.Database, userId: string, name: str
     parent_pin_hash: null,
     schedule_preset: "open",
     dnd: 0,
+    parent_quiet_start: null,
+    parent_quiet_end: null,
+    parent_quiet_tz: null,
+    parent_quiet_days: null,
+    parent_schedule_preset: "open",
     layout_locked: 1,
     ring_volume: 70,
     ringer_style: "classic",
     created_at: nowIso(),
   };
   db.prepare(
-    `INSERT INTO households (id, name, owner_user_id, kill_switch, quiet_start, quiet_end, quiet_tz, quiet_days, skip_holidays, daily_cap_minutes, parent_pin_hash, schedule_preset, dnd, layout_locked, ring_volume, ringer_style, created_at)
-     VALUES (@id, @name, @owner_user_id, @kill_switch, @quiet_start, @quiet_end, @quiet_tz, @quiet_days, @skip_holidays, @daily_cap_minutes, @parent_pin_hash, @schedule_preset, @dnd, @layout_locked, @ring_volume, @ringer_style, @created_at)`
+    `INSERT INTO households (id, name, owner_user_id, kill_switch, quiet_start, quiet_end, quiet_tz, quiet_days, skip_holidays, daily_cap_minutes, parent_pin_hash, schedule_preset, dnd, parent_quiet_start, parent_quiet_end, parent_quiet_tz, parent_quiet_days, parent_schedule_preset, layout_locked, ring_volume, ringer_style, created_at)
+     VALUES (@id, @name, @owner_user_id, @kill_switch, @quiet_start, @quiet_end, @quiet_tz, @quiet_days, @skip_holidays, @daily_cap_minutes, @parent_pin_hash, @schedule_preset, @dnd, @parent_quiet_start, @parent_quiet_end, @parent_quiet_tz, @parent_quiet_days, @parent_schedule_preset, @layout_locked, @ring_volume, @ringer_style, @created_at)`
   ).run(household);
   db.prepare(
     `INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, 'owner')`
   ).run(household.id, userId);
+  ensureSphereForParent(db, userId);
   return household;
 }
 
@@ -865,17 +1768,24 @@ export function addLine(
   householdId: string,
   userId: string,
   name: string,
-  type: LineType = "softphone"
+  type: LineType = "softphone",
+  opts?: { mode?: "parent" | "child"; child_label?: string | null }
 ): Line {
+  const mode = opts?.mode === "child" ? "child" : "parent";
+  let child_label = opts?.child_label === undefined ? null : opts.child_label;
+  if (child_label === "") child_label = null;
+  if (child_label != null) child_label = String(child_label).trim().slice(0, 64) || null;
+  const trimmedName = name.trim() || (mode === "child" ? "Kid" : "App");
+  if (mode === "child" && !child_label) child_label = trimmedName.slice(0, 64);
   const line: Line = {
     id: newId("line"),
     household_id: householdId,
-    name: name.trim() || "Softphone",
+    name: trimmedName,
     type,
     owner_user_id: userId,
     online: 0,
-    mode: "parent",
-    child_label: null,
+    mode,
+    child_label,
     child_user_id: null,
     greeting_path: null,
     greeting_updated_at: null,
@@ -889,6 +1799,14 @@ export function addLine(
     `INSERT INTO lines (id, household_id, name, type, owner_user_id, online, mode, child_label, child_user_id, answering_machine, created_at)
      VALUES (@id, @household_id, @name, @type, @owner_user_id, @online, @mode, @child_label, @child_user_id, @answering_machine, @created_at)`
   ).run(line);
+  if (mode === "child") {
+    ensureGuardian(db, line.id, userId);
+    const hh = db.prepare(`SELECT owner_user_id FROM households WHERE id = ?`).get(householdId) as
+      | { owner_user_id: string }
+      | undefined;
+    if (hh?.owner_user_id) ensureGuardian(db, line.id, hh.owner_user_id);
+  }
+  syncLineIntoSpheres(db, line);
   return line;
 }
 
@@ -935,7 +1853,12 @@ export function updateLine(
       | undefined;
     if (hh?.owner_user_id) ensureGuardian(db, lineId, hh.owner_user_id);
   }
-  return normalizeLine(db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line);
+  const updated = normalizeLine(db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line);
+  if (mode === "child" && (line.mode || "parent") !== "child") {
+    // Newly flipped to kid: grant default circle access for household parents.
+    syncLineIntoSpheres(db, updated);
+  }
+  return updated;
 }
 
 /** Best-effort unlink of a path under dataDir (never throws). */
@@ -988,6 +1911,12 @@ export function wipeLineCascade(
     // Still scrub dangling refs (cross-hh allowlist, etc.) for idempotency.
     db.prepare(`DELETE FROM allowlist WHERE target_line_id = ?`).run(lineId);
     db.prepare(`DELETE FROM allowlist_declined WHERE target_line_id = ?`).run(lineId);
+    db.prepare(`DELETE FROM family_room_members WHERE line_id = ?`).run(lineId);
+    db.prepare(
+      `DELETE FROM family_room_talk_pairs WHERE line_a = ? OR line_b = ?`
+    ).run(lineId, lineId);
+    db.prepare(`DELETE FROM sphere_members WHERE line_id = ?`).run(lineId);
+    db.prepare(`DELETE FROM line_sphere_access WHERE line_id = ?`).run(lineId);
     db.prepare(`DELETE FROM child_guardians WHERE line_id = ?`).run(lineId);
     db.prepare(`DELETE FROM guardian_invites WHERE line_id = ?`).run(lineId);
     db.prepare(`DELETE FROM ata_devices WHERE line_id = ?`).run(lineId);
@@ -1012,6 +1941,12 @@ export function wipeLineCascade(
 
   db.prepare(`DELETE FROM allowlist WHERE target_line_id = ?`).run(lineId);
   db.prepare(`DELETE FROM allowlist_declined WHERE target_line_id = ?`).run(lineId);
+  db.prepare(`DELETE FROM family_room_members WHERE line_id = ?`).run(lineId);
+  db.prepare(
+    `DELETE FROM family_room_talk_pairs WHERE line_a = ? OR line_b = ?`
+  ).run(lineId, lineId);
+  db.prepare(`DELETE FROM sphere_members WHERE line_id = ?`).run(lineId);
+  db.prepare(`DELETE FROM line_sphere_access WHERE line_id = ?`).run(lineId);
   db.prepare(`DELETE FROM child_guardians WHERE line_id = ?`).run(lineId);
   db.prepare(`DELETE FROM guardian_invites WHERE line_id = ?`).run(lineId);
   db.prepare(`DELETE FROM ata_devices WHERE line_id = ?`).run(lineId);
@@ -1116,6 +2051,8 @@ export function wipeHouseholdCascade(
 
   db.prepare(`DELETE FROM allowlist WHERE household_id = ?`).run(householdId);
   db.prepare(`DELETE FROM allowlist_declined WHERE household_id = ?`).run(householdId);
+  db.prepare(`DELETE FROM family_room_members WHERE household_id = ?`).run(householdId);
+  db.prepare(`DELETE FROM family_room_talk_pairs WHERE household_id = ?`).run(householdId);
   db.prepare(`DELETE FROM invites WHERE from_household_id = ? OR redeemed_by_household_id = ?`).run(
     householdId,
     householdId
@@ -1211,6 +2148,16 @@ export function deleteParentAccount(
 
   db.prepare(`UPDATE lines SET child_user_id = NULL WHERE child_user_id = ?`).run(userId);
 
+  // Drop this parent’s circle (members/access rows for the sphere id).
+  const mySphere = db.prepare(`SELECT id FROM spheres WHERE owner_user_id = ?`).get(userId) as
+    | { id: string }
+    | undefined;
+  if (mySphere) {
+    db.prepare(`DELETE FROM line_sphere_access WHERE sphere_id = ?`).run(mySphere.id);
+    db.prepare(`DELETE FROM sphere_members WHERE sphere_id = ?`).run(mySphere.id);
+    db.prepare(`DELETE FROM spheres WHERE id = ?`).run(mySphere.id);
+  }
+
   db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId);
   db.prepare(`DELETE FROM users WHERE id = ?`).run(userId);
 
@@ -1255,6 +2202,7 @@ export function redeemInvite(
   userId: string,
   householdName: string
 ): { invite: Invite; household: Household } {
+  assertParentContactAdmin(db, userId);
   const invite = db.prepare(`SELECT * FROM invites WHERE code = ?`).get(code.trim()) as Invite | undefined;
   if (!invite) throw new Error("Invite not found");
   if (invite.redeemed_by_household_id) throw new Error("Invite already used");
@@ -1263,7 +2211,7 @@ export function redeemInvite(
   const household = createHousehold(db, userId, householdName);
   db.prepare(`UPDATE invites SET redeemed_by_household_id = ? WHERE id = ?`).run(household.id, invite.id);
 
-  // Auto-allowlist: each side can see the other's lines once they exist — caller adds lines after
+  // Lines appear later; syncLineIntoSpheres bridges both circles when softphones are created.
   return { invite: { ...invite, redeemed_by_household_id: household.id }, household };
 }
 
@@ -1272,14 +2220,26 @@ export function addAllowlist(
   householdId: string,
   targetLineId: string,
   label: string,
-  opts: { speedDial?: number | null; favorite?: boolean; alwaysAllow?: boolean } = {}
+  opts: {
+    speedDial?: number | null;
+    favorite?: boolean;
+    alwaysAllow?: boolean;
+    /** Parent whose circle receives this contact (defaults to household owner). */
+    actorUserId?: string;
+  } = {}
 ): AllowlistEntry {
+  if (opts.actorUserId) assertParentContactAdmin(db, opts.actorUserId);
   const target = db
     .prepare(`SELECT id, household_id, name, mode FROM lines WHERE id = ?`)
     .get(targetLineId) as
     | { id: string; household_id: string; name: string; mode: string | null }
     | undefined;
   if (!target) throw new Error("Unknown line");
+  const hhOwner = db
+    .prepare(`SELECT owner_user_id FROM households WHERE id = ?`)
+    .get(householdId) as { owner_user_id: string } | undefined;
+  const reviewActor = opts.actorUserId || hhOwner?.owner_user_id;
+  if (reviewActor) assertTestReviewMayContactLine(db, reviewActor, targetLineId);
   // Same-household lines (parent ↔ child) may be on the allowlist for speed dial.
   // Softphones must still hide/reject the active line itself (UI + canCall).
   const used = db
@@ -1287,25 +2247,26 @@ export function addAllowlist(
     .all(householdId) as { speed_dial: number }[];
   const taken = new Set(used.map((u) => u.speed_dial));
   let speed = opts.speedDial ?? null;
-  if (speed != null && (speed < 1 || speed > 9)) {
-    throw new Error("Speed dial must be 1–9 (0 is reserved for Home / parent)");
+  const secondary = householdSecondaryParentLine(db, householdId);
+  // Pads 0–1 are reserved (TreeHouse + locked parent/child). Slot 2 is reserved
+  // only when a second parent-mode line exists. Contacts otherwise use 2–9.
+  if (speed === 0 || speed === 1) {
+    throw new Error("Speed dial 0 is TreeHouse and 1 is locked — pick 2–9 for contacts");
+  }
+  if (speed != null && (speed < 2 || speed > 9)) {
+    throw new Error("Speed dial must be 2–9 (0 is TreeHouse; 1 is locked parent/child)");
+  }
+  if (speed === 2 && secondary) {
+    throw new Error("Speed dial 2 is reserved for the co-parent — pick 3–9");
   }
   if (speed == null) {
     const sameHhChild =
       target.household_id === householdId && (target.mode || "parent") === "child";
-    // Parent pad synthesizes household kids onto slot 1 — prefer that for allowlist
-    // rows too, and leave 1 free when auto-placing everyone else.
-    if (sameHhChild && !taken.has(1)) {
-      speed = 1;
+    // Prefer slot 2 for a household kid when no co-parent is reserving it.
+    if (sameHhChild && !taken.has(2) && !secondary) {
+      speed = 2;
     } else {
-      const hhHasChild = Boolean(
-        db
-          .prepare(
-            `SELECT 1 FROM lines WHERE household_id = ? AND IFNULL(mode, 'parent') = 'child' LIMIT 1`
-          )
-          .get(householdId)
-      );
-      const start = hhHasChild && !taken.has(1) ? 2 : 1;
+      const start = secondary ? 3 : 2;
       for (let i = start; i <= 9; i++) {
         if (!taken.has(i)) {
           speed = i;
@@ -1313,7 +2274,7 @@ export function addAllowlist(
         }
       }
       if (speed == null) {
-        for (let i = 1; i <= 9; i++) {
+        for (let i = 2; i <= 9; i++) {
           if (!taken.has(i)) {
             speed = i;
             break;
@@ -1345,6 +2306,16 @@ export function addAllowlist(
     householdId,
     targetLineId
   );
+
+  // Approving a contact puts them in the acting parent’s circle (not a global directory).
+  const hh = db.prepare(`SELECT owner_user_id FROM households WHERE id = ?`).get(householdId) as
+    | { owner_user_id: string }
+    | undefined;
+  const actor = opts.actorUserId || hh?.owner_user_id;
+  if (actor) {
+    assertParentContactAdmin(db, actor);
+    addContactToParentSphere(db, actor, targetLineId);
+  }
   return entry;
 }
 
@@ -1375,6 +2346,740 @@ export function listDeclinedLineIds(db: Database.Database, householdId: string):
   return rows.map((r) => r.target_line_id);
 }
 
+export type FamilyRoomMemberRow = {
+  line_id: string;
+  approved_by_user_id: string | null;
+  created_at: string;
+  name: string;
+  child_label: string | null;
+  mode: string;
+  online: number;
+  household_id: string;
+};
+
+/** Softphone mesh cap for FamilyRoom (analog FXS not in the mesh yet). */
+export const MAX_FAMILY_ROOM = 8;
+
+export function listFamilyRoomMembers(
+  db: Database.Database,
+  householdId: string
+): FamilyRoomMemberRow[] {
+  return db
+    .prepare(
+      `SELECT frm.line_id, frm.approved_by_user_id, frm.created_at,
+              l.name, l.child_label, IFNULL(l.mode, 'parent') AS mode, l.online, l.household_id
+       FROM family_room_members frm
+       JOIN lines l ON l.id = frm.line_id
+       WHERE frm.household_id = ?
+       ORDER BY lower(COALESCE(NULLIF(l.child_label, ''), l.name))`
+    )
+    .all(householdId) as FamilyRoomMemberRow[];
+}
+
+/** Explicit allowlist row only (not admin always-allow). */
+export function isFamilyRoomMember(
+  db: Database.Database,
+  householdId: string,
+  lineId: string
+): boolean {
+  return Boolean(
+    db
+      .prepare(`SELECT 1 FROM family_room_members WHERE household_id = ? AND line_id = ?`)
+      .get(householdId, lineId)
+  );
+}
+
+/**
+ * Always allowed to *join* this household’s FamilyRoom (no allowlist row):
+ * - Child lines that live in this household (kid hangout)
+ * Parents are not auto-talkers — they use listen-only (see familyroom.listen.*).
+ * Does NOT grant entry into other households’ FamilyRooms (external contacts still need approve).
+ */
+export function isFamilyRoomAdminAlwaysAllowed(
+  db: Database.Database,
+  householdId: string,
+  lineId: string
+): boolean {
+  const line = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line | undefined;
+  if (!line || line.household_id !== householdId) return false;
+  return (line.mode || "parent") === "child";
+}
+
+/** Join / pad gate: explicit member OR household kid always-allow. */
+export function canJoinFamilyRoom(
+  db: Database.Database,
+  householdId: string,
+  lineId: string
+): boolean {
+  return (
+    isFamilyRoomMember(db, householdId, lineId) ||
+    isFamilyRoomAdminAlwaysAllowed(db, householdId, lineId)
+  );
+}
+
+/** Household kid lines that are always allowed to join this FamilyRoom. */
+export function listFamilyRoomAlwaysAllowedLineIds(
+  db: Database.Database,
+  householdId: string
+): string[] {
+  const rows = db
+    .prepare(
+      `SELECT id FROM lines
+       WHERE household_id = ? AND IFNULL(mode, 'parent') = 'child'
+       ORDER BY created_at ASC, id ASC`
+    )
+    .all(householdId) as { id: string }[];
+  return rows.map((r) => r.id);
+}
+
+function orderedTalkPair(lineA: string, lineB: string): [string, string] | null {
+  if (!lineA || !lineB || lineA === lineB) return null;
+  return lineA < lineB ? [lineA, lineB] : [lineB, lineA];
+}
+
+export type FamilyRoomTalkPairRow = {
+  line_a: string;
+  line_b: string;
+  approved_by_user_id: string | null;
+  created_at: string;
+};
+
+export function listFamilyRoomTalkPairs(
+  db: Database.Database,
+  householdId: string
+): FamilyRoomTalkPairRow[] {
+  return db
+    .prepare(
+      `SELECT line_a, line_b, approved_by_user_id, created_at
+       FROM family_room_talk_pairs WHERE household_id = ?
+       ORDER BY line_a, line_b`
+    )
+    .all(householdId) as FamilyRoomTalkPairRow[];
+}
+
+function hasExplicitTalkPair(
+  db: Database.Database,
+  householdId: string,
+  lineA: string,
+  lineB: string
+): boolean {
+  const ordered = orderedTalkPair(lineA, lineB);
+  if (!ordered) return false;
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM family_room_talk_pairs
+         WHERE household_id = ? AND line_a = ? AND line_b = ?`
+      )
+      .get(householdId, ordered[0], ordered[1])
+  );
+}
+
+/** Both ends are kid lines that live in this household (default sibling hangout). */
+function bothHouseholdKids(
+  db: Database.Database,
+  householdId: string,
+  lineA: string,
+  lineB: string
+): boolean {
+  const rows = db
+    .prepare(
+      `SELECT id FROM lines
+       WHERE household_id = ? AND IFNULL(mode, 'parent') = 'child' AND id IN (?, ?)`
+    )
+    .all(householdId, lineA, lineB) as { id: string }[];
+  return rows.length === 2;
+}
+
+/**
+ * Symmetric talk gate for FamilyRoom audio: A hears B iff B hears A.
+ * - Explicit undirected pair, OR
+ * - Both are kids of this household (default hangout; parents wire externals explicitly)
+ */
+export function canTalkInFamilyRoom(
+  db: Database.Database,
+  householdId: string,
+  lineA: string,
+  lineB: string
+): boolean {
+  if (!lineA || !lineB || lineA === lineB) return false;
+  if (!canJoinFamilyRoom(db, householdId, lineA) || !canJoinFamilyRoom(db, householdId, lineB)) {
+    return false;
+  }
+  if (hasExplicitTalkPair(db, householdId, lineA, lineB)) return true;
+  return bothHouseholdKids(db, householdId, lineA, lineB);
+}
+
+/** Line ids in the room this line may exchange audio with (symmetric). */
+export function familyRoomTalkPeers(
+  db: Database.Database,
+  householdId: string,
+  lineId: string,
+  memberIds: string[]
+): string[] {
+  return memberIds.filter((other) => canTalkInFamilyRoom(db, householdId, lineId, other));
+}
+
+/**
+ * Parent-only: create undirected talk edge (A↔B). Both lines must be join-eligible.
+ * Same-household kids already talk by default — explicit pairs are for externals / overrides.
+ */
+export function addFamilyRoomTalkPair(
+  db: Database.Database,
+  householdId: string,
+  lineA: string,
+  lineB: string,
+  actorUserId: string
+): FamilyRoomTalkPairRow {
+  assertParentContactAdmin(db, actorUserId);
+  if (!canManageHouseholdChildState(db, actorUserId, householdId)) {
+    throw new Error("Only parents can manage TreeHouse talk");
+  }
+  const ordered = orderedTalkPair(lineA, lineB);
+  if (!ordered) throw new Error("Pick two different lines");
+  if (!canJoinFamilyRoom(db, householdId, ordered[0])) {
+    throw new Error("Approve both people for TreeHouse before linking talk");
+  }
+  if (!canJoinFamilyRoom(db, householdId, ordered[1])) {
+    throw new Error("Approve both people for TreeHouse before linking talk");
+  }
+  db.prepare(
+    `INSERT OR REPLACE INTO family_room_talk_pairs
+       (household_id, line_a, line_b, approved_by_user_id, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(householdId, ordered[0], ordered[1], actorUserId, nowIso());
+  const row = listFamilyRoomTalkPairs(db, householdId).find(
+    (p) => p.line_a === ordered[0] && p.line_b === ordered[1]
+  );
+  if (!row) throw new Error("Could not save talk pair");
+  return row;
+}
+
+export function removeFamilyRoomTalkPair(
+  db: Database.Database,
+  householdId: string,
+  lineA: string,
+  lineB: string,
+  actorUserId: string
+): { ok: true } {
+  assertParentContactAdmin(db, actorUserId);
+  if (!canManageHouseholdChildState(db, actorUserId, householdId)) {
+    throw new Error("Only parents can manage TreeHouse talk");
+  }
+  const ordered = orderedTalkPair(lineA, lineB);
+  if (!ordered) throw new Error("Pick two different lines");
+  if (bothHouseholdKids(db, householdId, ordered[0], ordered[1])) {
+    throw new Error("Household kids can always talk in TreeHouse — no pair to remove");
+  }
+  db.prepare(
+    `DELETE FROM family_room_talk_pairs WHERE household_id = ? AND line_a = ? AND line_b = ?`
+  ).run(householdId, ordered[0], ordered[1]);
+  return { ok: true };
+}
+
+/**
+ * Parent-only: approve a line for FamilyRoom (explicit — not the same as contact approve).
+ * Same-household softphones, or already-allowlisted contacts.
+ */
+export function addFamilyRoomMember(
+  db: Database.Database,
+  householdId: string,
+  lineId: string,
+  actorUserId: string
+): FamilyRoomMemberRow {
+  assertParentContactAdmin(db, actorUserId);
+  if (!canManageHouseholdChildState(db, actorUserId, householdId)) {
+    throw new Error("Only parents can manage TreeHouse");
+  }
+  const line = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line | undefined;
+  if (!line) throw new Error("Unknown line");
+
+  if (isFamilyRoomAdminAlwaysAllowed(db, householdId, lineId)) {
+    throw new Error("Household kids are always in TreeHouse — no need to approve");
+  }
+
+  if (line.household_id !== householdId) {
+    const onAllowlist = db
+      .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
+      .get(householdId, lineId);
+    if (!onAllowlist) {
+      throw new Error("Approve them as a contact before adding to TreeHouse");
+    }
+  }
+
+  const existing = listFamilyRoomMembers(db, householdId);
+  if (existing.length >= MAX_FAMILY_ROOM && !existing.some((m) => m.line_id === lineId)) {
+    throw new Error(`TreeHouse is limited to ${MAX_FAMILY_ROOM} people`);
+  }
+
+  db.prepare(
+    `INSERT OR REPLACE INTO family_room_members (household_id, line_id, approved_by_user_id, created_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(householdId, lineId, actorUserId, nowIso());
+
+  const row = listFamilyRoomMembers(db, householdId).find((m) => m.line_id === lineId);
+  if (!row) throw new Error("Could not add to TreeHouse");
+  return row;
+}
+
+export function removeFamilyRoomMember(
+  db: Database.Database,
+  householdId: string,
+  lineId: string,
+  actorUserId: string
+): { ok: true } {
+  assertParentContactAdmin(db, actorUserId);
+  if (!canManageHouseholdChildState(db, actorUserId, householdId)) {
+    throw new Error("Only parents can manage TreeHouse");
+  }
+  if (isFamilyRoomAdminAlwaysAllowed(db, householdId, lineId)) {
+    throw new Error("Household kids stay in TreeHouse — cannot remove");
+  }
+  db.prepare(`DELETE FROM family_room_members WHERE household_id = ? AND line_id = ?`).run(
+    householdId,
+    lineId
+  );
+  db.prepare(
+    `DELETE FROM family_room_talk_pairs
+     WHERE household_id = ? AND (line_a = ? OR line_b = ?)`
+  ).run(householdId, lineId, lineId);
+  return { ok: true };
+}
+
+/** Lines a parent can toggle into FamilyRoom (household softphones + allowlisted contacts). */
+export function familyRoomCandidateLines(
+  db: Database.Database,
+  householdId: string
+): { line_id: string; name: string; child_label: string | null; mode: string; kind: string }[] {
+  const hhLines = db
+    .prepare(
+      `SELECT id AS line_id, name, child_label, IFNULL(mode, 'parent') AS mode, 'household' AS kind
+       FROM lines WHERE household_id = ? ORDER BY created_at`
+    )
+    .all(householdId) as {
+    line_id: string;
+    name: string;
+    child_label: string | null;
+    mode: string;
+    kind: string;
+  }[];
+  const external = db
+    .prepare(
+      `SELECT a.target_line_id AS line_id, COALESCE(NULLIF(a.label, ''), l.name) AS name,
+              l.child_label, IFNULL(l.mode, 'parent') AS mode, 'contact' AS kind
+       FROM allowlist a
+       JOIN lines l ON l.id = a.target_line_id
+       WHERE a.household_id = ? AND l.household_id != ?
+       ORDER BY lower(COALESCE(NULLIF(a.label, ''), l.name))`
+    )
+    .all(householdId, householdId) as {
+    line_id: string;
+    name: string;
+    child_label: string | null;
+    mode: string;
+    kind: string;
+  }[];
+  const seen = new Set<string>();
+  const out: typeof hhLines = [];
+  for (const row of [...hhLines, ...external]) {
+    if (seen.has(row.line_id)) continue;
+    seen.add(row.line_id);
+    out.push(row);
+  }
+  return out;
+}
+
+export type ParentTitle = "mom" | "dad" | null;
+export type ProfileRole = "parent" | "grandparent" | null;
+
+export function normalizeParentTitle(raw: unknown): ParentTitle {
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (v === "mom" || v === "dad") return v;
+  return null;
+}
+
+export function normalizeProfileRole(raw: unknown): ProfileRole {
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (v === "parent" || v === "grandparent") return v;
+  return null;
+}
+
+export function updateUserProfile(
+  db: Database.Database,
+  userId: string,
+  patch: {
+    parent_title?: ParentTitle | "" | null;
+    profile_role?: ProfileRole | "" | null;
+  }
+): User {
+  const user = db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as User | undefined;
+  if (!user) throw new Error("User not found");
+  if (patch.parent_title !== undefined) {
+    const title =
+      patch.parent_title === "" || patch.parent_title === null
+        ? null
+        : normalizeParentTitle(patch.parent_title);
+    db.prepare(`UPDATE users SET parent_title = ? WHERE id = ?`).run(title, userId);
+    syncParentTitleAllowlistLabels(db, userId);
+  }
+  if (patch.profile_role !== undefined) {
+    const role =
+      patch.profile_role === "" || patch.profile_role === null
+        ? null
+        : normalizeProfileRole(patch.profile_role);
+    db.prepare(`UPDATE users SET profile_role = ? WHERE id = ?`).run(role, userId);
+  }
+  return db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as User;
+}
+
+/**
+ * When a parent picks Mom/Dad, rewrite allowlist nicknames that still show their
+ * personal name so kids’ pads / FXS CID match the title.
+ */
+function syncParentTitleAllowlistLabels(db: Database.Database, userId: string): void {
+  const parentLines = db
+    .prepare(
+      `SELECT id, household_id, name, child_label FROM lines
+       WHERE owner_user_id = ? AND IFNULL(mode, 'parent') != 'child'`
+    )
+    .all(userId) as { id: string; household_id: string; name: string; child_label: string | null }[];
+  if (!parentLines.length) return;
+  const titled = parentDisplayLabel(db, parentLines[0]!.id);
+  if (titled !== "Mom" && titled !== "Dad") return;
+  const user = db.prepare(`SELECT display_name FROM users WHERE id = ?`).get(userId) as
+    | { display_name: string }
+    | undefined;
+  const aliases = new Set<string>();
+  const addAlias = (raw: string | null | undefined) => {
+    const cleaned = String(raw || "")
+      .replace(/'s phone$/i, "")
+      .replace(/\s+phone$/i, "")
+      .trim()
+      .toLowerCase();
+    if (!cleaned) return;
+    aliases.add(cleaned);
+    const first = cleaned.split(/\s+/)[0];
+    if (first) aliases.add(first);
+  };
+  addAlias(user?.display_name);
+  for (const l of parentLines) {
+    addAlias(l.name);
+    addAlias(l.child_label);
+  }
+  const upd = db.prepare(`UPDATE allowlist SET label = ? WHERE id = ?`);
+  for (const line of parentLines) {
+    const rows = db
+      .prepare(`SELECT id, label FROM allowlist WHERE target_line_id = ?`)
+      .all(line.id) as { id: string; label: string }[];
+    for (const row of rows) {
+      const cur = String(row.label || "")
+        .replace(/'s phone$/i, "")
+        .replace(/\s+phone$/i, "")
+        .trim()
+        .toLowerCase();
+      if (!cur || cur === titled.toLowerCase()) continue;
+      if (aliases.has(cur) || cur === "contact") upd.run(titled, row.id);
+    }
+  }
+}
+
+function lastNameFromDisplay(displayName: string | null | undefined): string {
+  const parts = String(displayName || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return parts.length ? parts[parts.length - 1]! : "";
+}
+
+function userLastName(db: Database.Database, userId: string): string {
+  const user = db.prepare(`SELECT display_name FROM users WHERE id = ?`).get(userId) as
+    | { display_name: string }
+    | undefined;
+  return lastNameFromDisplay(user?.display_name);
+}
+
+/** Slot 2: other parent’s last name; Mom/Dad if they share the household name and chose a title. */
+function familyRoomOtherParentLabel(
+  db: Database.Database,
+  parentLine: Line,
+  slot1Label: string
+): string {
+  const last = userLastName(db, parentLine.owner_user_id);
+  const slot1 = String(slot1Label || "").trim().toLowerCase();
+  if (last && last.toLowerCase() !== slot1) return last;
+  const title = parentDisplayLabel(db, parentLine.id);
+  if (title === "Mom" || title === "Dad") return title;
+  return last || title || "Family";
+}
+
+function householdNameLabel(db: Database.Database, householdId: string): string {
+  const hh = db.prepare(`SELECT name FROM households WHERE id = ?`).get(householdId) as
+    | { name: string }
+    | undefined;
+  return (hh?.name || "Family").trim() || "Family";
+}
+
+/** Mom / Dad / line label for parent-mode lines. */
+export function parentDisplayLabel(
+  db: Database.Database,
+  lineId: string,
+  fallback?: string
+): string {
+  const line = db.prepare(`SELECT owner_user_id, child_label, name FROM lines WHERE id = ?`).get(lineId) as
+    | { owner_user_id: string; child_label: string | null; name: string }
+    | undefined;
+  if (!line) return fallback || "Parent";
+  const user = db.prepare(`SELECT display_name, parent_title FROM users WHERE id = ?`).get(line.owner_user_id) as
+    | { display_name: string; parent_title: string | null }
+    | undefined;
+  if (user?.parent_title === "mom") return "Mom";
+  if (user?.parent_title === "dad") return "Dad";
+  return fallback || line.child_label || line.name || user?.display_name || "Parent";
+}
+
+/** Parent-mode lines in a household, oldest first. */
+export function listHouseholdParentLines(db: Database.Database, householdId: string): Line[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM lines
+       WHERE household_id = ?
+         AND IFNULL(mode, 'parent') != 'child'
+       ORDER BY created_at ASC, id ASC`
+    )
+    .all(householdId) as Line[];
+  return rows.map(normalizeLine);
+}
+
+/** Household admin parent line: owner’s parent line, else first parent line. */
+export function householdAdminParentLine(
+  db: Database.Database,
+  householdId: string
+): Line | null {
+  const parents = listHouseholdParentLines(db, householdId);
+  if (!parents.length) return null;
+  const hh = db.prepare(`SELECT owner_user_id FROM households WHERE id = ?`).get(householdId) as
+    | { owner_user_id: string }
+    | undefined;
+  if (hh?.owner_user_id) {
+    const ownerLine = parents.find((l) => l.owner_user_id === hh.owner_user_id);
+    if (ownerLine) return ownerLine;
+  }
+  return parents[0] ?? null;
+}
+
+/** Second parent-mode line in the household (by created_at), excluding admin. */
+export function householdSecondaryParentLine(
+  db: Database.Database,
+  householdId: string
+): Line | null {
+  const admin = householdAdminParentLine(db, householdId);
+  const parents = listHouseholdParentLines(db, householdId);
+  return parents.find((l) => l.id !== admin?.id) ?? null;
+}
+
+export type AdultFamilyRoomMemberRow = {
+  line_id: string;
+  approved_by_user_id: string | null;
+  created_at: string;
+  name: string;
+  child_label: string | null;
+  mode: string;
+  online: number;
+  household_id: string;
+};
+
+export function listAdultFamilyRoomMembers(
+  db: Database.Database,
+  householdId: string
+): AdultFamilyRoomMemberRow[] {
+  return db
+    .prepare(
+      `SELECT afrm.line_id, afrm.approved_by_user_id, afrm.created_at,
+              l.name, l.child_label, IFNULL(l.mode, 'parent') AS mode, l.online, l.household_id
+       FROM adult_family_room_members afrm
+       JOIN lines l ON l.id = afrm.line_id
+       WHERE afrm.household_id = ?
+       ORDER BY lower(COALESCE(NULLIF(l.child_label, ''), l.name))`
+    )
+    .all(householdId) as AdultFamilyRoomMemberRow[];
+}
+
+/** FamilyRoom has no auto-members — kids and adults both need household-admin approve. */
+export function isAdultFamilyRoomAlwaysAllowed(
+  _db: Database.Database,
+  _householdId: string,
+  _lineId: string
+): boolean {
+  return false;
+}
+
+export function canJoinAdultFamilyRoom(
+  db: Database.Database,
+  householdId: string,
+  lineId: string
+): boolean {
+  const line = db.prepare(`SELECT 1 FROM lines WHERE id = ?`).get(lineId);
+  if (!line) return false;
+  return Boolean(
+    db
+      .prepare(`SELECT 1 FROM adult_family_room_members WHERE household_id = ? AND line_id = ?`)
+      .get(householdId, lineId)
+  );
+}
+
+export function adultFamilyRoomCandidateLines(
+  db: Database.Database,
+  householdId: string
+): { line_id: string; name: string; child_label: string | null; mode: string; kind: string }[] {
+  const hhLines = db
+    .prepare(
+      `SELECT id AS line_id, name, child_label, IFNULL(mode, 'parent') AS mode, 'household' AS kind
+       FROM lines
+       WHERE household_id = ?
+       ORDER BY created_at`
+    )
+    .all(householdId) as {
+    line_id: string;
+    name: string;
+    child_label: string | null;
+    mode: string;
+    kind: string;
+  }[];
+  const external = db
+    .prepare(
+      `SELECT a.target_line_id AS line_id, COALESCE(NULLIF(a.label, ''), l.name) AS name,
+              l.child_label, IFNULL(l.mode, 'parent') AS mode, 'contact' AS kind
+       FROM allowlist a
+       JOIN lines l ON l.id = a.target_line_id
+       WHERE a.household_id = ? AND l.household_id != ?
+       ORDER BY lower(COALESCE(NULLIF(a.label, ''), l.name))`
+    )
+    .all(householdId, householdId) as {
+    line_id: string;
+    name: string;
+    child_label: string | null;
+    mode: string;
+    kind: string;
+  }[];
+  const seen = new Set<string>();
+  const out: typeof hhLines = [];
+  for (const row of [...hhLines, ...external]) {
+    if (seen.has(row.line_id)) continue;
+    seen.add(row.line_id);
+    out.push(row);
+  }
+  return out;
+}
+
+export function addAdultFamilyRoomMember(
+  db: Database.Database,
+  householdId: string,
+  lineId: string,
+  actorUserId: string
+): AdultFamilyRoomMemberRow {
+  if (!isHouseholdOwner(db, householdId, actorUserId)) {
+    throw new Error("Only the household admin can manage FamilyRoom");
+  }
+  const line = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(lineId) as Line | undefined;
+  if (!line) throw new Error("Unknown line");
+  if (line.household_id !== householdId) {
+    const onAllowlist = db
+      .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
+      .get(householdId, lineId);
+    if (!onAllowlist) {
+      throw new Error("Approve them as a contact before adding to FamilyRoom");
+    }
+  }
+  db.prepare(
+    `INSERT OR REPLACE INTO adult_family_room_members (household_id, line_id, approved_by_user_id, created_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(householdId, lineId, actorUserId, nowIso());
+  const row = listAdultFamilyRoomMembers(db, householdId).find((m) => m.line_id === lineId);
+  if (!row) throw new Error("Could not add to FamilyRoom");
+  return row;
+}
+
+export function removeAdultFamilyRoomMember(
+  db: Database.Database,
+  householdId: string,
+  lineId: string,
+  actorUserId: string
+): { ok: true } {
+  if (!isHouseholdOwner(db, householdId, actorUserId)) {
+    throw new Error("Only the household admin can manage FamilyRoom");
+  }
+  db.prepare(`DELETE FROM adult_family_room_members WHERE household_id = ? AND line_id = ?`).run(
+    householdId,
+    lineId
+  );
+  return { ok: true };
+}
+
+export type FamilyRoomChoice = {
+  slot: 1 | 2;
+  householdId: string;
+  label: string;
+};
+
+/**
+ * Up to two FamilyRoom targets for # IVR.
+ * 1 = default parent household name (e.g. Larsen).
+ * 2 = other parent’s last name, or another household this line is approved for.
+ */
+export function listFamilyRoomChoicesForLine(
+  db: Database.Database,
+  lineId: string
+): FamilyRoomChoice[] {
+  const line = db.prepare(`SELECT household_id FROM lines WHERE id = ?`).get(lineId) as
+    | { household_id: string }
+    | undefined;
+  if (!line) return [];
+
+  const ownHhId = line.household_id;
+  const choices: FamilyRoomChoice[] = [];
+  if (canJoinAdultFamilyRoom(db, ownHhId, lineId)) {
+    choices.push({ slot: 1, householdId: ownHhId, label: householdNameLabel(db, ownHhId) });
+  }
+
+  const otherApproved = (
+    db
+      .prepare(
+        `SELECT household_id FROM adult_family_room_members
+         WHERE line_id = ? AND household_id != ?
+         ORDER BY created_at ASC`
+      )
+      .all(lineId, ownHhId) as { household_id: string }[]
+  ).filter((row) => canJoinAdultFamilyRoom(db, row.household_id, lineId));
+
+  if (otherApproved[0]) {
+    const otherId = otherApproved[0].household_id;
+    const slot1 = choices[0]?.label || householdNameLabel(db, otherId);
+    const admin = householdAdminParentLine(db, otherId);
+    const label = admin
+      ? familyRoomOtherParentLabel(db, admin, slot1)
+      : householdNameLabel(db, otherId);
+    if (!choices.length) {
+      choices.push({ slot: 1, householdId: otherId, label: householdNameLabel(db, otherId) });
+    } else {
+      choices.push({ slot: 2, householdId: otherId, label });
+    }
+  } else if (choices.length === 1) {
+    const secondary = householdSecondaryParentLine(db, ownHhId);
+    if (secondary) {
+      choices.push({
+        slot: 2,
+        householdId: ownHhId,
+        label: familyRoomOtherParentLabel(db, secondary, choices[0].label),
+      });
+    }
+  }
+  return choices.slice(0, 2);
+}
+
 export function updateAllowlistEntry(
   db: Database.Database,
   householdId: string,
@@ -1397,9 +3102,13 @@ export function updateAllowlistEntry(
     favorite: patch.favorite === undefined ? entry.favorite : patch.favorite ? 1 : 0,
     always_allow: patch.always_allow === undefined ? entry.always_allow || 0 : patch.always_allow ? 1 : 0,
   };
-  // Slot 0 is reserved for the designated Home parent (synthesized; not assignable).
-  if (next.speed_dial != null && (next.speed_dial < 1 || next.speed_dial > 9)) {
-    throw new Error("Speed dial must be 1–9 (0 is reserved for Home / parent)");
+  // Slots 0–1 reserved (TreeHouse + locked parent/child). Slot 2 is reserved
+  // only when a second parent exists. Contacts otherwise use 2–9.
+  if (next.speed_dial != null && (next.speed_dial < 2 || next.speed_dial > 9 || next.speed_dial === 0 || next.speed_dial === 1)) {
+    throw new Error("Speed dial must be 2–9 (0 is TreeHouse; 1 is locked parent/child)");
+  }
+  if (patch.speed_dial === 2 && householdSecondaryParentLine(db, householdId)) {
+    throw new Error("Speed dial 2 is reserved for the co-parent — pick 3–9");
   }
   const tx = db.transaction(() => {
     if (patch.speed_dial !== undefined && next.speed_dial != null) {
@@ -1503,6 +3212,56 @@ const SCHEDULE_PRESETS: Record<
   },
   custom: { quiet_start: null, quiet_end: null, label: "Custom" },
 };
+
+const PARENT_SCHEDULE_PRESETS: Record<
+  string,
+  {
+    quiet_start: string | null;
+    quiet_end: string | null;
+    label: string;
+    quiet_days?: string | null;
+  }
+> = {
+  open: { quiet_start: null, quiet_end: null, label: "Ring anytime", quiet_days: null },
+  evenings: {
+    quiet_start: "21:00",
+    quiet_end: "07:00",
+    label: "Evenings",
+    quiet_days: null,
+  },
+  custom: { quiet_start: null, quiet_end: null, label: "Custom" },
+};
+
+export type QuietPolicy = Pick<
+  Household,
+  "quiet_start" | "quiet_end" | "quiet_tz" | "quiet_days" | "skip_holidays" | "schedule_preset"
+>;
+
+export function lineModeOf(line: { mode?: string | null }): "parent" | "child" {
+  return line.mode === "child" ? "child" : "parent";
+}
+
+/** Kid lines use household bedtime/school; parent lines use parent DND only. */
+export function quietPolicyForLine(line: { mode?: string | null }, hh: Household): QuietPolicy {
+  if (lineModeOf(line) === "child") {
+    return {
+      quiet_start: hh.quiet_start,
+      quiet_end: hh.quiet_end,
+      quiet_tz: hh.quiet_tz,
+      quiet_days: hh.quiet_days,
+      skip_holidays: hh.skip_holidays,
+      schedule_preset: hh.schedule_preset,
+    };
+  }
+  return {
+    quiet_start: hh.parent_quiet_start,
+    quiet_end: hh.parent_quiet_end,
+    quiet_tz: hh.parent_quiet_tz || hh.quiet_tz,
+    quiet_days: hh.parent_quiet_days,
+    skip_holidays: 0,
+    schedule_preset: hh.parent_schedule_preset || "open",
+  };
+}
 
 /** Parse quiet_days "1,2,3,4,5" → Set of ISO weekdays Mon=1 … Sun=7. Empty = all days. */
 export function parseQuietDays(raw: string | null | undefined): Set<number> | null {
@@ -1698,7 +3457,12 @@ export function formatTalkDuration(ms: number): string {
  * Connected talk minutes today in the household timezone.
  * Counts only answered→ended (or →now for live calls); excludes ringing/missed/cancelled.
  */
-export function minutesUsedToday(db: Database.Database, householdId: string, now = new Date()): number {
+export function minutesUsedToday(
+  db: Database.Database,
+  householdId: string,
+  now = new Date(),
+  opts?: { lineId?: string }
+): number {
   // Close answered rows that are no longer live so they stop accruing forever.
   // Never let orphan cleanup take down /api/me (that looked like “sign-in broken”).
   try {
@@ -1727,9 +3491,11 @@ export function minutesUsedToday(db: Database.Database, householdId: string, now
   }
   const dayEndMs = zonedDayStartMs(tomorrowKey, tz);
 
-  const lines = db.prepare(`SELECT id FROM lines WHERE household_id = ?`).all(householdId) as {
-    id: string;
-  }[];
+  const lines = opts?.lineId
+    ? [{ id: opts.lineId }]
+    : (db.prepare(`SELECT id FROM lines WHERE household_id = ?`).all(householdId) as {
+        id: string;
+      }[]);
   if (!lines.length) return 0;
   const ids = lines.map((l) => l.id);
   const placeholders = ids.map(() => "?").join(",");
@@ -1778,6 +3544,11 @@ export function updateHouseholdRules(
     skip_holidays?: boolean;
     daily_cap_minutes?: number | null;
     schedule_preset?: string;
+    parent_quiet_start?: string | null;
+    parent_quiet_end?: string | null;
+    parent_quiet_tz?: string | null;
+    parent_quiet_days?: string | number[] | null;
+    parent_schedule_preset?: string;
     parent_pin?: string | null;
     dnd?: boolean;
     layout_locked?: boolean;
@@ -1800,6 +3571,20 @@ export function updateHouseholdRules(
     patch.daily_cap_minutes === undefined ? hh.daily_cap_minutes ?? null : patch.daily_cap_minutes;
   let parent_pin_hash = hh.parent_pin_hash;
   let dnd = patch.dnd === undefined ? hh.dnd || 0 : patch.dnd ? 1 : 0;
+  let parent_quiet_start =
+    patch.parent_quiet_start === undefined ? hh.parent_quiet_start : patch.parent_quiet_start;
+  let parent_quiet_end =
+    patch.parent_quiet_end === undefined ? hh.parent_quiet_end : patch.parent_quiet_end;
+  let parent_quiet_tz =
+    patch.parent_quiet_tz === undefined ? hh.parent_quiet_tz : patch.parent_quiet_tz;
+  let parent_quiet_days =
+    patch.parent_quiet_days === undefined
+      ? hh.parent_quiet_days ?? null
+      : normalizeQuietDays(patch.parent_quiet_days);
+  let parent_schedule_preset =
+    patch.parent_schedule_preset === undefined
+      ? hh.parent_schedule_preset || "open"
+      : patch.parent_schedule_preset;
   let layout_locked =
     patch.layout_locked === undefined ? hh.layout_locked ?? 1 : patch.layout_locked ? 1 : 0;
   let ring_volume = patch.ring_volume === undefined ? hh.ring_volume ?? 70 : Number(patch.ring_volume);
@@ -1851,6 +3636,47 @@ export function updateHouseholdRules(
     throw new Error("Invalid timezone");
   }
 
+  if (patch.parent_schedule_preset && patch.parent_schedule_preset !== "custom") {
+    const preset = PARENT_SCHEDULE_PRESETS[patch.parent_schedule_preset];
+    if (!preset) throw new Error("Unknown parent schedule");
+    if (patch.parent_schedule_preset !== "open") {
+      parent_quiet_start = preset.quiet_start;
+      parent_quiet_end = preset.quiet_end;
+      if (!parent_quiet_tz) parent_quiet_tz = quiet_tz || "America/New_York";
+      if (preset.quiet_days !== undefined && patch.parent_quiet_days === undefined) {
+        parent_quiet_days = preset.quiet_days ?? null;
+      }
+    } else {
+      parent_quiet_start = null;
+      parent_quiet_end = null;
+      parent_quiet_days = null;
+    }
+    parent_schedule_preset = patch.parent_schedule_preset;
+  }
+
+  if (parent_quiet_start === "") parent_quiet_start = null;
+  if (parent_quiet_end === "") parent_quiet_end = null;
+  if (parent_quiet_tz === "") parent_quiet_tz = null;
+
+  if (parent_quiet_start && parent_quiet_end) {
+    parseHhMm(parent_quiet_start);
+    parseHhMm(parent_quiet_end);
+    if (!parent_quiet_tz || !isValidTimeZone(parent_quiet_tz)) {
+      throw new Error("Do Not Disturb needs a valid timezone (e.g. America/Chicago)");
+    }
+    if (!patch.parent_schedule_preset) parent_schedule_preset = "custom";
+  } else if (parent_quiet_start || parent_quiet_end) {
+    throw new Error("Set both Do Not Disturb start and end, or clear both");
+  } else if (patch.parent_quiet_start !== undefined || patch.parent_quiet_end !== undefined) {
+    parent_quiet_start = null;
+    parent_quiet_end = null;
+    if (!patch.parent_schedule_preset) parent_schedule_preset = "open";
+  }
+
+  if (parent_quiet_tz && !isValidTimeZone(parent_quiet_tz)) {
+    throw new Error("Invalid timezone");
+  }
+
   if (daily_cap_minutes !== null && daily_cap_minutes !== undefined) {
     const n = Number(daily_cap_minutes);
     if (!Number.isFinite(n) || n < 0) throw new Error("Daily cap must be 0+ minutes");
@@ -1884,6 +3710,11 @@ export function updateHouseholdRules(
     parent_pin_hash,
     schedule_preset: schedule_preset || "open",
     dnd,
+    parent_quiet_start,
+    parent_quiet_end,
+    parent_quiet_tz,
+    parent_quiet_days,
+    parent_schedule_preset: parent_schedule_preset || "open",
     layout_locked,
     ring_volume,
     ringer_style,
@@ -1892,13 +3723,17 @@ export function updateHouseholdRules(
     `UPDATE households SET kill_switch = @kill_switch, quiet_start = @quiet_start, quiet_end = @quiet_end,
      quiet_tz = @quiet_tz, quiet_days = @quiet_days, skip_holidays = @skip_holidays,
      daily_cap_minutes = @daily_cap_minutes, parent_pin_hash = @parent_pin_hash,
-     schedule_preset = @schedule_preset, dnd = @dnd, layout_locked = @layout_locked,
+     schedule_preset = @schedule_preset, dnd = @dnd,
+     parent_quiet_start = @parent_quiet_start, parent_quiet_end = @parent_quiet_end,
+     parent_quiet_tz = @parent_quiet_tz, parent_quiet_days = @parent_quiet_days,
+     parent_schedule_preset = @parent_schedule_preset,
+     layout_locked = @layout_locked,
      ring_volume = @ring_volume, ringer_style = @ringer_style WHERE id = @id`
   ).run(next);
   return next;
 }
 
-export function inQuietHours(hh: Household, date = new Date()): boolean {
+export function inQuietHours(hh: QuietPolicy, date = new Date()): boolean {
   return isQuietHoursActive(hh, date);
 }
 
@@ -1909,17 +3744,21 @@ export function inQuietHours(hh: Household, date = new Date()): boolean {
 export function linePresenceOnline(opts: {
   softphoneOnline: boolean;
   ataRegistered: boolean;
-  household: Pick<
-    Household,
-    "dnd" | "quiet_start" | "quiet_end" | "quiet_tz" | "quiet_days" | "skip_holidays" | "schedule_preset"
-  >;
+  household: Household | (QuietPolicy & { dnd: number } & Partial<Household>);
+  lineMode?: "parent" | "child";
   now?: Date;
 }): boolean {
   if (opts.softphoneOnline) return true;
   if (!opts.ataRegistered) return false;
-  const hh = opts.household;
+  const hh = opts.household as Household;
   if (hh.dnd) return false;
-  if (isQuietHoursActive(hh, opts.now)) return false;
+  const policy =
+    opts.lineMode === "parent" && "parent_quiet_start" in hh
+      ? quietPolicyForLine({ mode: "parent" }, hh)
+      : opts.lineMode === "child"
+        ? quietPolicyForLine({ mode: "child" }, hh)
+        : hh;
+  if (isQuietHoursActive(policy, opts.now)) return false;
   return true;
 }
 
@@ -1959,6 +3798,15 @@ export function canCall(
   const to = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(toLineId) as Line | undefined;
   if (!from || !to) return block("Unknown line", "unknown", "both");
 
+  // Review softphone: only Trevor ↔ test, never anyone else (even if allowlist drifts).
+  const testUserId = testReviewUserIdForLine(db, from) || testReviewUserIdForLine(db, to);
+  if (testUserId) {
+    const allowed = testReviewAllowedLineIds(db, testUserId);
+    if (!allowed.has(fromLineId) || !allowed.has(toLineId)) {
+      return block("Not on your approved contacts", "allowlist", "caller");
+    }
+  }
+
   const fromHh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(from.household_id) as Household;
   const toHh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(to.household_id) as Household;
 
@@ -1981,8 +3829,14 @@ export function canCall(
   if (fromHh.dnd && !fromVip) return block("Quiet Time is on", "quiet", "caller");
   if (toHh.dnd && !toVip) return block("They’re in Quiet Time", "quiet", "callee");
 
-  if (inQuietHours(fromHh, now) && !fromVip) {
-    const voice = quietHoursVoice(fromHh);
+  const fromPolicy = quietPolicyForLine(from, fromHh);
+  const toPolicy = quietPolicyForLine(to, toHh);
+  const fromIsKid = lineModeOf(from) === "child";
+  const toIsKid = lineModeOf(to) === "child";
+
+  // Kid schedule blocks both directions. Parent DND only stops inbound rings.
+  if (fromIsKid && inQuietHours(fromPolicy, now) && !fromVip) {
+    const voice = quietHoursVoice(fromPolicy);
     const reason =
       voice === "school"
         ? "School hours — try again later"
@@ -1991,25 +3845,26 @@ export function canCall(
           : "Quiet Time — try again later";
     return block(reason, voice, "caller");
   }
-  if (inQuietHours(toHh, now) && !toVip) {
-    const voice = quietHoursVoice(toHh);
-    const reason =
-      voice === "school"
+  if (inQuietHours(toPolicy, now) && !toVip) {
+    const voice = quietHoursVoice(toPolicy);
+    const reason = toIsKid
+      ? voice === "school"
         ? "They’re at school"
         : voice === "bedtime"
           ? "They’re not available until tomorrow"
-          : "They’re in Quiet Time";
-    return block(reason, voice, "callee");
+          : "They’re in Quiet Time"
+      : "They’re on Do Not Disturb";
+    return block(reason, toIsKid ? voice : "quiet", "callee");
   }
 
-  if (fromHh.daily_cap_minutes != null) {
-    const used = minutesUsedToday(db, fromHh.id, now);
+  if (fromIsKid && fromHh.daily_cap_minutes != null) {
+    const used = minutesUsedToday(db, fromHh.id, now, { lineId: from.id });
     if (used >= fromHh.daily_cap_minutes) {
       return block("Daily talk time limit reached", "cap", "caller");
     }
   }
-  if (toHh.daily_cap_minutes != null) {
-    const used = minutesUsedToday(db, toHh.id, now);
+  if (toIsKid && toHh.daily_cap_minutes != null) {
+    const used = minutesUsedToday(db, toHh.id, now, { lineId: to.id });
     if (used >= toHh.daily_cap_minutes) {
       return block("Their daily talk time limit is full", "cap", "callee");
     }
@@ -2027,6 +3882,12 @@ export function canCall(
 
   if (!allowedOut) return block("Not on your approved contacts", "allowlist", "caller");
   if (!allowedIn) return block("You’re not on their approved contacts", "allowlist", "callee");
+
+  // TEMP fail-open: sphere enforcement paused while call-path is restored.
+  // Re-enable shared-circle check after migration + calling are verified.
+  // if (!linesShareSphere(db, fromLineId, toLineId)) {
+  //   return block("Not in the same circle", "sphere", "caller");
+  // }
   return { ok: true };
 }
 
@@ -2171,7 +4032,13 @@ export function leaveVoicemail(
   const dataDir = opts?.dataDir;
   if (!dataDir) throw new Error("Audio storage unavailable");
   const mime = String(opts?.audioMime || "audio/webm");
-  const ext = mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "m4a" : "webm";
+  const ext = mime.includes("wav") || mime.includes("wave")
+    ? "wav"
+    : mime.includes("ogg")
+      ? "ogg"
+      : mime.includes("mp4") || mime.includes("m4a")
+        ? "m4a"
+        : "webm";
   const raw = audioBase64.includes(",") ? audioBase64.split(",").pop()! : audioBase64;
   const buf = Buffer.from(raw, "base64");
   if (buf.length < 64) throw new Error("Recording too short");
@@ -2208,7 +4075,11 @@ export function leaveVoicemail(
     household_id: toHouseholdId,
     from_line_id: fromLineId,
     to_line_id: toLineId,
-    from_label: fromLabel?.trim() || fromLine?.name?.replace(/'s phone$/i, "").trim() || "Family",
+    from_label:
+      fromLabel?.trim() ||
+      peerLabelForHousehold(db, toHouseholdId, fromLineId) ||
+      fromLine?.name?.replace(/'s phone$/i, "").trim() ||
+      "Family",
     body: "(voicemail)",
     audio_path,
     listened: 0,
@@ -2248,8 +4119,31 @@ export function leaveVoicemailForContact(
       .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
       .get(from.household_id, toLineId);
     if (!approved) throw new Error("Contact not approved");
+    // TEMP fail-open: sphere gate paused (same as canCall) during call-path restore.
   }
   return leaveVoicemail(db, to.household_id, fromLineId, toLineId, body, undefined, opts);
+}
+
+/**
+ * Bridge/ATA no-answer deposit — no softphone user session.
+ * Same contact gate as leaveVoicemailForContact (household or allowlist).
+ */
+export function leaveVoicemailFromBridge(
+  db: Database.Database,
+  fromLineId: string,
+  toLineId: string,
+  opts?: { audioBase64?: string; audioMime?: string; dataDir?: string }
+) {
+  const from = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(fromLineId) as Line | undefined;
+  const to = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(toLineId) as Line | undefined;
+  if (!from || !to) throw new Error("Unknown line");
+  if (from.household_id !== to.household_id) {
+    const approved = db
+      .prepare(`SELECT 1 FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
+      .get(from.household_id, toLineId);
+    if (!approved) throw new Error("Contact not approved");
+  }
+  return leaveVoicemail(db, to.household_id, fromLineId, toLineId, "", undefined, opts);
 }
 
 /** Remove a voicemail row and its audio file (if any). */
@@ -2307,6 +4201,8 @@ export function deleteVoicemails(
 }
 
 export function householdSnapshot(db: Database.Database, userId: string) {
+  scrubTestReviewVisibility(db, userId);
+
   const memberships = db
     .prepare(`SELECT household_id FROM household_members WHERE user_id = ?`)
     .all(userId) as { household_id: string }[];
@@ -2352,7 +4248,13 @@ export function householdSnapshot(db: Database.Database, userId: string) {
               .get(theirHh.household_id, lid)
           )
       );
-      return { ...a, always_allow: a.always_allow || 0, mutual };
+      return {
+        ...a,
+        always_allow: a.always_allow || 0,
+        mutual,
+        sphere_ids: sphereIdsContainingLine(db, a.target_line_id),
+        is_test_review: isTestReviewLineId(db, a.target_line_id),
+      };
     });
     const logs = db
       .prepare(
@@ -2369,6 +4271,7 @@ export function householdSnapshot(db: Database.Database, userId: string) {
       .all(hh.id);
     const used = minutesUsedToday(db, hh.id);
     const pub = publicHousehold(hh);
+    const parentSpheres = isMember ? listHouseholdParentSpheres(db, hh.id) : [];
     const enrichedLines = lines.map((l) => {
       const norm = normalizeLine(l);
       const guardians =
@@ -2383,16 +4286,88 @@ export function householdSnapshot(db: Database.Database, userId: string) {
         child_user: publicChildUserForLine(db, norm),
         can_manage: canManageChild(db, userId, norm.id),
         ata: ata ? publicAta(ata) : null,
+        sphere_access:
+          (norm.mode || "parent") === "child" ? listLineSphereAccessIds(db, norm.id) : [],
+        usage_today_minutes:
+          (norm.mode || "parent") === "child"
+            ? minutesUsedToday(db, hh.id, new Date(), { lineId: norm.id })
+            : undefined,
       };
     });
+    const mySphere = isMember ? ensureSphereForParent(db, userId) : getSphereByOwner(db, userId);
+    // TEMP fail-open: incomplete sphere membership must not empty pads / hide contacts
+    // while calling is restored. Re-enable kid/parent circle filters after migration.
+    const childOnly = isChildOnlyAccount(db, userId);
+    void childOnly;
+    const visibleAllowlist = enrichedAllowlist.filter((a) =>
+      canViewerAccessTestReviewLine(db, userId, a.target_line_id)
+    );
+
     return {
       ...pub,
       dnd: hh.dnd || 0,
       quiet_days: hh.quiet_days ?? null,
       skip_holidays: hh.skip_holidays || 0,
       access: isMember ? "member" : "guardian",
+      members: db
+        .prepare(
+          `SELECT u.id AS user_id, u.display_name, u.username, u.parent_title, hm.role
+           FROM household_members hm
+           JOIN users u ON u.id = hm.user_id
+           WHERE hm.household_id = ?
+           ORDER BY CASE hm.role WHEN 'owner' THEN 0 ELSE 1 END, lower(u.display_name)`
+        )
+        .all(hh.id) as {
+        user_id: string;
+        display_name: string;
+        username: string | null;
+        parent_title: string | null;
+        role: string;
+      }[],
       lines: enrichedLines,
-      allowlist: enrichedAllowlist,
+      allowlist: visibleAllowlist,
+      family_room_members: listFamilyRoomMembers(db, hh.id).map((m) => ({
+        line_id: m.line_id,
+        name: m.child_label || m.name,
+        mode: m.mode,
+        online: m.online,
+        household_id: m.household_id,
+      })),
+      family_room_always: listFamilyRoomAlwaysAllowedLineIds(db, hh.id),
+      family_room_approved: [
+        ...new Set([
+          ...listFamilyRoomAlwaysAllowedLineIds(db, hh.id),
+          ...listFamilyRoomMembers(db, hh.id).map((m) => m.line_id),
+        ]),
+      ],
+      family_room_talk_pairs: listFamilyRoomTalkPairs(db, hh.id).map((p) => ({
+        line_a: p.line_a,
+        line_b: p.line_b,
+      })),
+      adult_family_room_members: listAdultFamilyRoomMembers(db, hh.id).map((m) => ({
+        line_id: m.line_id,
+        name: m.child_label || m.name,
+        mode: m.mode,
+        online: m.online,
+        household_id: m.household_id,
+      })),
+      adult_family_room_approved: [
+        ...new Set(listAdultFamilyRoomMembers(db, hh.id).map((m) => m.line_id)),
+      ],
+      family_room_choices_by_line: Object.fromEntries(
+        enrichedLines.map((l) => [l.id, listFamilyRoomChoicesForLine(db, l.id)])
+      ),
+      spheres: parentSpheres.map((s) => ({
+        id: s.id,
+        owner_user_id: s.owner_user_id,
+        owner_display_name: s.owner_display_name,
+        name: s.name,
+        is_mine: s.owner_user_id === userId,
+        member_line_ids: listSphereMemberLineIds(db, s.id).filter((lineId) =>
+          canViewerAccessTestReviewLine(db, userId, lineId)
+        ),
+      })),
+      my_sphere_id: mySphere?.id ?? null,
       call_logs: logs,
       voicemails,
       usage_today_minutes: used,
@@ -2400,14 +4375,15 @@ export function householdSnapshot(db: Database.Database, userId: string) {
       schedule_preset: hh.schedule_preset || "open",
       live_calls: liveCallsForViewer(db, hh.id, userId),
       declined_line_ids: listDeclinedLineIds(db, hh.id),
+      provisioned_relatives: isMember ? listProvisionedRelatives(db, hh.id) : [],
     };
   });
 
   const directory = (
     db
       .prepare(
-        `SELECT l.id, l.name, l.type, l.household_id, l.online, l.avatar_path, l.avatar_updated_at,
-                h.name AS household_name
+        `SELECT l.id, l.name, l.type, l.household_id, l.online, IFNULL(l.mode, 'parent') AS mode,
+                l.avatar_path, l.avatar_updated_at, h.name AS household_name
          FROM lines l JOIN households h ON h.id = l.household_id`
       )
       .all() as {
@@ -2416,18 +4392,22 @@ export function householdSnapshot(db: Database.Database, userId: string) {
       type: string;
       household_id: string;
       online: number;
+      mode: string;
       avatar_path: string | null;
       avatar_updated_at: string | null;
       household_name: string;
     }[]
-  ).map(({ avatar_path, avatar_updated_at, ...row }) => ({
-    ...row,
-    ...publicLineAvatar({
-      id: row.id,
-      avatar_path,
-      avatar_updated_at,
-    }),
-  }));
+  )
+    .filter((row) => canViewerSeeLine(db, userId, row.id))
+    .map(({ avatar_path, avatar_updated_at, ...row }) => ({
+      ...row,
+      ...publicLineAvatar({
+        id: row.id,
+        avatar_path,
+        avatar_updated_at,
+      }),
+      is_test_review: isTestReviewLineId(db, row.id),
+    }));
 
   households.sort((a, b) => {
     if (a.access === b.access) return 0;
@@ -2523,7 +4503,7 @@ export function defaultSipServer(): string {
       /* fall through */
     }
   }
-  return "y5876647.eero.online";
+  return "";
 }
 
 export function getAtaByLineId(db: Database.Database, lineId: string): AtaDevice | null {
@@ -2765,25 +4745,14 @@ export function ataConfigForDevice(
 }
 
 /**
- * Designated Home / dial-0 parent for a household.
- * Rule: first line with mode parent (IFNULL(mode,'parent') != 'child'),
- * ordered by created_at ASC, then id ASC. Slot 0 is synthesized — never stored
- * as allowlist.speed_dial=0.
+ * Designated admin parent for dial-1 / Home on kid pads and ATA.
+ * Alias: householdHomeParentLine.
  */
 export function householdHomeParentLine(
   db: Database.Database,
   householdId: string
 ): Line | null {
-  const row = db
-    .prepare(
-      `SELECT * FROM lines
-       WHERE household_id = ?
-         AND IFNULL(mode, 'parent') != 'child'
-       ORDER BY created_at ASC, id ASC
-       LIMIT 1`
-    )
-    .get(householdId) as Line | undefined;
-  return row ? normalizeLine(row) : null;
+  return householdAdminParentLine(db, householdId);
 }
 
 /** US emergency + common VoIP test code (matches HT801 P8597). */
@@ -2897,11 +4866,11 @@ export function fxsCallerIdentity(
 
 /**
  * Map ATA CallerID extension + dialed digits → PhoneHome lines using allowlist speed dial.
- * Digit "0" → designated household parent (Home). Digits "1"–"9" → speed_dial slots.
- * Digits "911" / "933" → same parent (interim E911 until PSTN trunk).
- * Longer digit strings may match speed_dial later.
- * When the target line has an `ata_devices` row, `toSipExtension` is set so the bridge can
- * ring FXS (ATA→ATA) without a softphone.
+ * Digit "0" → TreeHouse (pad #0).
+ * Digit "1" → admin parent (kid pad locked slot).
+ * Digit "2" → secondary parent when present, else allowlist speed_dial 2.
+ * Digits "3"–"9" → speed_dial slots.
+ * Digits "911" / "933" → admin parent (interim E911 until PSTN trunk).
  */
 export function resolveAtaDial(
   db: Database.Database,
@@ -2910,6 +4879,7 @@ export function resolveAtaDial(
 ):
   | {
       ok: true;
+      treeHouse?: false;
       fromLineId: string;
       toLineId: string;
       fromLabel: string;
@@ -2921,6 +4891,15 @@ export function resolveAtaDial(
       dialed: string;
       /** FreePBX SIP extension for target ATA, if linked. */
       toSipExtension: string | null;
+    }
+  | {
+      ok: true;
+      treeHouse: true;
+      fromLineId: string;
+      householdId: string;
+      fromLabel: string;
+      toLabel: string;
+      dialed: string;
     }
   | {
       ok: false;
@@ -2940,20 +4919,51 @@ export function resolveAtaDial(
   const hhId = from.household_id;
   const fromLabel = ata.display_name || from.child_label || from.name;
 
-  // Dial 0 = Home / designated parent (not an allowlist slot).
-  // 911 / 933 = same parent until real PSTN E911 (bypass Quiet Time / pause).
-  if (dialed === "0" || isEmergencyDial(dialed)) {
-    const parent = householdHomeParentLine(db, hhId);
+  // Dial 0 = TreeHouse (pad #0). Never resolve allowlist.speed_dial=0 leftovers.
+  if (dialed === "0") {
+    const hh = db.prepare(`SELECT kill_switch FROM households WHERE id = ?`).get(hhId) as
+      | { kill_switch: number }
+      | undefined;
+    if (hh?.kill_switch) {
+      return { ok: false, reason: "Timeout is on" };
+    }
+    if (!canJoinFamilyRoom(db, hhId, from.id)) {
+      const mode = (from.mode || "parent") as string;
+      return {
+        ok: false,
+        reason:
+          mode === "child"
+            ? "Ask a parent to approve you for TreeHouse"
+            : "Parents use listen-only in the app — TreeHouse pad is for kids",
+      };
+    }
+    return {
+      ok: true,
+      treeHouse: true,
+      fromLineId: from.id,
+      householdId: hhId,
+      fromLabel,
+      toLabel: "TreeHouse",
+      dialed,
+    };
+  }
+
+  // Dial 1 = admin parent (kid pad locked slot). 911 / 933 = same parent until real PSTN E911.
+  if (dialed === "1" || isEmergencyDial(dialed)) {
+    const parent = householdAdminParentLine(db, hhId);
     if (!parent) {
       return {
         ok: false,
         reason: isEmergencyDial(dialed)
           ? "No parent line for emergency dial"
-          : "No parent line for Home (0)",
+          : "No parent line for Home (1)",
       };
     }
     if (from.id === parent.id) {
-      return { ok: false, reason: isEmergencyDial(dialed) ? "Can't emergency-dial yourself" : "Can't call your own line" };
+      return {
+        ok: false,
+        reason: isEmergencyDial(dialed) ? "Can't emergency-dial yourself" : "Can't call your own line",
+      };
     }
     if (!isEmergencyDial(dialed)) {
       const check = canCall(db, from.id, parent.id);
@@ -2969,8 +4979,8 @@ export function resolveAtaDial(
     }
     const toAta = getAtaByLineId(db, parent.id);
     const toLabel = isEmergencyDial(dialed)
-      ? `Emergency → ${parent.child_label || parent.name || "Home"}`
-      : parent.child_label || parent.name || "Home";
+      ? `Emergency → ${parentDisplayLabel(db, parent.id)}`
+      : parentDisplayLabel(db, parent.id);
     const { cidName, cidNumber } = fxsCallerIdentity(db, from.id, parent.id);
     return {
       ok: true,
@@ -2983,6 +4993,36 @@ export function resolveAtaDial(
       dialed,
       toSipExtension: toAta?.sip_extension ?? null,
     };
+  }
+
+  // Dial 2 = secondary parent when present, else allowlist slot 2.
+  if (dialed === "2") {
+    const secondary = householdSecondaryParentLine(db, hhId);
+    if (secondary && secondary.id !== from.id) {
+      const check = canCall(db, from.id, secondary.id);
+      if (!check.ok) {
+        return {
+          ok: false,
+          reason: check.reason,
+          voice: check.voice,
+          spoken: check.spoken,
+          side: check.side,
+        };
+      }
+      const toAta = getAtaByLineId(db, secondary.id);
+      const { cidName, cidNumber } = fxsCallerIdentity(db, from.id, secondary.id);
+      return {
+        ok: true,
+        fromLineId: from.id,
+        toLineId: secondary.id,
+        fromLabel,
+        toLabel: parentDisplayLabel(db, secondary.id),
+        cidName,
+        cidNumber,
+        dialed,
+        toSipExtension: toAta?.sip_extension ?? null,
+      };
+    }
   }
 
   let entry = db
@@ -3118,13 +5158,19 @@ export function peerLabelForHousehold(
   householdId: string,
   peerLineId: string
 ): string {
+  const line = db.prepare(`SELECT name, child_label, IFNULL(mode, 'parent') AS mode FROM lines WHERE id = ?`).get(
+    peerLineId
+  ) as { name: string; child_label: string | null; mode: string } | undefined;
+  // Mom / Dad title beats allowlist nicknames (e.g. leftover "Trevor") for parent lines.
+  if (line && line.mode !== "child") {
+    const titled = parentDisplayLabel(db, peerLineId);
+    if (titled === "Mom" || titled === "Dad") return titled;
+  }
   const al = db
     .prepare(`SELECT label FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
     .get(householdId, peerLineId) as { label: string } | undefined;
   if (al?.label?.trim()) return al.label.trim();
-  const line = db.prepare(`SELECT name, child_label FROM lines WHERE id = ?`).get(peerLineId) as
-    | { name: string; child_label: string | null }
-    | undefined;
+  if (line && line.mode !== "child") return parentDisplayLabel(db, peerLineId);
   if (line?.child_label?.trim()) return line.child_label.trim();
   return line?.name?.replace(/'s phone$/i, "").trim() || "Someone";
 }

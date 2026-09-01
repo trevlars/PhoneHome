@@ -11,6 +11,7 @@ export type UnavailableVoice =
   | "paused"
   | "cap"
   | "allowlist"
+  | "sphere"
   | "self"
   | "unknown";
 
@@ -45,6 +46,10 @@ export const UNAVAILABLE_SPOKEN: Record<
   allowlist: {
     callee: "You're not on their approved contacts.",
     caller: "That contact isn't on your approved list.",
+  },
+  sphere: {
+    callee: "You're not in the same circle.",
+    caller: "That contact isn't in your circle.",
   },
   self: {
     callee: "You can't call your own line.",

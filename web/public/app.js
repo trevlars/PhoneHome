@@ -1,55 +1,130 @@
+import { toSvg } from "./vendor/better-qr.js";
+
 const app = document.getElementById("app");
 
-const TUTORIAL_KEY = "kl_tutorial_v6";
+const TUTORIAL_KEY = "kl_tutorial_v9";
+/** Set only when the last How it works slide is finished (this install). */
+const HOW_IT_WORKS_INSTALL_KEY = "kl_how_it_works_install_v1";
 /** Dismiss only — step done/todo always comes from server household state. */
 const SETUP_DISMISS_KEY = "kl_setup_dismissed_v1";
 /** Parent dismissed the Analog Phone “what is an adapter?” intro. */
 const ATA_INTRO_KEY = "ph_ata_intro_dismissed";
-const ATA_SHOP_AMAZON = "https://www.amazon.com/s?k=Grandstream+HT801";
-const ATA_SHOP_EBAY = "https://www.ebay.com/sch/i.html?_nkw=Grandstream+HT801";
+/** Device-local UI skin — modern (default) + retro skins. */
+const UI_THEME_KEY = "kl_ui_theme";
+/** Picker order: default → analog-90s / Frutiger Aero / childhood objects (first 6 show in setup + tutorial), then house + Y2K, then era fits, then internet-kid identity, then deep cuts. */
+const UI_THEMES = [
+  { id: "modern", label: "Modern", detail: "Soft spatial dark — default" },
+  { id: "retro90s", label: "90s Tech", detail: "atomic purple · clear plastic" },
+  { id: "aero2000s", label: "Aero", detail: "2000s glass · sky gloss" },
+  { id: "tunes2000s", label: "Tunes", detail: "brushed metal · gel blue" },
+  { id: "gba2000s", label: "PocketGame", detail: "pocket LCD · monster RPG menus" },
+  { id: "cartoon2000s", label: "Cartoon Pop", detail: "chunky toon · candy UI" },
+  { id: "millennialGray", label: "Millennial", detail: "greige walls · matte black" },
+  { id: "xenon2000s", label: "Xenon", detail: "Y2K space station · neon future" },
+  { id: "wood70s", label: "Wood Panel", detail: "70s–80s walnut · brass" },
+  { id: "bit1632", label: "32-Bit", detail: "Console menus · readable body" },
+  { id: "windbreaker80s", label: "Windbreaker", detail: "80s nylon · teal · purple V" },
+  { id: "dad80s", label: "80s Dad", detail: "denim · polo · dad sneakers" },
+  { id: "tomspace", label: "TomSpace", detail: "glitter profile · top friends chaos" },
+  { id: "emo2000s", label: "Emo", detail: "checkers · studs · scene black" },
+  { id: "baja", label: "Baja", detail: "neon teal · electric lime" },
+  { id: "flat2013", label: "Flat", detail: "2013 flat · hairline blue" },
+  { id: "craigslist", label: "Craig", detail: "classifieds HTML · link blue" },
+  { id: "backrooms", label: "Backrooms", detail: "yellow rooms · damp carpet" },
+  { id: "coaster", label: "Coaster", detail: "park UI · Win95 bevel" },
+  { id: "dos80s", label: "DOS", detail: "Soft CRT green · amber focus" },
+  { id: "highContrast", label: "High Contrast", detail: "ADA · black on white · clear edges" },
+  { id: "highContrastDark", label: "High Contrast Dark", detail: "ADA · white on black · easier on eyes" },
+];
+/**
+ * Grandparent account picker only — calm, high-readability looks for older adults.
+ * Full Parent Themes list stays unchanged.
+ */
+const UI_THEME_IDS_GRANDPARENT = [
+  "modern",
+  "wood70s",
+  "flat2013",
+  "highContrast",
+  "highContrastDark",
+];
+const UI_THEME_IDS = new Set(UI_THEMES.map((t) => t.id));
+const UI_THEME_META = Object.fromEntries(UI_THEMES.map((t) => [t.id, t]));
+const UI_THEME_COLORS = {
+  modern: "#0e1a15",
+  retro90s: "#4a2080",
+  wood70s: "#2a1810",
+  dos80s: "#000000",
+  bit1632: "#1a1030",
+  aero2000s: "#3a8fc4",
+  windbreaker80s: "#0a5c4f",
+  millennialGray: "#9a968f",
+  tunes2000s: "#6e7580",
+  xenon2000s: "#c44dff",
+  gba2000s: "#2d6b2d",
+  dad80s: "#3a5a8c",
+  emo2000s: "#1a0a12",
+  tomspace: "#ff00aa",
+  craigslist: "#eee8ee",
+  flat2013: "#007aff",
+  backrooms: "#c4b45a",
+  cartoon2000s: "#3d9bfd",
+  coaster: "#000080",
+  baja: "#00b2a9",
+  highContrast: "#ffffff",
+  highContrastDark: "#000000",
+};
+const ATA_SHOP_AMAZON = "https://www.amazon.com/s?k=Grandstream+HT801+v2";
+const ATA_SHOP_EBAY = "https://www.ebay.com/sch/i.html?_nkw=Grandstream+HT801+v2";
 
 const TUTORIAL_SLIDES = [
   {
     id: "brand",
     kicker: "PhoneHome",
-    title: "The home phone, remixed",
-    body: "A real phone for your people — no feeds, no strangers. Softphone or analog. Just rings, voices, and the family circle.",
+    title: "The home phone, reborn",
+    body: "A phone for your people — no feeds, no strangers. App or a house phone. You choose who can call.",
   },
   {
-    id: "lines",
-    kicker: "Parent & kid",
-    title: "Lines with a face",
-    body: "Each line gets a name, picture, and greeting. Parents run the household; kid lines stay simple on purpose.",
+    id: "phone",
+    kicker: "How you call",
+    title: "Tap a face, or pick up",
+    body: "In the app, tap someone to ring them. Or plug any regular phone into a small adapter. Same family either way.",
   },
   {
-    id: "analog",
-    kicker: "Analog phone",
-    title: "A real handset still works",
-    body: "Plug a kid phone into the adapter. Always on — no tablet. Speed dial 1–9 from the family list; 0 is always parent.",
+    id: "circles",
+    kicker: "Who they can call",
+    title: "Kids only see who you add",
+    body: "You invite grandma, cousins, a co-parent. Nothing else shows on their phone. Both families have to say yes.",
   },
   {
-    id: "dial",
-    kicker: "Speed dial",
-    title: "Tap a face to call",
-    body: "Photos on the pad, glow when they’re online. Share an invite, both say yes, then you’re on each other’s dial.",
+    id: "invite",
+    kicker: "How they join",
+    title: "Scan together, or text a link",
+    body: "Sit side by side and scan, or send the link. No long web address to type.",
   },
   {
-    id: "sounds",
-    kicker: "Landline vibes",
-    title: "Dial tone to ringback",
-    body: "Classic progress tones — dial, DTMF, and ringback — so it feels like a house phone, not a chat app.",
-  },
-  {
-    id: "messages",
-    kicker: "Answering machine",
-    title: "Miss a call? Leave a message",
-    body: "Greeting, beep, record. Play, skip, or delete on the Messages tab — not a chat inbox.",
+    id: "treehouse",
+    kicker: "TreeHouse",
+    title: "A hangout — not a secret",
+    body: "Kids tap TreeHouse to talk together. You choose who they hear. If you listen, the room hears that a parent is listening.",
   },
   {
     id: "safety",
-    kicker: "You’re in charge",
-    title: "Quiet Time, PIN, Activity",
-    body: "Quiet Time and schedules, Child mode behind a PIN, and Activity so you can see who called.",
+    kicker: "Parent tools",
+    title: "Private calls. You're in control.",
+    body: "Calls are encrypted. We help set them up; we don't listen or keep what was said. Quiet Time, PIN, and Timeout stay yours.",
+  },
+  {
+    id: "themes",
+    kicker: "Themes",
+    title: "Dress the phone how you like",
+    body: "Modern is fine. Or try 90s Tech, Aero, Tunes — whatever fits the house. Change anytime in Parent → Themes.",
+    beta: true,
+  },
+  {
+    id: "next",
+    kicker: "Next",
+    title: "Three things, then you can call",
+    body: "Sign in, add your kid, invite one person. Finish setup is there if you want the rest later.",
   },
 ];
 
@@ -69,11 +144,332 @@ function isPhoneHomeStandalone() {
   return (
     window.matchMedia("(display-mode: standalone)").matches ||
     window.matchMedia("(display-mode: fullscreen)").matches ||
+    window.matchMedia("(display-mode: minimal-ui)").matches ||
     /** @type {Navigator & { standalone?: boolean }} */ (navigator).standalone === true
   );
 }
 
+function isNativeAppShell() {
+  try {
+    return Boolean(window.Capacitor?.isNativePlatform?.());
+  } catch {
+    return false;
+  }
+}
+
+/** PWA home-screen icon or native Capacitor shell — not a Safari/Chrome tab. */
+function isInstalledPhoneHome() {
+  return isPhoneHomeStandalone() || isNativeAppShell();
+}
+
+function hasCompletedHowItWorksInstall() {
+  try {
+    return localStorage.getItem(HOW_IT_WORKS_INSTALL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * First launch of this native app / installed PWA that has not finished How it works.
+ * Existing WebView installs that already set TUTORIAL_KEY are not re-trapped.
+ */
+function mustCompleteHowItWorks() {
+  if (!isInstalledPhoneHome()) return false;
+  if (hasCompletedHowItWorksInstall()) return false;
+  try {
+    if (localStorage.getItem(TUTORIAL_KEY) === "1") return false;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+/** Forced first-install run — not Help / welcome replay. */
+function isForcedHowItWorksRun() {
+  return mustCompleteHowItWorks() && !state.tutorialFromSettings;
+}
+
+function startForcedHowItWorks({ fromSplash = false } = {}) {
+  state.tutorialFromSettings = false;
+  state.tutorialIndex = fromSplash ? 1 : 0;
+  state.tutorialFarthest = state.tutorialIndex;
+  state.screen = "tutorial";
+}
+
+const LAST_USERNAME_KEY = "kl_username";
+/** One Face ID auto-prompt per WebView lifetime (avoid re-prompt loops on error). */
+let faceIdAutoTried = false;
+
+/** Native Capacitor plugin (CallKit + Keychain). Remote WebView talks via jsName. */
+function nativePlugin() {
+  try {
+    const plugins = window.Capacitor?.Plugins;
+    if (plugins?.PhoneHomeCallKit) return plugins.PhoneHomeCallKit;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return window.Capacitor?.registerPlugin?.("PhoneHomeCallKit") || null;
+  } catch {
+    return null;
+  }
+}
+
+async function nativePluginReady(ms = 1200) {
+  const start = Date.now();
+  let plugin = nativePlugin();
+  while (!plugin?.saveLogin && !plugin?.hasSavedLogin && Date.now() - start < ms) {
+    await new Promise((r) => setTimeout(r, 50));
+    plugin = nativePlugin();
+  }
+  return plugin;
+}
+
+function lastUsername() {
+  try {
+    return localStorage.getItem(LAST_USERNAME_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberUsername(username) {
+  const u = String(username || "").trim();
+  try {
+    if (u) localStorage.setItem(LAST_USERNAME_KEY, u);
+    else localStorage.removeItem(LAST_USERNAME_KEY);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+async function persistSession(sessionId) {
+  state.sessionId = sessionId || "";
+  try {
+    if (sessionId) localStorage.setItem("kl_session", sessionId);
+    else localStorage.removeItem("kl_session");
+  } catch {
+    /* ignore */
+  }
+  const plugin = nativePlugin();
+  try {
+    if (!plugin) return;
+    if (sessionId) await plugin.saveSession?.({ sessionId });
+    else await plugin.clearSession?.();
+  } catch {
+    /* Keychain optional until the iOS shell is rebuilt */
+  }
+}
+
+async function persistPasswordLogin(username, password) {
+  rememberUsername(username);
+  const plugin = await nativePluginReady();
+  if (!plugin?.saveLogin) {
+    console.warn("[ios] saveLogin missing — rebuild the PhoneHome app for Face ID");
+    return false;
+  }
+  const user = String(username || "").trim();
+  const pass = String(password || "");
+  if (!user || !pass) return false;
+  try {
+    const out = await plugin.saveLogin({ username: user, password: pass });
+    if (out && out.saved === false) {
+      console.warn("[ios] saveLogin returned saved:false");
+      return false;
+    }
+    const check = await plugin.hasSavedLogin?.();
+    if (check && check.saved === false) {
+      console.warn("[ios] Keychain has no password after saveLogin");
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("[ios] saveLogin failed", e);
+    return false;
+  }
+}
+
+async function clearPersistedAuth({ keepLogin = false } = {}) {
+  await persistSession("");
+  if (keepLogin) return;
+  rememberUsername("");
+  const plugin = nativePlugin();
+  try {
+    await plugin?.clearLogin?.();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function restoreNativeSession() {
+  if (state.sessionId) {
+    void persistSession(state.sessionId);
+    return;
+  }
+  const plugin = nativePlugin();
+  try {
+    const out = await plugin?.getSession?.();
+    const sid = String(out?.sessionId || "");
+    if (sid) {
+      state.sessionId = sid;
+      try {
+        localStorage.setItem("kl_session", sid);
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function isUnauthorizedError(err) {
+  return Number(err?.status) === 401;
+}
+
 document.documentElement.classList.toggle("ph-standalone", isPhoneHomeStandalone());
+
+function getUiTheme() {
+  const t = localStorage.getItem(UI_THEME_KEY) || "modern";
+  return UI_THEME_IDS.has(t) ? t : "modern";
+}
+
+function uiThemeLabel(theme = getUiTheme()) {
+  return UI_THEME_META[theme]?.label || "Modern";
+}
+
+function applyUiTheme(theme) {
+  const t = UI_THEME_IDS.has(theme) ? theme : "modern";
+  document.documentElement.dataset.theme = t;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = UI_THEME_COLORS[t] || UI_THEME_COLORS.modern;
+}
+
+function setUiTheme(theme) {
+  const t = UI_THEME_IDS.has(theme) ? theme : "modern";
+  localStorage.setItem(UI_THEME_KEY, t);
+  applyUiTheme(t);
+  refreshAvatarPalettes();
+}
+
+applyUiTheme(getUiTheme());
+
+/** Themes shown in a picker — full list, or age-friendly subset for grandparent accounts. */
+function themesForPicker(opts = {}) {
+  if (!opts.grandparent) return UI_THEMES;
+  const curated = UI_THEME_IDS_GRANDPARENT.map((id) => UI_THEME_META[id]).filter(Boolean);
+  const current = getUiTheme();
+  if (!UI_THEME_IDS_GRANDPARENT.includes(current) && UI_THEME_META[current]) {
+    return [...curated, UI_THEME_META[current]];
+  }
+  return curated;
+}
+
+/**
+ * Theme picker.
+ * Post-login: setup board (optional) + Parent → Themes + grandparent Settings.
+ * How it works includes a tap-to-try slide. Splash stays brand-only.
+ */
+function uiThemeSelectorHtml(opts = {}) {
+  const { bare = false, setup = false, grandparent = false } = opts;
+  const current = getUiTheme();
+  const themes = themesForPicker({ grandparent });
+  const grid = `
+      <div class="theme-grid${grandparent ? " gp-theme-grid" : ""}" role="group" aria-label="${
+        grandparent ? "How it looks" : "Themes"
+      }">
+        ${themes
+          .map(
+            ({ id, label, detail }) =>
+              `<button type="button" class="theme-opt ${current === id ? "on" : ""}" data-ui-theme="${id}" aria-pressed="${current === id}">
+              <span class="theme-swatch theme-swatch-${id}" aria-hidden="true"></span>
+              <strong>${label}</strong>
+              <span>${detail}</span>
+            </button>`
+          )
+          .join("")}
+      </div>`;
+  if (bare) return grid;
+  let wrapCls = "parent-field ui-theme-field";
+  let headTag = "h3";
+  let headCls = "parent-subhead";
+  let lede =
+    "How PhoneHome looks on this device — pick a theme anytime.";
+  let margin = ' style="margin-top:0;padding-top:0;border-top:0"';
+  let title = "Themes";
+  if (grandparent) title = "How it looks";
+  if (setup) {
+    wrapCls = "sheet control-card setup-card setup-theme";
+    headTag = "p";
+    headCls = "setup-theme-head";
+    lede = grandparent
+      ? "This phone only. Choose a look that’s easy to read."
+      : "This phone only. Scroll the grid for more looks.";
+    margin = "";
+  }
+  if (grandparent && !setup) {
+    wrapCls = "sheet control-card is-open gp-settings-card gp-theme-card";
+    headTag = "h2";
+    headCls = "gp-card-title";
+    lede = "Pick a look that’s easy to read on this phone. High Contrast (light or dark) is best if text is hard to see.";
+    margin = "";
+  }
+  const n = themes.length;
+  const headLabel = grandparent ? title : withBetaBadge(title);
+  const head =
+    setup
+      ? `<div class="setup-theme-head-row">
+          <${headTag} class="${headCls}${grandparent ? "" : " parent-subhead-with-badge"}">${headLabel}</${headTag}>
+          <p class="setup-theme-count">${n} ${n === 1 ? "look" : grandparent ? "looks" : "themes"}</p>
+        </div>`
+      : grandparent
+        ? `<${headTag} class="${headCls}">${headLabel}</${headTag}>`
+        : `<${headTag} class="${headCls} parent-subhead-with-badge">${headLabel}</${headTag}>`;
+  return `
+    <div class="${wrapCls}"${margin}>
+      ${head}
+      <p class="tiny">${lede}</p>
+      ${grid}
+    </div>`;
+}
+
+/** Short path preview on splash — not the full parent checklist. */
+function splashPathPreviewHtml() {
+  const steps = ["How it works", "Sign in", "Finish family setup"];
+  return `<ol class="splash-path" aria-label="What happens next">
+    ${steps
+      .map(
+        (label, i) =>
+          `<li${i === 0 ? ` class="is-now" aria-current="step"` : ""}><span class="splash-path-n">${i + 1}</span>${label}</li>`
+      )
+      .join("")}
+  </ol>`;
+}
+
+function bindUiThemeSelector(scope = document, opts = {}) {
+  const { onPick } = opts;
+  scope.querySelectorAll("[data-ui-theme]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const theme = btn.getAttribute("data-ui-theme");
+      setUiTheme(theme);
+      scope.querySelectorAll("[data-ui-theme]").forEach((b) => {
+        const on = b.getAttribute("data-ui-theme") === theme;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      const chip = document.getElementById("parent-themes-chip");
+      if (chip) {
+        const strong = chip.querySelector("strong");
+        if (strong) strong.textContent = uiThemeLabel(theme);
+        else chip.textContent = uiThemeLabel(theme);
+      }
+      if (typeof onPick === "function") onPick(theme);
+    });
+  });
+}
 
 /**
  * Subtle DeviceOrientation → CSS vars for atmosphere + presence-ring specular.
@@ -263,7 +659,7 @@ function installSlide() {
       id: "install",
       kicker: "Home screen",
       title: "Add it like an app",
-      body: "In Safari, tap Share → Add to Home Screen. Opening from the home screen keeps mic Allow across calls better than a Safari tab.",
+      body: "Safari → Share → Add to Home Screen. Opening from that icon feels like an app and helps the microphone stay allowed.",
       platform,
       canQuickInstall: false,
     };
@@ -274,7 +670,7 @@ function installSlide() {
       kicker: "Home screen",
       title: "Add it like an app",
       body: canQuickInstall
-        ? "Tap Install to put PhoneHome on your home screen. Or use Chrome’s menu ⋮ → Install app / Add to Home screen."
+        ? "Tap Install to put PhoneHome on your home screen. Then open it from there."
         : "In Chrome, open the menu ⋮ and tap Install app or Add to Home screen. Then open PhoneHome from there.",
       platform,
       canQuickInstall,
@@ -284,7 +680,7 @@ function installSlide() {
     id: "install",
     kicker: "Home screen",
     title: "Add it like an app",
-    body: "On iPhone: Safari Share → Add to Home Screen. On Android: Chrome menu ⋮ → Install app. Best on a phone.",
+    body: "On iPhone: Safari → Share → Add to Home Screen. On Android: Chrome menu → Install app. Works best on a phone.",
     platform,
     canQuickInstall,
   };
@@ -292,10 +688,15 @@ function installSlide() {
 
 function getTutorialSlides() {
   const slides = [...TUTORIAL_SLIDES];
-  if (isPhoneHomeStandalone()) return slides;
-  // One focused beat near the end — after safety, before “Let’s go”.
+  if (isInstalledPhoneHome()) return slides;
+  // Browser-only home-screen tip — last beat before “Let’s go”.
   slides.push(installSlide());
   return slides;
+}
+
+/** TreeHouse mark for tutorial scene (same mask glyph as pad #1). */
+function tutorialTreeHouseHouseHtml() {
+  return `<span class="scene-fr-house" aria-hidden="true"></span>`;
 }
 
 const state = {
@@ -323,6 +724,12 @@ const state = {
   remoteReady: false,
   muted: false,
   onHold: false,
+  /** Line that put the call on hold (null when not held). Resume only for this line, or adult override of a kid. */
+  holdByLineId: null,
+  /** Loudspeaker on. In-app iOS WebRTC plays speaker by itself — do not native-route it. */
+  speakerOn: true,
+  /** User tapped Speaker / Earpiece — don't overwrite with the 1:1 default. */
+  audioRouteUserSet: false,
   call: null,
   callStartedAt: 0,
   iceState: "",
@@ -371,10 +778,24 @@ const state = {
   celebrate: "",
   /** Hide new-message banner until unread count rises again */
   vmBannerDismissedCount: 0,
+  /**
+   * Leave-a-message mount key (toLineId). Remounting restarts default-greeting.wav;
+   * presence.call / refresh used to stack the OGM ~3× while nav stayed "phone".
+   * @type {string|null}
+   */
+  leaveVmMountedKey: null,
+  /** CallKit miss before call_logs refresh lands — counted in icon badge. */
+  pendingNativeMissed: 0,
+  /** Sticky ids from PushKit / getCallState before WS offer arrives (no secrets). */
+  pendingNativeCallId: "",
+  pendingNativeFromLineId: "",
+  pendingNativeToLineId: "",
   /** After * / banner — Messages should start Play on mount. */
   autoPlayVm: false,
   /** Last outbound target for classic # redial (session). */
   lastRedialLineId: null,
+  /** FamilyRoom # picker sheet is open (app). Analog still uses the voice menu. */
+  familyRoomPicker: null,
   /** True while answering-machine greeting is being recorded (blocks remounts). */
   greetingRecording: false,
   /**
@@ -398,10 +819,19 @@ const state = {
   parentUnlocked: false,
   /** After opening Parent, scroll to this section id (e.g. parent-ata). */
   parentScrollTo: "",
+  /** One-shot: grandparent Settings → Analog/Account via full Parent panel. */
+  _forceFullParentSettings: false,
+  /** First name just added — show next-step CTAs under Kids once. */
+  kidJustAdded: "",
+  /** Kid line id selected in Parent → Co-parents (invite/manage guardians). */
+  coparentKidLineId: "",
   /** Open this Help article id once after jumping from Analog intro. */
   parentHelpFocus: "",
   /** Parent settings search query (session; survives re-render). */
   parentSearch: "",
+  /** Expand custom hour editors in Quiet Time & limits. */
+  parentHoursKidsCustom: false,
+  parentHoursYouCustom: false,
   /** Profile settings search query (session; survives re-render). */
   profileSearch: "",
   /** Session unlock for speed-dial drag when household layout_locked is on. */
@@ -418,17 +848,33 @@ const state = {
   /** Waiting-contact explainer sheet (avoid full remount). */
   waitSheet: null,
   tutorialIndex: 0,
+  /** Farthest slide reached this run — first-install cannot jump ahead. */
+  tutorialFarthest: 0,
   tutorialFromSettings: false,
   /** Open setup board even if previously dismissed (Help / Parent re-entry). */
   setupForceShow: false,
+  gpSettingsFocus: null,
   leaveFor: null,
   editContactId: null,
   splashTimer: null,
   group: null,
   groupPeers: {},
   groupPick: [],
+  /** Live TreeHouse occupancy (pad presence bubbles). */
+  familyRoomPresence: { householdId: null, roomId: null, members: [], listeners: [], talkPairs: [] },
+  /** Live FamilyRoom (# pad) occupancy. */
+  adultFamilyRoomPresence: { householdId: null, roomId: null, members: [] },
+  /** Parent listen-only session (mirrors a child’s filtered mix). */
+  playRoomListen: null,
   pinModal: null,
   pendingGuardianCode: "",
+  /** Last co-parent invite created in this session (code stays visible). */
+  lastGuardianInvite: null,
+  lastGrandparentSetup: null,
+  /** Parent → Grandparents: which relative detail panel is open. */
+  managingGrandparentId: "",
+  /** Parent previewing a provisioned grandparent’s phone chrome (session only). */
+  gpPreviewRelativeId: "",
   /** Activity call-log filter: null = all, or "completed" | "missed" | "blocked" (Stopped; only when count > 0). */
   activityFilter: null,
   /** Live answering-machine speaker session (opt-in recipient). */
@@ -442,6 +888,10 @@ const callRoot = () => document.getElementById("call-root");
 const remoteAudio = () => document.getElementById("remote-audio");
 const groupAudioRoot = () => document.getElementById("group-audio-root");
 const MAX_GROUP = 4;
+const MAX_FAMILY_ROOM = 8;
+const TREEHOUSE_SLOT = 0;
+const ADMIN_PARENT_SLOT = 1;
+const SECONDARY_PARENT_SLOT = 2;
 
 /** Status toast: only pass kind "error" for real failures (red). Lives in #toast-root (not #app). */
 function setFlash(msg, kind = "info") {
@@ -494,6 +944,7 @@ async function api(path, opts = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || res.statusText);
+    err.status = res.status;
     if (data.abort_retries || data.lockout || res.status === 423) {
       err.abortRetries = true;
       err.lockout = Boolean(data.lockout);
@@ -604,6 +1055,15 @@ function ensureWs() {
         if (msg.type === "welcome" && msg.ataPreferred) {
           state.ataPreferred = true;
         }
+        if (msg.type === "welcome") {
+          // Backup to server WS push: CallKit may have answered before offer landed.
+          if (callKitGate.answered || callKitGate.systemRinging || state.pendingNativeCallId) {
+            void ensureIncomingOfferForCallKit().then((ok) => {
+              if (callKitGate.answered) signalCallKitAccepted("welcome");
+              if (ok && callKitGate.answered) void acceptCallFromCallKit();
+            });
+          }
+        }
         return handleSignal(msg);
       })
       .catch((err) => console.warn("[signal]", err));
@@ -663,36 +1123,65 @@ function waitForWsOpen(ms = 2500) {
 async function handleSignal(msg) {
   if (msg.type === "call.offer") await onIncomingOffer(msg);
   else if (msg.type === "call.answer") await onAnswer(msg);
+  else if (msg.type === "call.fxs-up") onFxsUp(msg);
   else if (msg.type === "call.ice") await addRemoteIce(msg.candidate);
   else if (msg.type === "call.hangup") {
     if (state.group) return;
     // Already cleaned up locally (e.g. ring timeout → leave-message).
     if (!state.call) return;
+    const reason = String(msg.reason || "");
+    // Only real ring-timeout / no-answer → voicemail. Soft→ATA early answer keeps
+    // status "ringing" until fxs-up; a bridge media failure must not look like miss.
     const outboundMiss =
+      reason === "no-answer" &&
       (state.call.status === "calling" || state.call.status === "ringing") &&
       state.call.fromLineId === state.activeLineId;
+    const inboundMiss =
+      reason === "no-answer" && state.call.toLineId === state.activeLineId;
     const toLineId = state.call.toLineId;
+    const failedWhileRinging =
+      !outboundMiss &&
+      (state.call.status === "calling" || state.call.status === "ringing") &&
+      state.call.fromLineId === state.activeLineId &&
+      reason &&
+      reason !== "bridge-hangup";
     stopRing();
     stopDialTone();
+    if (failedWhileRinging) {
+      setFlash(/stasis|ata|offline|destroyed|failed/i.test(reason) ? "Couldn’t connect to the house phone — try again." : reason, "error");
+    }
     endCallUi(outboundMiss ? "No answer" : "Call ended");
     if (outboundMiss && toLineId) {
       state.leaveFor = { toLineId, hint: "They didn’t pick up" };
       state.screen = "leave-message";
     }
     render();
+    if (inboundMiss) {
+      void refresh()
+        .then(() => syncIosAppBadge())
+        .catch(() => {});
+    }
   } else if (msg.type === "call.hold") {
-    // Analog # hold — peer already hears Asterisk MOH; update UI only.
+    // Soft or analog # hold — sync UI; only the holder clears local MOH on resume.
     if (!state.call || state.group) return;
     if (msg.callId && state.call.callId && msg.callId !== state.call.callId) return;
     const on = Boolean(msg.onHold);
-    if (state.onHold === on) {
+    const wasHolder = Boolean(state.onHold && state.holdByLineId === state.activeLineId);
+    const byLineId = String(msg.byLineId || "").trim() || otherLineId(state.call) || null;
+    if (state.onHold === on && (!on || state.holdByLineId === byLineId)) {
       paintCallLayer();
       return;
     }
     state.onHold = on;
-    // Don't run applyHoldAudio — that would inject a second hold track.
-    if (!on) setOutboundMicEnabled(!state.muted);
-    else setOutboundMicEnabled(false);
+    state.holdByLineId = on ? byLineId : null;
+    // Don't run applyHoldAudio when *entering* remote hold — that would inject a second hold track
+    // and mute the held party's earpiece. When the holder is forced off (adult override), clear MOH.
+    if (!on) {
+      setOutboundMicEnabled(!state.muted);
+      if (wasHolder) void applyHoldAudio();
+    } else {
+      setOutboundMicEnabled(false);
+    }
     paintCallLayer();
   } else if (msg.type === "call.rejected") {
     if (state.group) return;
@@ -723,6 +1212,24 @@ async function handleSignal(msg) {
     render();
   } else if (msg.type === "call.ringing") {
     state.call = { ...(state.call || {}), status: "ringing", callId: msg.callId };
+    // Outbound CallKit: start system call UI once we have the server callId
+    // (UUID is derived from callId — must match hangup/endCall).
+    if (
+      callKitOwnsUi() &&
+      msg.callId &&
+      state.call?.fromLineId === state.activeLineId
+    ) {
+      try {
+        void nativeCallKit()?.startOutgoing?.({
+          callId: String(msg.callId),
+          handle: String(state.call.toLineId || lineName(state.call.toLineId) || "PhoneHome"),
+        });
+        callKitGate.answered = true;
+        callKitGate.systemRinging = true;
+      } catch (e) {
+        console.warn("[ios] startOutgoing failed", e);
+      }
+    }
     paintCallLayer();
   } else if (msg.type === "group.started") onGroupStarted(msg);
   else if (msg.type === "group.invite") onGroupInvite(msg);
@@ -734,7 +1241,53 @@ async function handleSignal(msg) {
     setFlash(msg.error || "Group call failed", "error");
     leaveGroup(true);
     render();
-  }   else if (msg.type === "group.offer") await onGroupOffer(msg);
+  } else if (
+    msg.type === "familyroom.presence" ||
+    msg.type === "playroom.presence" ||
+    msg.type === "treehouse.presence"
+  )
+    onTreeHousePresence(msg);
+  else if (
+    msg.type === "familyroom.joined" ||
+    msg.type === "playroom.joined" ||
+    msg.type === "treehouse.joined"
+  )
+    await onTreeHouseJoined(msg);
+  else if (
+    msg.type === "familyroom.error" ||
+    msg.type === "playroom.error" ||
+    msg.type === "treehouse.error"
+  ) {
+    setFlash(msg.error || "TreeHouse failed", "error");
+    leaveGroup(true);
+    render();
+  } else if (
+    msg.type === "familyroom.announce" ||
+    msg.type === "playroom.announce" ||
+    msg.type === "treehouse.announce"
+  ) {
+    onTreeHouseAnnounce(msg);
+  } else if (
+    msg.type === "familyroom.listen.started" ||
+    msg.type === "playroom.listen.started" ||
+    msg.type === "treehouse.listen.started"
+  ) {
+    await onTreeHouseListenStarted(msg);
+  } else if (
+    msg.type === "familyroom.listen.stopped" ||
+    msg.type === "playroom.listen.stopped" ||
+    msg.type === "treehouse.listen.stopped"
+  ) {
+    onTreeHouseListenStopped(msg);
+  } else if (msg.type === "adultfamily.presence") {
+    onAdultFamilyRoomPresence(msg);
+  } else if (msg.type === "adultfamily.joined") {
+    await onAdultFamilyRoomJoined(msg);
+  } else if (msg.type === "adultfamily.error") {
+    setFlash(msg.error || "FamilyRoom failed", "error");
+    leaveGroup(true);
+    render();
+  } else if (msg.type === "group.offer") await onGroupOffer(msg);
   else if (msg.type === "group.answer") await onGroupAnswer(msg);
   else if (msg.type === "group.ice") await onGroupIce(msg);
   else if (msg.type === "voicemail.monitor.offer") await onVmMonitorOffer(msg);
@@ -751,6 +1304,11 @@ async function handleSignal(msg) {
         captureAtaFormDraftFromDom();
         return;
       }
+      // leave-message starts greeting audio on every renderLeaveMessage(); hangup/expire
+      // fanout presence.call while nav is still "phone" and stacked the OGM ~3×.
+      if (state.screen === "leave-message") return;
+      // Incoming ring sheet: skip full home remount (paintCallLayer is also idempotent).
+      if (state.call?.status === "incoming" || state.group?.status === "incoming") return;
       if (!isChildMode() && (state.screen === "home" || state.nav === "phone")) {
         render();
       }
@@ -786,6 +1344,7 @@ function onVoicemailNew(msg) {
   if (state.nav !== "voicemail") {
     setFlash(`${who} left a message`, "info");
   }
+  void syncIosAppBadge();
   if (state.screen === "home" || state.nav === "phone" || state.nav === "activity" || state.nav === "voicemail") {
     if (state.nav === "phone" && patchHomePresence()) {
       patchNewVmBanner(hh);
@@ -803,6 +1362,46 @@ function sdpPayload(desc) {
 function icePayload(candidate) {
   if (!candidate) return null;
   return typeof candidate.toJSON === "function" ? candidate.toJSON() : candidate;
+}
+
+/** WebKit/Safari DOMException for wrong RTCPeerConnection signaling ops. */
+function isInvalidStateError(e) {
+  return (
+    e?.name === "InvalidStateError" ||
+    /invalid state/i.test(String(e?.message || e || ""))
+  );
+}
+
+function isPcAlive(pc = state.pc) {
+  if (!pc) return false;
+  try {
+    return pc.signalingState !== "closed" && pc.connectionState !== "closed";
+  } catch {
+    return false;
+  }
+}
+
+/** User-facing call error; null = log-only (no cryptic InvalidStateError toast). */
+function friendlyCallError(e, fallback = "Could not connect") {
+  if (isInvalidStateError(e)) return null;
+  const msg = String(e?.message || "").trim();
+  if (!msg || /invalid state/i.test(msg)) return null;
+  return msg || fallback;
+}
+
+/** Serialize acceptCall across CallKit retries, WS offer repush, and double-taps. */
+let acceptCallInFlight = false;
+
+function closeCurrentPc() {
+  if (!state.pc) return;
+  try {
+    releaseMicForPc(state.pc);
+  } catch {}
+  try {
+    state.pc.close();
+  } catch {}
+  state.pc = null;
+  state.remoteReady = false;
 }
 
 /** Child login line, or the only child-mode line this user owns (never a parent’s line). */
@@ -855,10 +1454,12 @@ async function refresh() {
     state.childMode = true;
     localStorage.setItem("kl_child_mode", "1");
   }
-  if (!hh) state.screen = state.mode === "join" ? "join" : "host";
+  if (mustCompleteHowItWorks() && !state.tutorialFromSettings) {
+    if (state.screen !== "tutorial") startForcedHowItWorks();
+    else state.screen = "tutorial";
+  } else if (!hh) state.screen = state.mode === "join" ? "join" : "host";
   else if (!hh.lines.length) state.screen = state.mode === "join" ? "join" : "host";
   else if (
-    state.screen === "boot" ||
     state.screen === "welcome" ||
     state.screen === "host" ||
     state.screen === "join" ||
@@ -866,36 +1467,120 @@ async function refresh() {
     state.screen === "register" ||
     state.screen === "set-password"
   ) {
-    // First landing after auth — show setup board if required steps remain.
-    state.screen = shouldShowSetupBoard(hh) ? "setup" : "home";
+    // After sign-in / create account — always land on Phone.
+    state.screen = "home";
+    state.nav = "phone";
+    localStorage.setItem("kl_nav", "phone");
+  } else if (state.screen === "boot") {
+    state.screen = "home";
   } else if (state.screen === "setup" && !shouldShowSetupBoard(hh)) {
     state.screen = "home";
   }
   ensureWs();
+  // Remounting leave-message restarts the OGM; keep recording UI stable across refresh.
+  if (state.screen === "leave-message") {
+    void syncIosAppBadge();
+    return;
+  }
+  // Softphone ring sheet: keep #app frozen (same as render() guard).
+  if (
+    !callKitOwnsUi() &&
+    (state.call?.status === "incoming" || state.group?.status === "incoming") &&
+    document.getElementById("call-layer")
+  ) {
+    void syncIosAppBadge();
+    paintCallLayer();
+    return;
+  }
   render();
+  void syncIosAppBadge();
 }
 
 /** Pull-to-refresh on main app-shell surfaces (Home / Activity / Messages / Parent). */
-const PTR_THRESHOLD = 132;
+const PTR_THRESHOLD = 148;
+/** Ignore modest downward drift so side-scroll / scroll-up near the top doesn't arm PTR. */
+const PTR_SLOP = 52;
+/** Pixels of movement before we decide this is a vertical pull vs a sideways flick. */
+const PTR_AXIS_LOCK = 18;
+/** Vertical must dominate (~60° from horizontal: dy ≥ dx * ratio) before we treat it as PTR. */
+const PTR_VERT_RATIO = 1.75;
 const ptr = {
   tracking: false,
+  startX: 0,
   startY: 0,
   pull: 0,
   refreshing: false,
+  axis: "",
 };
+
+function isHorizontallyScrollable(el) {
+  if (!(el instanceof HTMLElement)) return false;
+  const ox = getComputedStyle(el).overflowX;
+  if (ox !== "auto" && ox !== "scroll" && ox !== "overlay") return false;
+  return el.scrollWidth > el.clientWidth + 1;
+}
+
+/** Chip rows / theme grids / any overflow-x scroller — never start PTR from these. */
+function isPtrIgnoredStart(target) {
+  let el = target instanceof Element ? target : null;
+  while (el && el !== document.documentElement) {
+    if (el.classList?.contains("parent-jump") || el.classList?.contains("theme-grid")) {
+      return true;
+    }
+    if (isHorizontallyScrollable(el)) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
 
 function ptrRoot() {
   return document.getElementById("ptr-root");
 }
 
-function canPullToRefresh() {
+/**
+ * Capacitor / iOS WebView often scrolls `body` (overflow-y: auto), not the window.
+ * Checking only window.scrollY left PTR always-armed on Parent → scroll-up = reload.
+ */
+function pageScrollTop() {
+  const se = document.scrollingElement;
+  return Math.max(
+    window.scrollY || 0,
+    window.pageYOffset || 0,
+    document.documentElement?.scrollTop || 0,
+    document.body?.scrollTop || 0,
+    se?.scrollTop || 0
+  );
+}
+
+/** True when the page and any nested vertical scroller under the touch are at top. */
+function isPullRefreshScrollTop(target) {
+  if (pageScrollTop() > 2) return false;
+  let el = target instanceof Element ? target : null;
+  while (el && el !== document.documentElement) {
+    if (el instanceof HTMLElement) {
+      const oy = getComputedStyle(el).overflowY;
+      if (
+        (oy === "auto" || oy === "scroll" || oy === "overlay") &&
+        el.scrollHeight > el.clientHeight + 1 &&
+        el.scrollTop > 2
+      ) {
+        return false;
+      }
+    }
+    el = el.parentElement;
+  }
+  return true;
+}
+
+function canPullToRefresh(target) {
   if (ptr.refreshing) return false;
   if (!state.sessionId || !state.user) return false;
   if (state.call || state.group) return false;
+  if (state.screen === "leave-message") return false;
   if (state.greetingRecording) return false;
   if (state.screen === "splash" || state.screen === "tutorial" || state.screen === "setup") return false;
   if (!document.querySelector(".app-shell")) return false;
-  if ((window.scrollY || document.documentElement.scrollTop || 0) > 2) return false;
+  if (!isPullRefreshScrollTop(target)) return false;
   if (document.getElementById("speed-drag-ghost")) return false;
   if (document.querySelector(".speed-slot.dragging, .contact-tile.dragging")) return false;
   const ae = document.activeElement;
@@ -940,39 +1625,74 @@ function bindPullToRefresh() {
   if (bindPullToRefresh._bound) return;
   bindPullToRefresh._bound = true;
 
-  const onStart = (y) => {
-    if (!canPullToRefresh()) {
+  const abortPtr = () => {
+    ptr.tracking = false;
+    ptr.pull = 0;
+    ptr.axis = "";
+    paintPtr(0);
+  };
+
+  const onStart = (x, y, target) => {
+    if (!canPullToRefresh(target) || isPtrIgnoredStart(target)) {
       ptr.tracking = false;
+      ptr.axis = "";
       return;
     }
     ptr.tracking = true;
+    ptr.startX = x;
     ptr.startY = y;
     ptr.pull = 0;
+    ptr.axis = "";
   };
 
-  const onMove = (y, e) => {
-    if (!ptr.tracking || ptr.refreshing) return;
-    if (!canPullToRefresh() && ptr.pull <= 0) {
-      ptr.tracking = false;
-      paintPtr(0);
+  const onMove = (x, y, e) => {
+    if (!ptr.tracking || ptr.refreshing || ptr.axis === "ignore") return;
+    const dx = Math.abs(x - ptr.startX);
+    const dy = y - ptr.startY;
+
+    if (ptr.axis !== "vert") {
+      const absDy = Math.abs(dy);
+      if (dx < PTR_AXIS_LOCK && absDy < PTR_AXIS_LOCK) return;
+      // Sideways / diagonal flick — leave the gesture to overflow-x scrollers.
+      if (dy <= 0 || dx * PTR_VERT_RATIO >= absDy) {
+        ptr.axis = "ignore";
+        abortPtr();
+        return;
+      }
+      ptr.axis = "vert";
+    }
+
+    // If the page scrolled away from top mid-gesture, this is scroll-up — not PTR.
+    if (!isPullRefreshScrollTop(e?.target) && ptr.pull < PTR_SLOP) {
+      abortPtr();
       return;
     }
-    const dy = y - ptr.startY;
-    if (dy <= 0) {
+    if (!canPullToRefresh(e?.target) && ptr.pull <= 0) {
+      abortPtr();
+      return;
+    }
+    if (dy <= PTR_SLOP) {
       ptr.pull = 0;
       paintPtr(0);
       return;
     }
+    const effective = dy - PTR_SLOP;
     // Resist after threshold so the gesture feels springy, not infinite.
-    ptr.pull = dy < PTR_THRESHOLD ? dy : PTR_THRESHOLD + (dy - PTR_THRESHOLD) * 0.28;
+    ptr.pull =
+      effective < PTR_THRESHOLD ? effective : PTR_THRESHOLD + (effective - PTR_THRESHOLD) * 0.28;
     paintPtr(ptr.pull);
-    if (ptr.pull > 10 && e?.cancelable) e.preventDefault();
+    // Only steal the gesture once we're clearly pulling vertically at true top.
+    if (ptr.axis === "vert" && ptr.pull > 16 && isPullRefreshScrollTop(e?.target) && e?.cancelable) {
+      e.preventDefault();
+    }
   };
 
   const onEnd = () => {
     if (!ptr.tracking) return;
-    const shouldRefresh = ptr.pull >= PTR_THRESHOLD && !ptr.refreshing;
+    const shouldRefresh =
+      ptr.axis === "vert" && ptr.pull >= PTR_THRESHOLD && !ptr.refreshing && pageScrollTop() <= 2;
     ptr.tracking = false;
+    ptr.axis = "";
     if (shouldRefresh) {
       void runPullRefresh();
       return;
@@ -985,7 +1705,7 @@ function bindPullToRefresh() {
     "touchstart",
     (e) => {
       if (e.touches.length !== 1) return;
-      onStart(e.touches[0].clientY);
+      onStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
     },
     { passive: true }
   );
@@ -993,7 +1713,7 @@ function bindPullToRefresh() {
     "touchmove",
     (e) => {
       if (!ptr.tracking || e.touches.length !== 1) return;
-      onMove(e.touches[0].clientY, e);
+      onMove(e.touches[0].clientX, e.touches[0].clientY, e);
     },
     { passive: false }
   );
@@ -1015,27 +1735,54 @@ async function iceServers() {
 async function addRemoteIce(candidate) {
   // candidate may be null (= end of candidates). Still must not drop early trickle.
   if (candidate === undefined) return;
-  if (!state.pc || !state.remoteReady) {
+  if (!isPcAlive() || !state.remoteReady) {
     if (candidate) state.pendingIce.push(candidate);
     return;
   }
   try {
     await state.pc.addIceCandidate(candidate ? new RTCIceCandidate(candidate) : null);
   } catch (e) {
-    console.warn("[ice] add failed", e);
+    if (!isInvalidStateError(e)) console.warn("[ice] add failed", e);
   }
 }
 
 async function flushIce() {
+  if (!isPcAlive()) {
+    state.remoteReady = false;
+    return;
+  }
   state.remoteReady = true;
   const queued = state.pendingIce.splice(0);
   for (const c of queued) {
     try {
       await state.pc.addIceCandidate(new RTCIceCandidate(c));
     } catch (e) {
-      console.warn("[ice] flush failed", e);
+      if (!isInvalidStateError(e)) console.warn("[ice] flush failed", e);
     }
   }
+}
+
+/** Embed host/srflx/relay in SDP when peer may be offline (CallKit wake). */
+function waitIceGatheringComplete(pc, ms = 2500) {
+  if (!pc || pc.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(t);
+      try {
+        pc.removeEventListener("icegatheringstatechange", onChange);
+      } catch {}
+      resolve();
+    };
+    const onChange = () => {
+      if (pc.iceGatheringState === "complete") done();
+    };
+    const t = setTimeout(done, ms);
+    try {
+      pc.addEventListener("icegatheringstatechange", onChange);
+    } catch {
+      done();
+    }
+  });
 }
 
 /** Match server RING_TIMEOUT_MS — unanswered outbound → leave-a-message. */
@@ -1277,6 +2024,11 @@ async function acquireMic() {
   } catch (e) {
     const name = e?.name || "";
     if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      if (isNativeIosShell()) {
+        throw new Error(
+          "Microphone blocked — open Settings → PhoneHome → Microphone, turn it off and on, then try again."
+        );
+      }
       throw new Error("Microphone blocked — tap aA → Website Settings → allow Microphone, then try again.");
     }
     if (name === "NotFoundError") {
@@ -1298,6 +2050,20 @@ function micStreamUsable(stream) {
   return tracks.length > 0 && tracks.some((t) => t.readyState === "live");
 }
 
+/** Live+enabled+unmuted — Cap CallKit can expose live/enabled tracks that stay muted (silence). */
+function micTrackSendingOk(t) {
+  return Boolean(t && t.kind === "audio" && t.readyState === "live" && t.enabled !== false && !t.muted);
+}
+
+function micStreamSendingOk(stream) {
+  if (!stream) return false;
+  return (stream.getAudioTracks() || []).some(micTrackSendingOk);
+}
+
+function pcHasSendingMic(pc) {
+  return (pc?.getSenders?.() || []).some((s) => micTrackSendingOk(s.track));
+}
+
 /** Master tracks must stay enabled=true — iOS often ends disabled capture tracks. */
 function keepMasterMicEnabled() {
   state.localStream?.getAudioTracks().forEach((t) => {
@@ -1310,9 +2076,23 @@ function watchMasterMicTracks(stream) {
   for (const t of stream.getAudioTracks()) {
     t.addEventListener("ended", () => {
       console.warn("[mic] master track ended — next call may re-prompt", t.id);
+      if (stream !== state.localStream) return;
+      // Dead master — clear so the next call re-acquires cleanly.
+      hardReleaseMicStream();
     });
     t.addEventListener("mute", () => {
       console.warn("[mic] master track muted by system", t.id);
+      if (stream !== state.localStream) return;
+      // Cap iOS: system mute of an idle master often means TCC/session death.
+      // Keep stream during CallKit / live call (transient mute is normal).
+      if (isNativeIosShell() && typeof callKitHoldsMic === "function" && callKitHoldsMic()) {
+        return;
+      }
+      if (isNativeIosShell() && !callKitGate.answered) {
+        hardReleaseMicStream();
+      } else if (!micStreamUsable(state.localStream)) {
+        hardReleaseMicStream();
+      }
     });
   }
 }
@@ -1375,6 +2155,9 @@ function clearMicKeepalive() {
 /**
  * Reuse the page-lifetime mic stream when possible. First grant needs Allow once;
  * later calls must not call getUserMedia again (iOS re-prompts).
+ * CallKit lock-screen: gum can hang forever — race a timeout and let accept proceed
+ * with a null-track sendrecv m-line so call.answer (and ATA ringback stop) is not blocked.
+ * Late gum must replaceTrack on that same sender (see attachLocalMicToPc).
  */
 async function ensureMicStream() {
   if (micStreamUsable(state.localStream)) {
@@ -1389,7 +2172,45 @@ async function ensureMicStream() {
     state.localStream = null;
     clearMicKeepalive();
   }
-  state.localStream = await acquireMic();
+  const gumPromise = acquireMic();
+  const callKitHot =
+    callKitOwnsUi() && (callKitGate.answered || callKitGate.systemRinging);
+  // Real didActivate: give gum longer. Forced audioActive (cold lock-screen): keep short.
+  const gumMs = callKitHot && callKitGate.audioActive && !callKitGate.forcedAudio ? 8000 : 4500;
+  try {
+    state.localStream = callKitHot
+      ? await Promise.race([
+          gumPromise,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("mic-timeout-callkit")), gumMs)
+          ),
+        ])
+      : await gumPromise;
+  } catch (e) {
+    if (callKitHot && /mic-timeout-callkit/i.test(String(e?.message || e))) {
+      console.warn("[ios] getUserMedia timed out on CallKit — continuing without mic for answer");
+      // Don't leave a hung gum promise owning the in-flight flag forever.
+      void gumPromise.then(async (stream) => {
+        if (!micStreamUsable(state.localStream) && stream) {
+          state.localStream = stream;
+          watchMasterMicTracks(stream);
+          keepMasterMicEnabled();
+          ensureMicKeepalive();
+          if (isPcAlive()) {
+            try {
+              await attachLocalMicToPc(state.pc, { force: true });
+              reportMediaStat(state.pc, "late-gum");
+              console.info("[ios] late CallKit mic attached via replaceTrack");
+            } catch (err) {
+              console.warn("[ios] late CallKit mic attach failed", err);
+            }
+          }
+        }
+      }).catch(() => {});
+      return null;
+    }
+    throw e;
+  }
   watchMasterMicTracks(state.localStream);
   keepMasterMicEnabled();
   ensureMicKeepalive();
@@ -1412,11 +2233,21 @@ function setOutboundMicEnabled(enabled) {
 /**
  * Between calls: keep master live+enabled (no stop, no enabled=false).
  * Outbound clones are already released on hangup.
+ * Safari PWA only — Cap iOS prefers hard release (see releaseOrParkMicAfterCall).
  */
 function parkMicStream() {
   if (!state.localStream) return;
   keepMasterMicEnabled();
   ensureMicKeepalive();
+}
+
+/** Cap iOS: stop capture when idle so WKWebView does not hold mic across suspend. Safari PWA: park. */
+function releaseOrParkMicAfterCall() {
+  if (isNativeIosShell()) {
+    hardReleaseMicStream();
+  } else {
+    parkMicStream();
+  }
 }
 
 function armMicForCall() {
@@ -1427,25 +2258,241 @@ function armMicForCall() {
 }
 
 /**
+ * Offer-paired audio transceiver must be sendrecv BEFORE createAnswer.
+ * Never addTransceiver() before setRemoteDescription — that created a second
+ * m-line (`?:sendrecv,0:recvonly`) so ATA got no uplink (hub [media] send=0).
+ */
+function ensureOfferAudioSendRecv(pc) {
+  if (!pc?.getTransceivers) return;
+  let flipped = 0;
+  for (const t of pc.getTransceivers()) {
+    const recvKind = t.receiver?.track?.kind;
+    const senderKind = t.sender?.track?.kind;
+    const looksAudio =
+      recvKind === "audio" ||
+      senderKind === "audio" ||
+      (t.mid != null && !recvKind && !senderKind);
+    if (!looksAudio && t.mid == null) continue;
+    try {
+      if (t.direction === "recvonly" || t.direction === "inactive") {
+        t.direction = "sendrecv";
+        flipped += 1;
+      }
+    } catch (e) {
+      console.warn("[mic] could not set sendrecv", t.mid, e);
+    }
+  }
+  if (flipped) console.info("[mic] flipped", flipped, "audio transceiver(s) → sendrecv");
+}
+
+/**
  * Clone master tracks onto a PC. Closing the PC must not end the master stream —
  * that was the remaining iOS re-prompt (park alone was not enough).
+ * CallKit late gum: prefer replaceTrack on an empty audio sender so we do not
+ * add a second m-line after call.answer already left.
  */
-function attachLocalMicToPc(pc) {
-  if (!pc || !micStreamUsable(state.localStream)) return;
+async function attachLocalMicToPc(pc, opts = {}) {
+  if (!pc || !micStreamUsable(state.localStream)) return false;
   if (!Array.isArray(state.pcMicTracks)) state.pcMicTracks = [];
-  for (const track of state.localStream.getAudioTracks()) {
-    if (track.readyState !== "live") continue;
-    let clone;
-    try {
-      clone = track.clone();
-    } catch (err) {
-      console.warn("[mic] track.clone failed — refusing to attach master (iOS re-prompt)", err);
+  const force = Boolean(opts.force);
+  const live = (state.localStream.getAudioTracks() || []).filter((t) => t.readyState === "live");
+  if (!live.length) return false;
+
+  ensureOfferAudioSendRecv(pc);
+
+  const hasLiveAudioSender = () =>
+    (pc.getSenders?.() || []).some((s) => s.track?.kind === "audio" && s.track.readyState === "live");
+
+  /** Prefer negotiated (mid-bound) audio sender — never the orphan pre-offer transceiver. */
+  const findReplaceableAudioSender = () => {
+    const ranked = [];
+    for (const t of pc.getTransceivers?.() || []) {
+      const s = t?.sender;
+      if (!s) continue;
+      if (!force && s.track && s.track.kind === "audio" && s.track.readyState === "live") continue;
+      const recvKind = t.receiver?.track?.kind;
+      const senderKind = s.track?.kind;
+      if (senderKind && senderKind !== "audio") continue;
+      if (recvKind && recvKind !== "audio") continue;
+      // mid set = paired with remote offer m-line (the one ATA actually uses).
+      const score =
+        (t.mid != null ? 4 : 0) +
+        (recvKind === "audio" ? 2 : 0) +
+        (!s.track ? 1 : 0) +
+        (force && s.track?.readyState === "live" ? 3 : 0);
+      ranked.push({ s, score, mid: t.mid });
+    }
+    ranked.sort((a, b) => b.score - a.score);
+    if (ranked[0]) return ranked[0].s;
+    return (pc.getSenders?.() || []).find(
+      (s) =>
+        !s.track ||
+        (s.track.kind === "audio" && (force || s.track.readyState === "ended"))
+    );
+  };
+
+  let attached = false;
+  // Cap WKWebView + CallKit: track.clone() often yields a live/enabled but silent uplink
+  // while the master track is fine (browser softphone has no this bug). Use master on Cap.
+  const useMasterTrack = isNativeIosShell();
+
+  for (const track of live) {
+    let outbound = null;
+    if (useMasterTrack) {
+      outbound = track;
+    } else {
+      try {
+        outbound = track.clone();
+      } catch (err) {
+        console.warn("[mic] track.clone failed — attaching master track", err);
+        outbound = track;
+      }
+    }
+    if (!outbound) continue;
+    outbound.enabled = !state.muted && !state.onHold;
+    if (outbound !== track) state.pcMicTracks.push(outbound);
+
+    if (!force && hasLiveAudioSender()) {
+      if (outbound !== track) {
+        try {
+          outbound.stop();
+        } catch {}
+      }
+      attached = true;
       continue;
     }
-    clone.enabled = !state.muted && !state.onHold;
-    state.pcMicTracks.push(clone);
-    pc.addTrack(clone, new MediaStream([clone]));
+
+    const replaceable = findReplaceableAudioSender();
+    if (replaceable && typeof replaceable.replaceTrack === "function") {
+      try {
+        const prev = replaceable.track;
+        await replaceable.replaceTrack(outbound);
+        if (prev && prev !== outbound && (state.pcMicTracks || []).includes(prev)) {
+          try {
+            prev.stop();
+          } catch {}
+          state.pcMicTracks = state.pcMicTracks.filter((t) => t !== prev);
+        }
+        console.info(
+          "[mic] replaceTrack onto existing CallKit sender",
+          force ? "(force)" : "",
+          useMasterTrack ? "master" : "clone"
+        );
+        attached = true;
+        continue;
+      } catch (e) {
+        console.warn("[mic] replaceTrack failed — falling back to addTrack", e);
+      }
+    }
+    if (force && hasLiveAudioSender()) {
+      // Already had a sender and replace failed — do not add a second m-line.
+      attached = pcHasSendingMic(pc);
+      continue;
+    }
+    try {
+      pc.addTrack(outbound, state.localStream);
+      attached = true;
+    } catch (e) {
+      console.warn("[mic] addTrack failed", e);
+    }
   }
+
+  // Only after remote offer exists — never before setRemoteDescription.
+  if (!hasLiveAudioSender() && pc.remoteDescription) {
+    const hasAudioXcvr = (pc.getTransceivers?.() || []).some((t) => {
+      const rk = t.receiver?.track?.kind;
+      const sk = t.sender?.track?.kind;
+      return rk === "audio" || sk === "audio" || t.mid != null;
+    });
+    if (!hasAudioXcvr) {
+      try {
+        pc.addTransceiver("audio", { direction: "sendrecv" });
+        console.warn("[mic] added sendrecv transceiver after remote offer — no audio m-line");
+      } catch {}
+    }
+  }
+  return attached;
+}
+
+async function prepareAnswerMic(pc) {
+  if (!pc) return;
+  ensureOfferAudioSendRecv(pc);
+  // Forced audioActive (JS timeout before didActivate) → gum is usually silent on Cap.
+  // Answer with null sendrecv mid-0; real audioActivated refreshes uplink.
+  if (callKitOwnsUi() && callKitGate.forcedAudio) {
+    console.warn("[ios] deferring gum until real didActivate (forced audioActive)");
+    ensureOfferAudioSendRecv(pc);
+    reportMediaStat(pc, "prep-answer-deferred-gum");
+    return;
+  }
+  const mic = await ensureMicStream();
+  if (mic) {
+    armMicForCall();
+    await attachLocalMicToPc(pc, { force: true });
+  } else {
+    console.warn("[ios] answer without mic yet — sendrecv null track; late gum will replaceTrack");
+  }
+  ensureOfferAudioSendRecv(pc);
+  reportMediaStat(pc, "prep-answer-mic");
+}
+
+/**
+ * Cap CallKit: re-gum after real didActivate and force-replace mid-0 sender.
+ * Fixes live/enabled-but-silent uplink (clone or pre-didActivate gum).
+ */
+async function refreshCallKitUplinkMic(reason = "refresh") {
+  if (!isPcAlive()) return false;
+  console.info("[ios] refreshing CallKit uplink mic —", reason);
+  try {
+    hardReleaseMicStream();
+  } catch {}
+  // Let AVAudioSession settle after didActivate before WKWebView capture.
+  await new Promise((r) => setTimeout(r, 150));
+  const mic = await ensureMicStream();
+  if (!mic) {
+    console.warn("[ios] uplink refresh — gum returned null");
+    return false;
+  }
+  try {
+    armMicForCall();
+  } catch {}
+  await attachLocalMicToPc(state.pc, { force: true });
+  const master = (state.localStream?.getAudioTracks?.() || []).find((t) => t.readyState === "live");
+  if (master?.muted) {
+    console.warn("[ios] master mic still muted after gum — waiting for unmute");
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        try {
+          master.removeEventListener("unmute", finish);
+        } catch {}
+        resolve();
+      };
+      try {
+        master.addEventListener("unmute", finish);
+      } catch {
+        finish();
+        return;
+      }
+      setTimeout(finish, 2000);
+    });
+    keepMasterMicEnabled();
+    await attachLocalMicToPc(state.pc, { force: true });
+  }
+  try {
+    armMicForCall();
+  } catch {}
+  reportMediaStat(state.pc, `uplink-${String(reason).slice(0, 28)}`);
+  const ok = pcHasSendingMic(state.pc) && micStreamSendingOk(state.localStream);
+  console.info("[ios] uplink refresh done", {
+    reason,
+    ok,
+    muted: Boolean(master?.muted),
+    send: pcHasSendingMic(state.pc),
+  });
+  return ok;
 }
 
 /** Stop clones tied to one PC (or all senders on it). Master stream stays parked. */
@@ -1527,7 +2574,14 @@ async function refreshHealthCaps() {
   }
 }
 
-async function makePc(peer) {
+/**
+ * @param {string} peer
+ * @param {{ deferMic?: boolean }} [opts] — CallKit inbound: defer gum/attach until
+ *   after setRemoteDescription (prepareAnswerMic). Avoids dual m-line recvonly bug.
+ */
+async function makePc(peer, opts = {}) {
+  // Never leave a half-negotiated PC around for CallKit retries to stumble on.
+  if (state.pc) closeCurrentPc();
   state.remoteReady = false;
   state.iceState = "starting";
   state.iceGatherHint = "";
@@ -1541,17 +2595,40 @@ async function makePc(peer) {
   state.pc = pc;
   // Keep any ICE that arrived before Answer / before PC existed.
   // Clone mic onto PC — closing PC must not end the page-lifetime master stream (iOS).
-  await ensureMicStream();
-  armMicForCall();
-  attachLocalMicToPc(pc);
+  // NEVER addTransceiver before setRemoteDescription on inbound — that produced
+  // dirs=?:sendrecv,0:recvonly (ATA uplink dead). CallKit uses deferMic + prepareAnswerMic.
+  if (!opts.deferMic) {
+    const mic = await ensureMicStream();
+    if (mic) {
+      armMicForCall();
+      await attachLocalMicToPc(pc);
+    }
+  } else {
+    console.info("[ios] PC deferMic — attach after remote offer");
+  }
 
   pc.ontrack = (ev) => {
     const audio = remoteAudio();
     if (audio) {
-      audio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
-      const kick = () => audio.play().catch(() => {});
+      try {
+        ev.track.enabled = true;
+      } catch {}
+      const stream = ev.streams[0] || new MediaStream([ev.track]);
+      audio.srcObject = stream;
+      audio.muted = false;
+      audio.volume = 1;
+      audio.setAttribute("playsinline", "");
+      audio.setAttribute("webkit-playsinline", "true");
+      const kick = () => {
+        audio.play().catch(() => {});
+        kickRemoteAudio();
+      };
       kick();
       audio.onloadedmetadata = kick;
+      if (isNativeIosShell()) {
+        [200, 500, 1000, 2000].forEach((ms) => setTimeout(kick, ms));
+      }
+      reportMediaStat(pc, "ontrack");
     }
   };
   pc.onicecandidate = (ev) => {
@@ -1570,6 +2647,7 @@ async function makePc(peer) {
     state.ws.send(
       JSON.stringify({
         type: "call.ice",
+        callId: state.call?.callId || undefined,
         fromLineId: state.activeLineId,
         toLineId: peer,
         candidate: payload,
@@ -1578,6 +2656,10 @@ async function makePc(peer) {
   };
   pc.oniceconnectionstatechange = () => {
     console.warn("[ice] iceConnectionState", pc.iceConnectionState);
+    reportMediaStat(pc, "ice");
+    if (isNativeIosShell()) {
+      console.info("[ios] ice", pc.iceConnectionState, "conn", pc.connectionState);
+    }
     if (pc.iceConnectionState === "failed") {
       clearConnectWatch();
       setFlash(
@@ -1591,9 +2673,17 @@ async function makePc(peer) {
   };
   pc.onconnectionstatechange = () => {
     state.iceState = pc.connectionState;
+    reportMediaStat(pc, "conn");
     if (pc.connectionState === "connected") {
       clearConnectWatch();
+      // Soft→ATA: early WebRTC answer lets ICE connect while the landline still
+      // rings — keep ringback UI until call.fxs-up.
+      if (state.call?.earlyAnswer) {
+        paintCallLayer();
+        return;
+      }
       stopDialTone();
+      stopRing();
       if (state.call && state.call.status !== "active") {
         state.call = { ...state.call, status: "active" };
         playConnectChime();
@@ -1606,10 +2696,26 @@ async function makePc(peer) {
         state.callStartedAt = Date.now();
         startCallTicker();
       }
+      applyPreferredCallAudio();
       const audio = remoteAudio();
-      if (audio) audio.play().catch(() => {});
+      if (audio) {
+        audio.muted = false;
+        audio.volume = 1;
+        audio.play().catch(() => {});
+      }
+      kickRemoteAudio();
       startSilenceWatch();
       paintCallLayer();
+      if (isNativeIosShell()) {
+        kickRemoteAudio();
+        if (callKitOwnsUi()) {
+          try {
+            void nativeCallKit()?.setConnected?.({
+              callId: state.call?.callId || state.pendingNativeCallId,
+            });
+          } catch {}
+        }
+      }
     }
     if (pc.connectionState === "failed") {
       clearConnectWatch();
@@ -1635,6 +2741,11 @@ async function makePc(peer) {
 }
 
 async function placeCall(toLineId) {
+  if (isGpPreviewMode()) {
+    setFlash("Preview only — exit preview to use your own phone", "warn");
+    paintToast();
+    return;
+  }
   if (state.call || state.group) return;
   if (!toLineId || toLineId === state.activeLineId) return;
   exitSpeedDialEditMode();
@@ -1643,9 +2754,13 @@ async function placeCall(toLineId) {
   state.callStartedAt = 0;
   state.pendingIce = [];
   state.onHold = false;
+  state.holdByLineId = null;
+  state.speakerOn = true;
+  state.audioRouteUserSet = false;
   state.call = { status: "calling", toLineId, fromLineId: state.activeLineId };
   // Kick AudioContext on the user-gesture stack before getUserMedia can suspend it.
   void unlockAudioCtx();
+  applyPreferredCallAudio();
   beginOutboundCallAudio(outboundDigitsFor(toLineId));
   paintCallLayer();
   try {
@@ -1653,20 +2768,25 @@ async function placeCall(toLineId) {
     const pc = await makePc(toLineId);
     // Mic open often leaves Web Audio suspended — re-unlock so DTMF/ringback stay audible.
     await unlockAudioCtx();
+    applyPreferredCallAudio();
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    // CallKit callees often miss early trickle; bake candidates into the offer SDP.
+    // 4s gives TURN/relay time (LAN hairpin + TCP TURN are slower than host).
+    await waitIceGatheringComplete(pc, 4000);
     // Calling is an explicit take-over: reclaim if another tab/device kicked us,
     // or if the socket dropped during getUserMedia.
     if (state.wsReplaced || !state.ws || state.ws.readyState !== 1) {
       reconnectWs();
     }
     await waitForWsOpen(3000);
+    const localOffer = pc.localDescription || offer;
     state.ws.send(
       JSON.stringify({
         type: "call.offer",
         fromLineId: state.activeLineId,
         toLineId,
-        sdp: sdpPayload(offer),
+        sdp: sdpPayload(localOffer),
       })
     );
     // Wait for answer before ICE connect watch; ring timeout → voicemail.
@@ -1679,6 +2799,38 @@ async function placeCall(toLineId) {
 }
 
 async function onIncomingOffer(msg) {
+  // Pending-offer repush / WS remount can deliver the same offer repeatedly.
+  // Do not reset status or re-enter accept once this call is negotiating.
+  if (
+    msg?.callId &&
+    state.call?.callId === msg.callId &&
+    (callKitGate.answerSent ||
+      acceptCallInFlight ||
+      state.call.status === "connecting" ||
+      state.call.status === "active" ||
+      (isPcAlive() && state.pc.remoteDescription))
+  ) {
+    if (!state.call.sdp && msg.sdp) state.call = { ...state.call, sdp: msg.sdp };
+    console.info("[signal] ignoring duplicate offer", msg.callId, state.call.status);
+    return;
+  }
+
+  // Same inbound call still ringing (alert push + WS offer, pending fetch, etc.).
+  // Do not reset state / restart ringer / remount the sheet.
+  if (msg?.callId && state.call?.callId === msg.callId && state.call.status === "incoming") {
+    if (msg.sdp) state.call = { ...state.call, sdp: msg.sdp };
+    if (callKitOwnsUi()) {
+      paintCallLayer();
+      if (callKitGate.answered) {
+        signalCallKitAccepted("offer");
+        void acceptCallFromCallKit();
+      } else void syncCallKitStateFromNative("offer");
+      return;
+    }
+    paintCallLayer();
+    return;
+  }
+
   // New inbound call — keep early ICE for this call, drop leftovers from a prior one only if idle
   if (!state.call) state.pendingIce = [];
   state.callStartedAt = 0;
@@ -1689,6 +2841,32 @@ async function onIncomingOffer(msg) {
     callId: msg.callId,
     sdp: msg.sdp,
   };
+
+  if (callKitOwnsUi()) {
+    // System CallKit UI only — no in-app ring sheet / no softphone answer buttons.
+    stopRing();
+    const callerName = lineName(msg.fromLineId) || "Family";
+    if (!callKitGate.systemRinging) {
+      try {
+        await nativeCallKit().reportIncoming({
+          callId: String(msg.callId || ""),
+          handle: String(msg.fromLineId || "PhoneHome"),
+          callerName: String(callerName).slice(0, 64),
+        });
+        callKitGate.systemRinging = true;
+      } catch (e) {
+        console.warn("[ios] CallKit reportIncoming failed", e);
+      }
+    }
+    paintCallLayer();
+    if (callKitGate.answered) {
+      signalCallKitAccepted("offer");
+      void acceptCallFromCallKit();
+    } else void syncCallKitStateFromNative("offer");
+    armCallKitStatePoll();
+    return;
+  }
+
   startRing();
   paintCallLayer();
 }
@@ -1696,50 +2874,199 @@ async function onIncomingOffer(msg) {
 async function acceptCall() {
   const msg = state.call;
   if (!msg?.sdp) return;
+  if (callKitGate.answerSent) {
+    console.info("[signal] acceptCall skipped — answer already sent");
+    return;
+  }
+  if (acceptCallInFlight) {
+    console.info("[signal] acceptCall skipped — already in flight");
+    return;
+  }
+  acceptCallInFlight = true;
   // Flip off "incoming" before any await so a late startRing() unlock can't restart audio.
   stopRing();
   state.call = { ...msg, status: "connecting" };
+  state.speakerOn = true;
+  state.audioRouteUserSet = false;
+  applyPreferredCallAudio();
   paintCallLayer();
   try {
     await requestWakeLock();
-    const pc = await makePc(msg.fromLineId);
-    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-    await flushIce();
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+    let pc = isPcAlive() ? state.pc : null;
+    let answer = pc?.localDescription?.type === "answer" ? pc.localDescription : null;
+
+    const callKitInbound = callKitOwnsUi() && callKitGate.answered;
+    // Resume a partial accept (remote offer already applied) instead of setRemoteDescription twice.
+    if (pc && answer && pc.remoteDescription) {
+      console.info("[signal] acceptCall reusing local answer", msg.callId);
+      // Answer already left without mic — still try late attach on the same sender.
+      if (callKitInbound) {
+        try {
+          await prepareAnswerMic(pc);
+        } catch (e) {
+          console.warn("[signal] late prepareAnswerMic on reuse", e);
+        }
+      }
+    } else if (pc && pc.signalingState === "have-remote-offer") {
+      if (!state.remoteReady) await flushIce();
+      if (callKitInbound) await prepareAnswerMic(pc);
+      answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await waitIceGatheringComplete(
+        pc,
+        callKitInbound ? 800 : 4000
+      );
+    } else {
+      // CallKit: defer mic until after remote offer so we bind sendrecv to mid=0.
+      pc = await makePc(msg.fromLineId, { deferMic: callKitInbound });
+      if (!isPcAlive(pc)) throw new Error("Could not start call media");
+      if (pc.signalingState !== "stable") {
+        console.warn("[signal] unexpected PC state before offer", pc.signalingState);
+      }
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+      await flushIce();
+      if (pc.signalingState !== "have-remote-offer") {
+        throw new DOMException(
+          `Cannot create answer in signaling state ${pc.signalingState}`,
+          "InvalidStateError"
+        );
+      }
+      if (callKitInbound) await prepareAnswerMic(pc);
+      else ensureOfferAudioSendRecv(pc);
+      answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      // Bridge + CallKit peers drop early trickle; prefer candidates in the answer SDP.
+      // CallKit: short gather — bridged keeps listening for trickle after call.answer.
+      await waitIceGatheringComplete(
+        pc,
+        callKitInbound ? 800 : 4000
+      );
+    }
+
+    reportMediaStat(pc, "answer-local");
     stopRing();
+    if (state.wsReplaced || !state.ws || state.ws.readyState !== 1) {
+      reconnectWs();
+    }
+    await waitForWsOpen(4000);
+    if (!isPcAlive(pc) || state.call?.callId !== msg.callId) {
+      console.warn("[signal] acceptCall aborted — PC/call gone before send");
+      return;
+    }
+    const localAnswer = pc.localDescription || answer;
+    console.info("[signal] sending call.answer", msg.callId);
     state.ws.send(
       JSON.stringify({
         type: "call.answer",
         callId: msg.callId,
         fromLineId: msg.fromLineId,
         toLineId: msg.toLineId,
-        sdp: sdpPayload(answer),
+        sdp: sdpPayload(localAnswer),
       })
     );
+    callKitGate.answerSent = true;
     if (state.call?.callId === msg.callId) {
       state.call = { ...state.call, status: "connecting" };
     }
     armConnectWatch();
     paintCallLayer();
+    applyPreferredCallAudio();
   } catch (e) {
-    setFlash(e.message || "Could not answer", "error");
+    console.warn("[signal] acceptCall failed", e?.message || e);
+    // Broken PC must not be reused by CallKit retries.
+    closeCurrentPc();
+    const soft = isInvalidStateError(e);
+    const flash = soft ? null : friendlyCallError(e, "Could not answer");
+    if (callKitOwnsUi() && callKitGate.answered && !callKitGate.answerSent) {
+      // Keep the system call up; CallKit retries will try again.
+      if (flash) setFlash(`${flash} — retrying…`, "error");
+      state.call = { ...(state.call || msg), status: "incoming", sdp: msg.sdp };
+      paintCallLayer();
+      armCallKitAcceptRetries();
+      return;
+    }
+    if (flash) setFlash(flash, "error");
+    else if (!soft) setFlash("Could not answer", "error");
     hangup();
     render();
+  } finally {
+    acceptCallInFlight = false;
   }
 }
 
 async function onAnswer(msg) {
-  if (!state.pc) return;
-  if (state.pc.signalingState !== "have-local-offer") {
-    console.warn("[signal] unexpected answer in state", state.pc.signalingState);
+  if (!isPcAlive()) return;
+  const sig = state.pc.signalingState;
+  // Duplicate / late answer after stable — ignore (pending answer flush + WS remount).
+  if (sig === "stable" && state.pc.remoteDescription) {
+    console.info("[signal] ignoring duplicate answer", msg.callId);
+    // Soft→ATA: early answer already applied; FXS pickup is call.fxs-up.
+    if (msg.early) return;
+    return;
   }
+  if (sig !== "have-local-offer") {
+    console.warn("[signal] unexpected answer in state", sig);
+    return;
+  }
+  const early = Boolean(msg.early);
+  if (!early) {
+    clearRingTimeout();
+    stopDialTone();
+    stopRing(); // Answered — stop outbound ring even before ICE connects
+  }
+  try {
+    await state.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    await flushIce();
+  } catch (e) {
+    if (isInvalidStateError(e)) {
+      console.warn("[signal] onAnswer ignored invalid state", e?.message || e);
+      return;
+    }
+    console.warn("[signal] onAnswer failed", e?.message || e);
+    const flash = friendlyCallError(e, "Could not connect");
+    if (flash) setFlash(flash, "error");
+    return;
+  }
+  if (early) {
+    // Landline still ringing — keep ringback UI + ring timeout; ICE can connect now.
+    state.call = {
+      ...(state.call || {}),
+      status: state.call?.status === "ringing" ? "ringing" : "calling",
+      callId: msg.callId,
+      earlyAnswer: true,
+    };
+    reportMediaStat(state.pc, "got-early-answer");
+    paintCallLayer();
+    return;
+  }
+  state.call = { ...(state.call || {}), status: "connecting", callId: msg.callId };
+  reportMediaStat(state.pc, "got-answer");
+  kickRemoteAudio();
+  armConnectWatch();
+  paintCallLayer();
+}
+
+/** Soft→ATA: landline picked up + ExternalMedia bridged — leave "ringing" for connect. */
+function onFxsUp(msg) {
+  if (!state.call) return;
+  if (msg.callId && state.call.callId && msg.callId !== state.call.callId) return;
   clearRingTimeout();
   stopDialTone();
-  await state.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-  await flushIce();
-  state.call = { ...(state.call || {}), status: "connecting", callId: msg.callId };
-  armConnectWatch();
+  stopRing();
+  state.call = {
+    ...state.call,
+    status: state.iceState === "connected" ? "active" : "connecting",
+    callId: msg.callId || state.call.callId,
+    earlyAnswer: false,
+  };
+  if (state.call.status === "active") {
+    if (!state.callStartedAt) state.callStartedAt = Date.now();
+    startCallTicker();
+  } else {
+    armConnectWatch();
+  }
+  kickRemoteAudio();
+  reportMediaStat(state.pc, "fxs-up");
   paintCallLayer();
 }
 
@@ -1750,18 +3077,63 @@ function toggleMute() {
   paintCallLayer();
 }
 
+/**
+ * Native iOS: route to earpiece or loudspeaker.
+ * In-app (CallKit off) can route anytime. CallKit: only after audio is active.
+ * Web/Safari: no earpiece API — no-op outside Capacitor.
+ */
+async function setCallSpeaker(on, { paint = true } = {}) {
+  const want = Boolean(on);
+  state.speakerOn = want;
+  const kit = nativeCallKit();
+  if (!kit?.setSpeaker || !isNativeIosShell()) {
+    if (paint) paintCallLayer();
+    return;
+  }
+  // In-app: leave AVAudioSession to WKWebView WebRTC (speaker). Native setSpeaker silences it.
+  if (!callKitEnabled()) {
+    state.speakerOn = true;
+    if (paint) paintCallLayer();
+    return;
+  }
+  if (!callKitGate.audioActive) {
+    if (paint) paintCallLayer();
+    return;
+  }
+  try {
+    const res = await kit.setSpeaker({ enabled: want });
+    if (typeof res?.enabled === "boolean") state.speakerOn = res.enabled;
+  } catch (e) {
+    console.warn("[ios] setSpeaker failed", e);
+  }
+  if (paint) paintCallLayer();
+}
+
+function applyPreferredCallAudio() {
+  if (!isNativeIosShell() || !callKitEnabled()) return;
+  if (state.audioRouteUserSet) return;
+  void setCallSpeaker(Boolean(state.group), { paint: false });
+}
+
+function reassertCallAudio() {
+  if (!isNativeIosShell() || !callKitEnabled()) return;
+  if (!state.call && !state.group) return;
+  void setCallSpeaker(state.speakerOn, { paint: false });
+}
+
+function toggleSpeaker() {
+  noteCallActivity();
+  state.audioRouteUserSet = true;
+  void setCallSpeaker(!state.speakerOn);
+}
+
 function hangup() {
   if (state.group) {
     leaveGroup();
     return;
   }
   stopRing();
-  const kit = nativeCallKit();
-  if (kit && isNativeIosShell()) {
-    try {
-      void kit.endCall({ callId: state.call?.callId || state.pendingNativeCallId });
-    } catch {}
-  }
+  releaseNativeCallAudio();
   if (state.ws && state.call) {
     state.ws.send(
       JSON.stringify({
@@ -1775,15 +3147,26 @@ function hangup() {
   endCallUi();
 }
 
+function releaseNativeCallAudio() {
+  const kit = nativeCallKit();
+  if (!kit || !isNativeIosShell() || !callKitEnabled()) return;
+  try {
+    void kit.endCall({ callId: state.call?.callId || state.pendingNativeCallId });
+  } catch {}
+}
+
 function endCallUi(flash) {
   if (state.endingCall) return;
   state.endingCall = true;
   try {
+  releaseNativeCallAudio();
+  resetCallKitGate();
   stopRing();
   stopDialTone();
   stopHoldMusic();
   clearSilenceWatch();
   state.onHold = false;
+  state.holdByLineId = null;
   state.stillPrompt = false;
   stopCallTicker();
   clearConnectWatch();
@@ -1796,9 +3179,10 @@ function endCallUi(flash) {
     } catch {}
   }
   state.pc = null;
+  acceptCallInFlight = false;
   releaseAllPcMicTracks();
   if (state.localStream && !state.group) {
-    parkMicStream();
+    releaseOrParkMicAfterCall();
   }
   state.pendingIce = [];
   state.remoteReady = false;
@@ -1806,6 +3190,8 @@ function endCallUi(flash) {
   state.callStartedAt = 0;
   state.iceState = "";
   state.muted = false;
+  state.speakerOn = false;
+  state.audioRouteUserSet = false;
   const audio = remoteAudio();
   if (audio) audio.srcObject = null;
   if (flash) setFlash(flash, "info");
@@ -1823,50 +3209,45 @@ function peerAudioEl(lineId) {
     el = document.createElement("audio");
     el.autoplay = true;
     el.setAttribute("playsinline", "");
+    el.setAttribute("webkit-playsinline", "true");
+    el.playsInline = true;
     el.dataset.peer = lineId;
     root.appendChild(el);
   }
   return el;
 }
 
+/** Unlock autoplay during the Listen tap — ontrack play() is after the gesture window. */
+function unlockGroupAudio() {
+  const audio = peerAudioEl("__unlock__");
+  if (!audio) return;
+  try {
+    audio.muted = true;
+    audio.volume = 0;
+    audio.play()?.catch(() => {});
+  } catch {}
+}
+
+function kickGroupAudio() {
+  const root = groupAudioRoot();
+  if (!root) return;
+  root.querySelectorAll("audio").forEach((audio) => {
+    if (audio.dataset.peer === "__unlock__") return;
+    try {
+      audio.autoplay = true;
+      audio.setAttribute("playsinline", "");
+      audio.setAttribute("webkit-playsinline", "true");
+      audio.playsInline = true;
+      audio.muted = false;
+      audio.volume = 1;
+      audio.play()?.catch(() => {});
+    } catch {}
+  });
+}
+
 function clearGroupAudio() {
   const root = groupAudioRoot();
   if (root) root.innerHTML = "";
-}
-
-function leaveGroup(silent) {
-  stopRing();
-  stopDialTone();
-  stopHoldMusic();
-  clearSilenceWatch();
-  state.onHold = false;
-  state.stillPrompt = false;
-  if (!silent && state.ws && state.group?.roomId) {
-    state.ws.send(
-      JSON.stringify({
-        type: "group.leave",
-        roomId: state.group.roomId,
-        lineId: state.activeLineId,
-      })
-    );
-  }
-  for (const peer of Object.values(state.groupPeers)) {
-    releaseMicForPc(peer.pc);
-    try {
-      peer.pc?.close();
-    } catch {}
-  }
-  state.groupPeers = {};
-  clearGroupAudio();
-  releaseAllPcMicTracks();
-  parkMicStream();
-  state.group = null;
-  state.callStartedAt = 0;
-  state.muted = false;
-  stopCallTicker();
-  clearConnectWatch();
-  releaseWakeLock();
-  paintCallLayer();
 }
 
 function onGroupStarted(msg) {
@@ -1926,9 +3307,884 @@ function onGroupPeerLeft(msg) {
 function onGroupEnded(msg) {
   if (state.group && msg.roomId && state.group.roomId !== msg.roomId) return;
   stopRing();
-  setFlash(msg.reason || "Group call ended", "info");
+  const wasFr = state.group?.familyRoom || msg.familyRoom || msg.playRoom;
+  const wasAdultFr = state.group?.adultFamilyRoom || msg.adultFamilyRoom;
+  setFlash(
+    msg.reason ||
+      (wasAdultFr ? "FamilyRoom ended" : wasFr ? "TreeHouse ended" : "Group call ended"),
+    "info"
+  );
   leaveGroup(true);
+  if (wasFr) {
+    state.familyRoomPresence = {
+      householdId: msg.householdId || state.familyRoomPresence?.householdId || null,
+      roomId: null,
+      members: [],
+      listeners: [],
+      talkPairs: state.familyRoomPresence?.talkPairs || [],
+    };
+    state.playRoomListen = null;
+  }
+  if (wasAdultFr) {
+    state.adultFamilyRoomPresence = {
+      householdId: msg.householdId || state.adultFamilyRoomPresence?.householdId || null,
+      roomId: null,
+      members: [],
+    };
+  }
   render();
+}
+
+function msgTalkPairsFromState(hh = state.households[0]) {
+  const fromPresence = state.familyRoomPresence?.talkPairs || [];
+  const fromHh = hh?.family_room_talk_pairs || hh?.play_room_talk_pairs || [];
+  const out = new Set();
+  for (const p of [...fromPresence, ...fromHh]) {
+    const a = Array.isArray(p) ? p[0] : p?.line_a;
+    const b = Array.isArray(p) ? p[1] : p?.line_b;
+    if (!a || !b || a === b) continue;
+    out.add(a < b ? `${a}|${b}` : `${b}|${a}`);
+  }
+  return out;
+}
+
+/** Symmetric talk edge: household kids auto; externals need parent talk pair. */
+function canTalkInTreeHouse(lineA, lineB, hh = state.households[0]) {
+  if (!lineA || !lineB || lineA === lineB) return false;
+  const lines = hh?.lines || [];
+  const a = lines.find((l) => l.id === lineA);
+  const b = lines.find((l) => l.id === lineB);
+  const bothHouseKids =
+    a &&
+    b &&
+    a.household_id === hh?.id &&
+    b.household_id === hh?.id &&
+    (a.mode || "parent") === "child" &&
+    (b.mode || "parent") === "child";
+  if (bothHouseKids) return true;
+  // Same-household kids may not be in hh.lines for externals — also check always list.
+  const always = familyRoomAlwaysIds(hh);
+  if (always.has(lineA) && always.has(lineB)) return true;
+  const key = lineA < lineB ? `${lineA}|${lineB}` : `${lineB}|${lineA}`;
+  return msgTalkPairsFromState(hh).has(key);
+}
+
+function myTreeHouseTalkPeers(memberIds) {
+  const me = state.activeLineId;
+  if (!me) return [];
+  if (state.playRoomListen?.listenTargets?.length) {
+    return state.playRoomListen.listenTargets.filter((id) => id !== me);
+  }
+  return (memberIds || []).filter((id) => id !== me && canTalkInTreeHouse(me, id));
+}
+
+function onTreeHouseAnnounce(msg) {
+  const text = String(msg.text || "").trim();
+  if (!text) return;
+  // Dedupe dual playroom/familyroom emits
+  if (state._playRoomAnnounceLast === text && Date.now() - (state._playRoomAnnounceAt || 0) < 1500) {
+    return;
+  }
+  state._playRoomAnnounceLast = text;
+  state._playRoomAnnounceAt = Date.now();
+  speakUnavailablePrompt(text);
+  setFlash(text, "info");
+}
+
+function onTreeHousePresence(msg) {
+  const hh = state.households[0];
+  if (hh && msg.householdId && msg.householdId !== hh.id) return;
+  // Deduplicate dual emits
+  const sig = `${msg.roomId}|${(msg.members || []).join(",")}|${(msg.listeners || [])
+    .map((l) => l.parentLineId)
+    .join(",")}`;
+  if (state._playRoomPresenceSig === sig && Date.now() - (state._playRoomPresenceAt || 0) < 400) {
+    return;
+  }
+  state._playRoomPresenceSig = sig;
+  state._playRoomPresenceAt = Date.now();
+  state.familyRoomPresence = {
+    householdId: msg.householdId || hh?.id || null,
+    roomId: msg.roomId || null,
+    members: Array.isArray(msg.members) ? msg.members : [],
+    listeners: Array.isArray(msg.listeners) ? msg.listeners : [],
+    talkPairs: Array.isArray(msg.talkPairs) ? msg.talkPairs : state.familyRoomPresence?.talkPairs || [],
+  };
+  if (state.group?.familyRoom && state.group.roomId === msg.roomId) {
+    state.group.members = state.familyRoomPresence.members;
+    state.group.listeners = state.familyRoomPresence.listeners;
+  }
+  if (state.screen === "home" && state.nav === "phone") {
+    patchTreeHousePresenceChips();
+    patchAdultFamilyRoomPresenceChips();
+  }
+  // Soft-update call chrome only — full paintCallLayer remount looks like a refresh thrash.
+  if (state.group?.familyRoom || state.playRoomListen) {
+    patchTreeHouseCallLayerPresence();
+  }
+}
+
+/** In-room session is live even alone (no ICE peers yet). Starts the timer. */
+function markTreeHouseSessionLive() {
+  if (!state.group) return;
+  stopRing();
+  stopDialTone();
+  if (state.group.status !== "active") state.group.status = "active";
+  if (!state.callStartedAt) {
+    state.callStartedAt = Date.now();
+    startCallTicker();
+  }
+}
+
+/** Update TreeHouse call-layer member copy without remounting (keeps timer / buttons). */
+function patchTreeHouseCallLayerPresence() {
+  const layer = document.getElementById("call-layer");
+  if (!layer || !state.group) {
+    paintCallLayer();
+    return;
+  }
+  const members = state.group.members || [];
+  const media = layer.querySelector(".call-media");
+  if (media && !state.group.listenOnly) {
+    media.textContent = `${members.length} in TreeHouse`;
+  }
+}
+
+async function onTreeHouseJoined(msg) {
+  // Alias triple-emit (treehouse/playroom/familyroom) must not reset a live session.
+  if (state.group?.familyRoom && state.group.roomId === msg.roomId) {
+    state.group.members = msg.members || state.group.members;
+    state.group.hostLineId = msg.hostLineId || state.group.hostLineId;
+    if (Array.isArray(msg.talkPeers)) state.group.talkPeers = msg.talkPeers;
+    if (Array.isArray(msg.listeners)) state.group.listeners = msg.listeners;
+    state.familyRoomPresence = {
+      householdId: msg.householdId || state.familyRoomPresence?.householdId || state.households[0]?.id || null,
+      roomId: msg.roomId,
+      members: msg.members || state.familyRoomPresence?.members || [],
+      listeners: msg.listeners || state.familyRoomPresence?.listeners || [],
+      talkPairs: state.familyRoomPresence?.talkPairs || [],
+    };
+    markTreeHouseSessionLive();
+    patchTreeHouseCallLayerPresence();
+    return;
+  }
+  state.group = {
+    roomId: msg.roomId,
+    status: "connecting",
+    hostLineId: msg.hostLineId,
+    members: msg.members || [state.activeLineId],
+    invited: [],
+    familyRoom: true,
+    playRoom: true,
+    talkPeers: msg.talkPeers || myTreeHouseTalkPeers(msg.members || []),
+    listeners: msg.listeners || [],
+  };
+  state.familyRoomPresence = {
+    householdId: msg.householdId || state.households[0]?.id || null,
+    roomId: msg.roomId,
+    members: msg.members || [],
+    listeners: msg.listeners || [],
+    talkPairs: state.familyRoomPresence?.talkPairs || [],
+  };
+  state.speakerOn = true;
+  // Solo (or waiting for peers): room membership is enough — don't stick on Connecting… / 0:00.
+  markTreeHouseSessionLive();
+  paintCallLayer();
+}
+
+async function onTreeHouseListenStarted(msg) {
+  if (msg.parentLineId && msg.parentLineId !== state.activeLineId) return;
+  state.playRoomListen = {
+    roomId: msg.roomId,
+    childLineId: msg.childLineId,
+    childName: msg.childName || lineName(msg.childLineId),
+    listenTargets: msg.listenTargets || [],
+    analogTargets: msg.analogTargets || [],
+  };
+  state.group = {
+    roomId: msg.roomId,
+    status: "connecting",
+    hostLineId: msg.childLineId,
+    members: msg.members || [],
+    invited: [],
+    familyRoom: true,
+    playRoom: true,
+    listenOnly: true,
+    talkPeers: msg.listenTargets || [],
+    listeners: [
+      {
+        parentLineId: state.activeLineId,
+        childLineId: msg.childLineId,
+        childName: msg.childName,
+      },
+    ],
+  };
+  state.groupPeers = {};
+  state.muted = true;
+  state.speakerOn = true;
+  state.screen = "home";
+  paintCallLayer();
+  applyPreferredCallAudio();
+  try {
+    // Recvonly — never capture/join as a speaking participant.
+    // Softphone kids offer TO us (peer-joined). Analog kids cannot — we offer, bridge answers.
+    await requestWakeLock();
+    const analog = state.playRoomListen?.analogTargets || msg.analogTargets || [];
+    const analogOffer = analog.includes(msg.childLineId) ? msg.childLineId : analog[0];
+    if (analogOffer && analogOffer !== state.activeLineId) {
+      await groupOfferTo(analogOffer, { recvOnly: true });
+    }
+    markTreeHouseSessionLive();
+    paintCallLayer();
+    kickGroupAudio();
+  } catch (e) {
+    setFlash(e.message || "Could not start listen-only", "error");
+    stopTreeHouseListen(true);
+  }
+}
+
+function onTreeHouseListenStopped(msg) {
+  if (state.playRoomListen && msg.roomId && state.playRoomListen.roomId !== msg.roomId) return;
+  const was = Boolean(state.playRoomListen || state.group?.listenOnly);
+  state.playRoomListen = null;
+  if (was) {
+    leaveGroup(true);
+    setFlash("Stopped listening", "info");
+    render();
+  }
+}
+
+function startTreeHouseListen(childLineId) {
+  if (!childLineId || !state.activeLineId) return;
+  if (state.call || (state.group && !state.group.listenOnly)) {
+    setFlash("Hang up before listening", "warn");
+    return;
+  }
+  if (!state.ws || state.ws.readyState !== 1) {
+    setFlash("Not connected yet — wait a second", "warn");
+    return;
+  }
+  unlockGroupAudio();
+  state.ws.send(
+    JSON.stringify({
+      type: "treehouse.listen.start",
+      parentLineId: state.activeLineId,
+      childLineId,
+    })
+  );
+}
+
+/** Household parent softphone (not kid chrome / child-mode lock). */
+function isHouseholdParentPad(hh = state.households[0]) {
+  if (isKidExperience() || isChildMode()) return false;
+  const active = (hh?.lines || []).find((l) => l.id === state.activeLineId);
+  return Boolean(active) && (active.mode || "parent") !== "child";
+}
+
+/** Kid line ids currently in this household’s TreeHouse. */
+function treeHouseKidsInRoom(hh = state.households[0]) {
+  const live = new Set(familyRoomPresenceMembers());
+  return (hh?.lines || []).filter(
+    (l) => l.id && (l.mode || "parent") === "child" && live.has(l.id)
+  );
+}
+
+/** Parent pad #0: listen-only to a kid in TreeHouse (never talk-join / approve gate). */
+function parentTreeHousePadAction() {
+  if (state.playRoomListen || state.group?.listenOnly) {
+    stopTreeHouseListen(false);
+    return;
+  }
+  if (state.call || state.group) {
+    setFlash("Hang up before listening", "warn");
+    return;
+  }
+  const hh = state.households[0];
+  const inRoom = treeHouseKidsInRoom(hh);
+  if (!inRoom.length) {
+    setFlash("No kids in TreeHouse right now — open Parent → TreeHouse when they’re in", "info");
+    return;
+  }
+  const prefer =
+    inRoom.find((l) => l.id === state.ataTargetLineId) ||
+    inRoom.find((l) => l.id === householdPad0ChildLine(hh)?.id) ||
+    inRoom[0];
+  startTreeHouseListen(prefer.id);
+}
+
+function stopTreeHouseListen(silent) {
+  const roomId = state.playRoomListen?.roomId || state.group?.roomId;
+  if (!silent && state.ws && state.activeLineId) {
+    state.ws.send(
+      JSON.stringify({
+        type: "treehouse.listen.stop",
+        parentLineId: state.activeLineId,
+        roomId,
+      })
+    );
+  }
+  state.playRoomListen = null;
+  leaveGroup(true);
+}
+
+function leaveGroup(silent) {
+  stopRing();
+  stopDialTone();
+  stopHoldMusic();
+  clearSilenceWatch();
+  state.onHold = false;
+  state.holdByLineId = null;
+  state.stillPrompt = false;
+  const wasFr = Boolean(state.group?.familyRoom || state.playRoomListen);
+  const wasListen = Boolean(state.group?.listenOnly || state.playRoomListen);
+  const roomId = state.group?.roomId || state.playRoomListen?.roomId;
+  if (!silent && state.ws && roomId) {
+    state.ws.send(
+      JSON.stringify({
+        type: wasListen
+          ? "playroom.listen.stop"
+          : wasFr
+            ? "playroom.leave"
+            : "group.leave",
+        roomId,
+        lineId: state.activeLineId,
+        parentLineId: state.activeLineId,
+      })
+    );
+  }
+  for (const peer of Object.values(state.groupPeers)) {
+    releaseMicForPc(peer.pc);
+    try {
+      peer.pc?.close();
+    } catch {}
+  }
+  state.groupPeers = {};
+  clearGroupAudio();
+  releaseAllPcMicTracks();
+  releaseOrParkMicAfterCall();
+  state.group = null;
+  state.playRoomListen = null;
+  state.callStartedAt = 0;
+  state.muted = false;
+  state.speakerOn = false;
+  state.audioRouteUserSet = false;
+  releaseNativeCallAudio();
+  stopCallTicker();
+  clearConnectWatch();
+  releaseWakeLock();
+  paintCallLayer();
+}
+
+function joinTreeHouse() {
+  if (state.call || state.group) return;
+  const hh = state.households[0];
+  if (!hh) return;
+  // Parents never talk-join — listen-only bypasses family_room_members approve.
+  if (isHouseholdParentPad(hh)) {
+    parentTreeHousePadAction();
+    return;
+  }
+  const approved = familyRoomApprovedIds(hh);
+  if (!approved.has(state.activeLineId)) {
+    setFlash(
+      isKidExperience()
+        ? "Ask a parent to approve you for TreeHouse"
+        : "Approve this line for TreeHouse in Parent → TreeHouse",
+      "warn"
+    );
+    render();
+    return;
+  }
+  if (state.wsReplaced || !state.ws || state.ws.readyState !== 1) {
+    reconnectWs();
+  }
+  if (!state.ws || state.ws.readyState !== 1) {
+    setFlash("Not connected yet — wait a second", "warn");
+    render();
+    return;
+  }
+  setFlash("");
+  state.group = {
+    roomId: null,
+    status: "connecting",
+    hostLineId: state.activeLineId,
+    members: [state.activeLineId],
+    invited: [],
+    familyRoom: true,
+    playRoom: true,
+  };
+  state.groupPeers = {};
+  state.onHold = false;
+  state.holdByLineId = null;
+  state.speakerOn = true;
+  state.screen = "home";
+  beginOutboundCallAudio(String(TREEHOUSE_SLOT));
+  paintCallLayer();
+  requestWakeLock().catch(() => {});
+  ensureGroupMic()
+    .then(() => {
+      unlockAudioCtx();
+      applyPreferredCallAudio();
+    })
+    .catch((e) => {
+      setFlash(e.message || "Microphone needed", "error");
+      // Notify server so we don’t leave a ghost member (presence-only hang).
+      leaveGroup();
+      render();
+    });
+  state.ws.send(
+    JSON.stringify({
+      type: "treehouse.join",
+      lineId: state.activeLineId,
+    })
+  );
+}
+
+function lastNameFromDisplay(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+
+function displayNameForParentLine(line, hh) {
+  const member = (hh?.members || []).find((m) => m.user_id === line?.owner_user_id);
+  if (member?.display_name) return member.display_name;
+  if (state.user?.id === line?.owner_user_id) {
+    return state.user.display_name || "";
+  }
+  return "";
+}
+
+/** Slot 2: other parent last name; Mom/Dad if they share the household name and chose a title. */
+function familyRoomSlot2Label(secondary, hh, slot1Label) {
+  const last = lastNameFromDisplay(displayNameForParentLine(secondary, hh));
+  const slot1 = String(slot1Label || "").trim().toLowerCase();
+  if (last && last.toLowerCase() !== slot1) return last;
+  const title = parentDisplayLabel(secondary, hh);
+  if (title === "Mom" || title === "Dad") return title;
+  return last || hh?.name || "Family";
+}
+
+function buildAdultFamilyRoomChoices(hh = state.households[0]) {
+  const fromServer = hh?.family_room_choices_by_line?.[state.activeLineId];
+  if (Array.isArray(fromServer) && fromServer.length) {
+    return fromServer.slice(0, 2).map((c) => ({
+      slot: Number(c.slot) || 1,
+      householdId: c.householdId || c.household_id || hh.id,
+      label: c.label,
+    }));
+  }
+  const choices = [];
+  if (!hh || !adultFamilyRoomApprovedIds(hh).has(state.activeLineId)) return choices;
+  const slot1 = (hh.name || "Family").trim() || "Family";
+  choices.push({ slot: 1, householdId: hh.id, label: slot1 });
+  const otherHh = (state.households || []).find(
+    (h) => h.id !== hh.id && adultFamilyRoomApprovedIds(h).has(state.activeLineId)
+  );
+  if (otherHh) {
+    const otherAdmin = householdAdminParentLine(otherHh);
+    choices.push({
+      slot: 2,
+      householdId: otherHh.id,
+      label: otherAdmin
+        ? familyRoomSlot2Label(otherAdmin, otherHh, slot1)
+        : (otherHh.name || "Family").trim() || "Family",
+    });
+  } else {
+    const secondary = householdSecondaryParentLine(hh);
+    if (secondary) {
+      choices.push({
+        slot: 2,
+        householdId: hh.id,
+        label: familyRoomSlot2Label(secondary, hh, slot1),
+      });
+    }
+  }
+  return choices.slice(0, 2);
+}
+
+function tryFamilyRoomPickerDigit(digit) {
+  const pick = state.familyRoomPicker;
+  if (!pick?.choices?.length) return false;
+  const choice = pick.choices.find((c) => String(c.slot) === String(digit));
+  if (!choice) return false;
+  closeFamilyRoomPickerSheet();
+  joinAdultFamilyRoom(choice.householdId);
+  return true;
+}
+
+function closeFamilyRoomPickerSheet() {
+  state.familyRoomPicker = null;
+  document.getElementById("familyroom-pick-sheet")?.remove();
+}
+
+function showFamilyRoomPickerSheet(choices) {
+  closeFamilyRoomPickerSheet();
+  state.familyRoomPicker = { choices };
+  const wrap = document.createElement("div");
+  wrap.id = "familyroom-pick-sheet";
+  wrap.className = "sheet-modal";
+  const buttons = choices
+    .map((c, i) => {
+      const label = String(c.label || `Family ${c.slot}`).replace(/</g, "");
+      const hid = String(c.householdId || "").replace(/"/g, "");
+      const cls = i === 0 ? "primary btn-block" : "ghost btn-block";
+      return `<button type="button" class="${cls}" data-fr-pick="${hid}">${label}</button>`;
+    })
+    .join("");
+  wrap.innerHTML = `
+    <div class="sheet-modal-card" role="dialog" aria-modal="true" aria-labelledby="fr-pick-title">
+      <h2 id="fr-pick-title">Which FamilyRoom?</h2>
+      <p>Choose a family to join.</p>
+      <div class="fr-pick-stack">${buttons}</div>
+      <button type="button" class="linkish auth-link" id="fr-pick-cancel">Cancel</button>
+    </div>`;
+  document.body.appendChild(wrap);
+  wrap.addEventListener("click", (e) => {
+    if (e.target === wrap) closeFamilyRoomPickerSheet();
+  });
+  wrap.querySelectorAll("[data-fr-pick]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const hid = btn.getAttribute("data-fr-pick");
+      closeFamilyRoomPickerSheet();
+      if (hid) joinAdultFamilyRoom(hid);
+    });
+  });
+  document.getElementById("fr-pick-cancel")?.addEventListener("click", closeFamilyRoomPickerSheet);
+}
+
+function startAdultFamilyRoomIvr() {
+  if (state.call || (state.group && !state.group?.adultFamilyRoom)) return;
+  const hh = state.households[0];
+  const choices = buildAdultFamilyRoomChoices(hh);
+  if (!choices.length) {
+    const anyApproved = (state.households || []).some((h) =>
+      adultFamilyRoomApprovedIds(h).has(state.activeLineId)
+    );
+    setFlash(
+      anyApproved
+        ? "No FamilyRoom available"
+        : isKidExperience()
+          ? "Ask a parent to approve you for FamilyRoom"
+          : "Ask the household admin to approve you for FamilyRoom",
+      anyApproved ? "info" : "warn"
+    );
+    return;
+  }
+  if (choices.length === 1) {
+    joinAdultFamilyRoom(choices[0].householdId);
+    return;
+  }
+  showFamilyRoomPickerSheet(choices);
+}
+
+function joinAdultFamilyRoom(householdId) {
+  if (state.call || (state.group && !state.group?.adultFamilyRoom)) return;
+  if (state.wsReplaced || !state.ws || state.ws.readyState !== 1) {
+    reconnectWs();
+  }
+  if (!state.ws || state.ws.readyState !== 1) {
+    setFlash("Not connected yet — wait a second", "warn");
+    return;
+  }
+  state.group = {
+    roomId: null,
+    status: "connecting",
+    hostLineId: state.activeLineId,
+    members: [state.activeLineId],
+    invited: [],
+    adultFamilyRoom: true,
+  };
+  state.groupPeers = {};
+  state.onHold = false;
+  state.holdByLineId = null;
+  state.speakerOn = true;
+  paintCallLayer();
+  requestWakeLock().catch(() => {});
+  ensureGroupMic()
+    .then(() => {
+      unlockAudioCtx();
+      applyPreferredCallAudio();
+    })
+    .catch((e) => {
+      setFlash(e.message || "Microphone needed", "error");
+      leaveGroup();
+      render();
+    });
+  state.ws.send(
+    JSON.stringify({
+      type: "adultfamily.join",
+      lineId: state.activeLineId,
+      householdId,
+    })
+  );
+}
+
+async function onAdultFamilyRoomJoined(msg) {
+  state.adultFamilyRoomPresence = {
+    householdId: msg.householdId || state.households[0]?.id || null,
+    roomId: msg.roomId,
+    members: msg.members || [state.activeLineId],
+  };
+  if (state.group?.adultFamilyRoom && state.group.roomId === msg.roomId) {
+    state.group.members = msg.members || state.group.members;
+    state.group.talkPeers = msg.talkPeers || state.group.talkPeers;
+    state.group.status = "active";
+    paintCallLayer();
+    patchAdultFamilyRoomPresenceChips();
+    return;
+  }
+  state.group = {
+    roomId: msg.roomId,
+    householdId: msg.householdId,
+    hostLineId: msg.hostLineId,
+    members: msg.members || [state.activeLineId],
+    invited: [],
+    talkPeers: msg.talkPeers || (msg.members || []).filter((id) => id !== state.activeLineId),
+    status: "connecting",
+    adultFamilyRoom: true,
+  };
+  state.groupPeers = {};
+  stopRing();
+  stopDialTone();
+  try {
+    await ensureGroupMic();
+    await requestWakeLock();
+    const targets = state.group.talkPeers || [];
+    for (const other of targets) {
+      await groupOfferTo(other);
+    }
+    state.group.status = "active";
+  } catch (e) {
+    setFlash(e.message || "Could not join FamilyRoom", "error");
+    leaveGroup();
+    render();
+    return;
+  }
+  paintCallLayer();
+  patchAdultFamilyRoomPresenceChips();
+}
+
+function familyRoomPresenceMembers() {
+  const list = state.familyRoomPresence?.members || [];
+  return list.filter(Boolean);
+}
+
+function familyRoomPresenceListeners() {
+  return state.familyRoomPresence?.listeners || [];
+}
+
+/**
+ * Presence chip “active” (green) vs muted grey.
+ * Joined members look active by default. Grey only for *other* peers filtered
+ * from your in-session talk graph — never self, never a solo occupant, and
+ * never when you’re only viewing the pad (not in TreeHouse / listen).
+ */
+function treeHousePresenceChipActive(memberId, members) {
+  const me = state.activeLineId;
+  if (memberId === me) return true;
+  if ((members || []).length <= 1) return true;
+  if (state.group?.listenOnly && (state.group.talkPeers || []).includes(memberId)) {
+    return true;
+  }
+  const inSession = Boolean(
+    state.group?.familyRoom || state.group?.listenOnly || state.playRoomListen
+  );
+  if (!inSession) return true;
+  return canTalkInTreeHouse(me, memberId);
+}
+
+function familyRoomPresenceChipsHtml(opts = {}) {
+  const members = familyRoomPresenceMembers();
+  const listeners = familyRoomPresenceListeners();
+  if (!members.length && !listeners.length) return "";
+  const maxShow = opts.maxShow ?? 6;
+  const me = state.activeLineId;
+  const chips = [];
+  for (const id of members) {
+    const name = lineName(id);
+    const isMe = id === me;
+    const talk = treeHousePresenceChipActive(id, members);
+    const cls = [
+      "familyroom-chip",
+      isMe ? "is-me" : "",
+      talk ? "is-talk" : "is-muted-peer",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const tip = talk
+      ? name
+      : `${name} (in TreeHouse — not talk-connected)`;
+    chips.push(
+      `<span class="${cls}" title="${String(tip).replace(/"/g, "&quot;")}">${avatarHtml(name, id, "xs")}</span>`
+    );
+  }
+  for (const li of listeners) {
+    const child = li.childName || lineName(li.childLineId);
+    const tip = `${child}’s parent is listening`;
+    chips.push(
+      `<span class="familyroom-chip is-parent-listen" title="${String(tip).replace(/"/g, "&quot;")}" aria-label="${String(tip).replace(/"/g, "&quot;")}"><span class="familyroom-listen-mark" aria-hidden="true">P</span></span>`
+    );
+  }
+  const shown = chips.slice(0, maxShow);
+  const extra = chips.length - shown.length;
+  return `<div class="familyroom-presence" aria-label="${members.length} in TreeHouse">
+    ${shown.join("")}
+    ${extra > 0 ? `<span class="familyroom-chip-more">+${extra}</span>` : ""}
+  </div>`;
+}
+
+function patchTreeHousePresenceChips() {
+  const host = document.getElementById("familyroom-presence-host");
+  if (!host) return;
+  const html = familyRoomPresenceChipsHtml();
+  host.innerHTML = html;
+  host.hidden = !html;
+  host.classList.toggle("has-members", Boolean(html));
+  host.closest(".pad-treehouse")?.classList.toggle("has-presence", Boolean(html));
+}
+
+function adultFamilyRoomPresenceMembers() {
+  return (state.adultFamilyRoomPresence?.members || []).filter(Boolean);
+}
+
+function adultFamilyRoomPresenceChipsHtml(opts = {}) {
+  const members = adultFamilyRoomPresenceMembers();
+  if (!members.length) return "";
+  const maxShow = opts.maxShow ?? 6;
+  const me = state.activeLineId;
+  const chips = members.map((id) => {
+    const name = lineName(id);
+    const isMe = id === me;
+    const cls = ["familyroom-chip", isMe ? "is-me" : "is-talk"].filter(Boolean).join(" ");
+    return `<span class="${cls}" title="${String(name).replace(/"/g, "&quot;")}">${avatarHtml(name, id, "xs")}</span>`;
+  });
+  const shown = chips.slice(0, maxShow);
+  const extra = chips.length - shown.length;
+  return `<div class="familyroom-presence" aria-label="${members.length} in FamilyRoom">
+    ${shown.join("")}
+    ${extra > 0 ? `<span class="familyroom-chip-more">+${extra}</span>` : ""}
+  </div>`;
+}
+
+function patchAdultFamilyRoomPresenceChips() {
+  const host = document.getElementById("adult-familyroom-presence-host");
+  if (!host) return;
+  const html = adultFamilyRoomPresenceChipsHtml();
+  host.innerHTML = html;
+  host.hidden = !html;
+  host.classList.toggle("has-members", Boolean(html));
+  host.closest(".pad-adult-familyroom")?.classList.toggle("has-presence", Boolean(html));
+}
+
+function onAdultFamilyRoomPresence(msg) {
+  const hh = state.households[0];
+  if (hh && msg.householdId && msg.householdId !== hh.id) return;
+  const sig = `${msg.roomId}|${(msg.members || []).join(",")}`;
+  if (state._adultFrPresenceSig === sig && Date.now() - (state._adultFrPresenceAt || 0) < 400) {
+    return;
+  }
+  state._adultFrPresenceSig = sig;
+  state._adultFrPresenceAt = Date.now();
+  state.adultFamilyRoomPresence = {
+    householdId: msg.householdId || hh?.id || null,
+    roomId: msg.roomId || null,
+    members: Array.isArray(msg.members) ? msg.members : [],
+  };
+  if (state.group?.adultFamilyRoom && state.group.roomId === msg.roomId) {
+    state.group.members = state.adultFamilyRoomPresence.members;
+  }
+  if (state.screen === "home" && state.nav === "phone") {
+    patchAdultFamilyRoomPresenceChips();
+  }
+}
+
+/** TreeHouse pad mark — CSS-masked /treehouse.svg */
+function treeHouseHouseIconHtml() {
+  return `<span class="familyroom-house treehouse-house" aria-hidden="true"></span>`;
+}
+
+/** FamilyRoom — classic house (hash is in the SVG/PNG art) */
+function adultFamilyRoomHouseIconHtml() {
+  return `<span class="familyroom-classic-house" aria-hidden="true"></span>`;
+}
+
+function renderTreeHouseSlot(extraClass = "") {
+  const hh = state.households[0];
+  const approved = familyRoomApprovedIds(hh);
+  const parentPad = isHouseholdParentPad(hh);
+  const canJoin = approved.has(state.activeLineId);
+  const listening = Boolean(state.playRoomListen || state.group?.listenOnly);
+  const inRoom = Boolean(state.group?.familyRoom) && !listening;
+  const liveCount = familyRoomPresenceMembers().length;
+  const kidsIn = treeHouseKidsInRoom(hh).length;
+  let presence = "wait";
+  let status = "Needs parent approval";
+  let ready = canJoin;
+  if (parentPad) {
+    ready = true;
+    presence = listening ? "on" : kidsIn || liveCount ? "on" : "away";
+    status = listening
+      ? `Listening · ${state.playRoomListen?.childName || "kid"}`
+      : kidsIn
+        ? `${kidsIn} in TreeHouse · tap to listen`
+        : liveCount
+          ? `${liveCount} in TreeHouse · tap to listen`
+          : "Listen only when a kid is in";
+  } else if (canJoin) {
+    presence = liveCount > 0 ? "on" : "away";
+    status = inRoom
+      ? "You’re in TreeHouse"
+      : liveCount
+        ? `${liveCount} in TreeHouse`
+        : "TreeHouse";
+  }
+  const aria = `TreeHouse, dial ${TREEHOUSE_SLOT}, ${status}`.replace(/"/g, "&quot;");
+  const presenceHtml = familyRoomPresenceChipsHtml();
+  return `<button class="speed-slot pad-familyroom pad-treehouse ${ready ? "" : "not-ready"} ${inRoom || listening ? "is-live" : ""} ${liveCount ? "has-presence" : ""} ${extraClass}" data-slot="${TREEHOUSE_SLOT}" data-familyroom="1" type="button" aria-label="${aria}">
+    <span class="speed-face presence-${presence}" title="${status.replace(/"/g, "&quot;")}">
+      <div id="familyroom-presence-host" class="familyroom-presence-host ${presenceHtml ? "has-members" : ""}" ${presenceHtml ? "" : "hidden"}>${presenceHtml}</div>
+      <span class="speed-familyroom-glyph" aria-hidden="true">
+        ${treeHouseHouseIconHtml()}
+      </span>
+    </span>
+    <span class="speed-cap">
+      <strong class="speed-name familyroom-wordmark">Tree<span>House</span></strong>
+      <span class="speed-num" aria-hidden="true">${TREEHOUSE_SLOT}</span>
+    </span>
+  </button>`;
+}
+
+function renderAdultFamilyRoomSlot(extraClass = "") {
+  const hh = state.households[0];
+  const approved = adultFamilyRoomApprovedIds(hh);
+  const canJoin = approved.has(state.activeLineId);
+  const inRoom = Boolean(state.group?.adultFamilyRoom);
+  const liveCount = adultFamilyRoomPresenceMembers().length;
+  let presence = canJoin ? (liveCount > 0 ? "on" : "away") : "wait";
+  let status = canJoin
+    ? inRoom
+      ? "You’re in FamilyRoom"
+      : liveCount
+        ? `${liveCount} in FamilyRoom`
+        : "FamilyRoom"
+    : "Needs parent approval";
+  const aria = `FamilyRoom, dial pound, ${status}`.replace(/"/g, "&quot;");
+  const presenceHtml = adultFamilyRoomPresenceChipsHtml();
+  return `<button class="speed-slot pad-familyroom pad-adult-familyroom ${canJoin ? "" : "not-ready"} ${inRoom ? "is-live" : ""} ${liveCount ? "has-presence" : ""} ${extraClass}" data-adult-familyroom="1" type="button" aria-label="${aria}">
+    <span class="speed-face presence-${presence}" title="${status.replace(/"/g, "&quot;")}">
+      <div id="adult-familyroom-presence-host" class="familyroom-presence-host ${presenceHtml ? "has-members" : ""}" ${presenceHtml ? "" : "hidden"}>${presenceHtml}</div>
+      <span class="speed-familyroom-glyph" aria-hidden="true">
+        ${adultFamilyRoomHouseIconHtml()}
+      </span>
+    </span>
+    <span class="speed-cap">
+      <strong class="speed-name familyroom-wordmark">Family<span>Room</span></strong>
+      <span class="speed-num speed-num-hash" aria-hidden="true">#</span>
+    </span>
+  </button>`;
 }
 
 async function ensureGroupMic() {
@@ -1937,9 +4193,10 @@ async function ensureGroupMic() {
   return state.localStream;
 }
 
-async function makeGroupPc(peerLineId) {
+async function makeGroupPc(peerLineId, opts = {}) {
   if (state.groupPeers[peerLineId]?.pc) return state.groupPeers[peerLineId];
-  const stream = await ensureGroupMic();
+  const recvOnly = Boolean(opts.recvOnly || state.group?.listenOnly);
+  const stream = recvOnly ? null : await ensureGroupMic();
   const pc = new RTCPeerConnection({
     iceServers: await iceServers(),
     iceCandidatePoolSize: 4,
@@ -1949,15 +4206,23 @@ async function makeGroupPc(peerLineId) {
     pc,
     pendingIce: stub?.pendingIce?.length ? [...stub.pendingIce] : [],
     remoteReady: false,
+    recvOnly,
   };
   state.groupPeers[peerLineId] = peer;
-  attachLocalMicToPc(pc);
+  if (recvOnly) {
+    pc.addTransceiver("audio", { direction: "recvonly" });
+  } else {
+    await attachLocalMicToPc(pc);
+  }
   pc.ontrack = (ev) => {
     const audio = peerAudioEl(peerLineId);
     if (audio) {
       audio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+      audio.muted = false;
+      audio.volume = 1;
       audio.play().catch(() => {});
     }
+    kickGroupAudio();
   };
   pc.onicecandidate = (ev) => {
     if (!state.ws || state.ws.readyState !== 1 || !state.group) return;
@@ -1990,21 +4255,26 @@ async function makeGroupPc(peerLineId) {
 
 async function flushGroupIce(peerLineId) {
   const peer = state.groupPeers[peerLineId];
-  if (!peer) return;
+  if (!peer?.pc) return;
+  try {
+    if (peer.pc.signalingState === "closed" || peer.pc.connectionState === "closed") return;
+  } catch {
+    return;
+  }
   peer.remoteReady = true;
   const queued = peer.pendingIce.splice(0);
   for (const c of queued) {
     try {
       await peer.pc.addIceCandidate(new RTCIceCandidate(c));
     } catch (e) {
-      console.warn("[group-ice] flush", e);
+      if (!isInvalidStateError(e)) console.warn("[group-ice] flush", e);
     }
   }
 }
 
-async function groupOfferTo(peerLineId) {
+async function groupOfferTo(peerLineId, opts = {}) {
   if (peerLineId === state.activeLineId) return;
-  const peer = await makeGroupPc(peerLineId);
+  const peer = await makeGroupPc(peerLineId, opts);
   const offer = await peer.pc.createOffer();
   await peer.pc.setLocalDescription(offer);
   state.ws.send(
@@ -2022,22 +4292,63 @@ async function onGroupPeerJoined(msg) {
   if (!state.group || state.group.roomId !== msg.roomId) return;
   state.group.members = msg.members || [];
   state.group.invited = msg.invited || [];
-  // Joiner creates offers to everyone already in the room
+  if (msg.familyRoom || msg.playRoom) {
+    state.group.familyRoom = true;
+    state.group.playRoom = true;
+  }
+  if (Array.isArray(msg.talkPeers)) state.group.talkPeers = msg.talkPeers;
+
+  const isPlay = Boolean(state.group.familyRoom || state.group.playRoom);
+  const isAdultFr = Boolean(state.group.adultFamilyRoom || msg.adultFamilyRoom);
+  const listenOnly = Boolean(state.group.listenOnly || msg.listener);
+
+  // Joiner creates offers to talk-approved peers only (TreeHouse) or everyone (group / FamilyRoom).
   if (msg.lineId === state.activeLineId) {
-    state.group.status = "connecting";
+    if (!listenOnly) state.group.status = "connecting";
     stopRing();
     stopDialTone();
     try {
-      await ensureGroupMic();
+      if (!listenOnly) await ensureGroupMic();
       await requestWakeLock();
-      for (const other of state.group.members) {
-        if (other !== state.activeLineId) await groupOfferTo(other);
+      const targets = isAdultFr
+        ? state.group.members.filter((id) => id !== state.activeLineId)
+        : isPlay
+          ? myTreeHouseTalkPeers(state.group.members)
+          : state.group.members.filter((id) => id !== state.activeLineId);
+      state.group.talkPeers = targets;
+      for (const other of targets) {
+        await groupOfferTo(other, { recvOnly: listenOnly });
       }
+      // TreeHouse is a room session even with zero talk peers (solo hangout / waiting).
+      if (isPlay) markTreeHouseSessionLive();
+      if (isAdultFr) state.group.adultFamilyRoom = true;
     } catch (e) {
       setFlash(e.message || "Could not join group call", "error");
       leaveGroup();
       render();
       return;
+    }
+  } else if (isPlay) {
+    // Existing member: only mesh with talk-approved / listen path.
+    const shouldOffer =
+      canTalkInTreeHouse(state.activeLineId, msg.lineId) ||
+      (state.group.listenOnly && (state.group.talkPeers || []).includes(msg.lineId)) ||
+      Boolean(msg.listener && msg.lineId);
+    // When a parent listener joins, talk peers offer TO the parent (msg.lineId).
+    if (msg.listener && msg.lineId !== state.activeLineId) {
+      const child = msg.listenForChildLineId;
+      const iAmTarget =
+        state.activeLineId === child ||
+        canTalkInTreeHouse(child, state.activeLineId);
+      if (iAmTarget && !state.groupPeers[msg.lineId]?.pc) {
+        try {
+          await groupOfferTo(msg.lineId);
+        } catch (e) {
+          console.warn("[playroom] listen offer failed", e);
+        }
+      }
+    } else if (shouldOffer && msg.lineId !== state.activeLineId) {
+      // New talk peer joined — joiner already offers; we wait for their offer.
     }
   }
   paintCallLayer();
@@ -2047,11 +4358,20 @@ async function onGroupOffer(msg) {
   if (!state.group || state.group.roomId !== msg.roomId) return;
   if (msg.toLineId !== state.activeLineId) return;
   try {
-    await ensureGroupMic();
+    const listenOnly = Boolean(state.group.listenOnly);
+    if (!listenOnly) await ensureGroupMic();
     await requestWakeLock();
-    const peer = await makeGroupPc(msg.fromLineId);
+    const peer = await makeGroupPc(msg.fromLineId, { recvOnly: listenOnly });
+    if (peer.pc.signalingState !== "stable" && peer.pc.remoteDescription) {
+      console.info("[group] ignoring duplicate offer", msg.fromLineId);
+      return;
+    }
     await peer.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
     await flushGroupIce(msg.fromLineId);
+    if (peer.pc.signalingState !== "have-remote-offer") {
+      console.warn("[group] cannot answer in state", peer.pc.signalingState);
+      return;
+    }
     const answer = await peer.pc.createAnswer();
     await peer.pc.setLocalDescription(answer);
     state.ws.send(
@@ -2066,9 +4386,12 @@ async function onGroupOffer(msg) {
     if (state.group.status === "calling" || state.group.status === "connecting") {
       state.group.status = "active";
     }
+    if (state.group.familyRoom || state.group.playRoom || listenOnly) {
+      markTreeHouseSessionLive();
+    }
     paintCallLayer();
   } catch (e) {
-    console.warn("[group] offer failed", e);
+    if (!isInvalidStateError(e)) console.warn("[group] offer failed", e);
   }
 }
 
@@ -2076,10 +4399,25 @@ async function onGroupAnswer(msg) {
   if (!state.group || state.group.roomId !== msg.roomId) return;
   if (msg.toLineId !== state.activeLineId) return;
   const peer = state.groupPeers[msg.fromLineId];
-  if (!peer) return;
-  await peer.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-  await flushGroupIce(msg.fromLineId);
+  if (!peer?.pc) return;
+  const pc = peer.pc;
+  try {
+    if (pc.signalingState === "stable" && pc.remoteDescription) {
+      console.info("[group] ignoring duplicate answer", msg.fromLineId);
+      return;
+    }
+    if (pc.signalingState !== "have-local-offer") {
+      console.warn("[group] unexpected answer in state", pc.signalingState);
+      return;
+    }
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    await flushGroupIce(msg.fromLineId);
+  } catch (e) {
+    if (!isInvalidStateError(e)) console.warn("[group] answer failed", e);
+    return;
+  }
   if (state.group.status !== "active") state.group.status = "active";
+  if (state.group.listenOnly) kickGroupAudio();
   paintCallLayer();
 }
 
@@ -2108,7 +4446,9 @@ async function acceptGroupCall() {
     await ensureGroupMic();
     await requestWakeLock();
     state.group.status = "connecting";
+    state.speakerOn = true;
     paintCallLayer();
+    applyPreferredCallAudio();
     state.ws.send(
       JSON.stringify({
         type: "group.accept",
@@ -2153,12 +4493,17 @@ function startGroupCall(toLineIds) {
   };
   state.groupPeers = {};
   state.onHold = false;
+  state.holdByLineId = null;
+  state.speakerOn = true;
   state.screen = "home";
   beginOutboundCallAudio(ids.map((_, i) => String((i % 9) + 1)).join("").slice(0, 3) || "1");
   paintCallLayer();
   requestWakeLock().catch(() => {});
   ensureGroupMic()
-    .then(() => unlockAudioCtx())
+    .then(() => {
+      unlockAudioCtx();
+      applyPreferredCallAudio();
+    })
     .catch((e) => {
       setFlash(e.message || "Microphone needed", "error");
       leaveGroup(true);
@@ -2436,6 +4781,14 @@ function onVmMonitorSkip(_msg) {
 }
 
 function lineName(id) {
+  // Prefer Mom/Dad when the peer is a household parent with that title.
+  for (const hh of state.households || []) {
+    const line = (hh.lines || []).find((l) => l.id === id);
+    if (line && (line.mode || "parent") !== "child") {
+      const titled = parentDisplayLabel(line, hh);
+      if (titled === "Mom" || titled === "Dad") return titled;
+    }
+  }
   const d = state.directory.find((x) => x.id === id);
   return d ? d.name : "Contact";
 }
@@ -2466,7 +4819,25 @@ function friendlyPersonName(raw) {
 /** Prefer custom label; fall back when old rows were saved as generic "Contact". */
 function contactDisplayName(entry) {
   const label = String(entry?.label || "").trim();
-  if (label && !/^contact$/i.test(label)) return label;
+  if (label && !/^contact$/i.test(label)) {
+    // Stale allowlist nickname for a Mom/Dad parent → show the title instead.
+    if (entry?.target_line_id) {
+      for (const hh of state.households || []) {
+        const line = (hh.lines || []).find((l) => l.id === entry.target_line_id);
+        if (!line || (line.mode || "parent") === "child") continue;
+        const titled = parentDisplayLabel(line, hh);
+        if (titled !== "Mom" && titled !== "Dad") continue;
+        const bare = friendlyPersonName(label).toLowerCase();
+        if (bare === titled.toLowerCase()) return titled;
+        const lineBare = friendlyPersonName(line.name || line.child_label || "").toLowerCase();
+        if (bare === lineBare) return titled;
+        const member = (hh.members || []).find((m) => m.user_id === line.owner_user_id);
+        const dn = friendlyPersonName(member?.display_name || "").toLowerCase();
+        if (dn && bare === dn) return titled;
+      }
+    }
+    return label;
+  }
   return friendlyPersonName(lineName(entry?.target_line_id));
 }
 
@@ -2484,27 +4855,415 @@ function externalAllowlist(hh = state.households[0]) {
   const ourIds = new Set((hh?.lines || []).map((l) => l.id));
   return (hh?.allowlist || []).filter(
     (a) => a.target_line_id && a.target_line_id !== active && !ourIds.has(a.target_line_id)
-  );
+  ).filter((a) => !isHiddenTestReviewContact(a, hh));
 }
 
 /**
- * Designated Home / dial-0 parent: first household line with mode parent
- * (not child), ordered by created_at then id. Matches server householdHomeParentLine.
+ * TestFlight review contact is Trevor↔test only.
+ * Hide on kid pads and on every non-Trevor account (server also strips, belt-and-suspenders).
  */
-function householdHomeParentLine(hh = state.households[0]) {
-  return (
+function isHiddenTestReviewContact(entry, hh = state.households[0]) {
+  const dir = state.directory.find((d) => d.id === entry?.target_line_id);
+  const review =
+    Boolean(entry?.is_test_review) ||
+    Boolean(dir?.is_test_review) ||
+    /^test$/i.test(String(entry?.label || "").trim());
+  if (!review) return false;
+  const username = String(state.user?.username || "").toLowerCase();
+  if (username !== "trevor") return true;
+  if (isKidExperience()) return true;
+  const active = (hh?.lines || []).find((l) => l.id === state.activeLineId);
+  if (active && (active.mode || "parent") === "child") return true;
+  return false;
+}
+
+/** This parent’s circle from /api/me (one sphere per parent account). */
+function mySphere(hh = state.households[0]) {
+  if (!hh) return null;
+  if (hh.my_sphere_id) {
+    return (hh.spheres || []).find((s) => s.id === hh.my_sphere_id) || { id: hh.my_sphere_id, name: "My circle", is_mine: true };
+  }
+  return (hh.spheres || []).find((s) => s.is_mine) || null;
+}
+
+/**
+ * Contacts in this parent’s circle for Parent UI.
+ * Fail-open: if sphere membership isn’t tagged yet, show the full allowlist so pads/UI never go empty.
+ */
+function contactsInMyCircle(hh = state.households[0]) {
+  const all = externalAllowlist(hh);
+  const sph = mySphere(hh);
+  if (!sph?.id) return all;
+  const tagged = all.filter((a) => Array.isArray(a.sphere_ids) && a.sphere_ids.length);
+  if (!tagged.length) return all;
+  return all.filter((a) => !a.sphere_ids?.length || a.sphere_ids.includes(sph.id));
+}
+
+/** Parent → Contacts: rename circle + which circles appear on each kid’s speed dial. */
+function renderParentCirclesBlock(hh, kidLines) {
+  const sph = mySphere(hh);
+  const spheres = hh?.spheres || [];
+  const name = (sph?.name || "My circle").replace(/</g, "");
+  const memberCount = Array.isArray(sph?.member_line_ids) ? sph.member_line_ids.length : contactsInMyCircle(hh).length;
+  const kidBlocks =
+    kidLines.length && spheres.length
+      ? kidLines
+          .map((l) => {
+            const access = new Set(l.sphere_access || []);
+            const label = (l.child_label || l.name || "Kid").replace(/</g, "");
+            const checks = spheres
+              .map((s) => {
+                const sid = String(s.id).replace(/"/g, "");
+                const sname = String(s.name || s.owner_display_name || "Circle")
+                  .replace(/</g, "")
+                  .replace(/"/g, "&quot;");
+                const mine = s.is_mine ? " (yours)" : "";
+                return `<label class="check-row"><input type="checkbox" data-kid-sphere="${l.id}" data-sphere-id="${sid}" ${
+                  access.has(s.id) ? "checked" : ""
+                } /> ${sname}${mine}</label>`;
+              })
+              .join("");
+            return `<div class="parent-field" style="margin-top:10px;padding-top:10px">
+              <h3 class="parent-subhead">${label}’s speed dial</h3>
+              <p class="tiny">Check which parent lists this kid can call from. The same person on two lists still shows once. Unchecked lists stay off their phone.</p>
+              ${checks}
+              <button type="button" class="ghost" data-save-kid-spheres="${l.id}" style="margin-top:8px">Save for ${label}</button>
+            </div>`;
+          })
+          .join("")
+      : "";
+  return `<div class="parent-field" style="margin-top:0;padding-top:0;border-top:0">
+    <h3 class="parent-subhead">Your circle</h3>
+    <p class="tiny">Your circle is <strong>your</strong> list of people — not a shared phone book. The other parent has their own list. Kids only see the lists you attach below.</p>
+    <label>Circle name</label>
+    <input id="sphere-name" maxlength="64" value="${name.replace(/"/g, "&quot;")}" placeholder="e.g. Trevor’s people" />
+    <p class="tiny parent-inline-meta">${memberCount} ${memberCount === 1 ? "person" : "people"} · invite first, then both families approve</p>
+    <button type="button" class="ghost" id="save-sphere-name" style="margin-top:8px">Save circle name</button>
+    ${kidBlocks}
+  </div>`;
+}
+
+/** Lines always allowed to join this household TreeHouse (kids only). */
+function familyRoomAlwaysIds(hh = state.households[0]) {
+  if (hh?.family_room_always?.length) return new Set(hh.family_room_always);
+  // Fallback: child-mode lines in this household.
+  return new Set(
     (hh?.lines || [])
-      .filter((l) => l.id && (l.mode || "parent") !== "child")
-      .slice()
-      .sort((a, b) =>
-        String(a.created_at || a.id).localeCompare(String(b.created_at || b.id))
-      )[0] || null
+      .filter((l) => l.id && (l.mode || "parent") === "child")
+      .map((l) => l.id)
   );
 }
 
-/** Next free speed-dial 1–9; marks `taken`. */
-function claimSpeedDialSlot(taken) {
-  for (let s = 1; s <= 9; s++) {
+function familyRoomApprovedIds(hh = state.households[0]) {
+  const ids = new Set(familyRoomAlwaysIds(hh));
+  for (const id of hh?.family_room_approved || []) ids.add(id);
+  for (const m of hh?.family_room_members || []) {
+    if (m?.line_id) ids.add(m.line_id);
+  }
+  return ids;
+}
+
+/** Parent → TreeHouse: join approvals, talk pairs, listen-only. */
+function renderTreeHouseParentBlock(hh) {
+  const always = familyRoomAlwaysIds(hh);
+  const approved = familyRoomApprovedIds(hh);
+  const candidates = [];
+  const seen = new Set();
+  for (const l of hh?.lines || []) {
+    if (!l.id || seen.has(l.id)) continue;
+    seen.add(l.id);
+    const isKid = (l.mode || "parent") === "child";
+    candidates.push({
+      line_id: l.id,
+      name: l.child_label || friendlyPersonName(l.name) || l.name,
+      kind: isKid ? "kid" : "parent",
+      always: isKid, // kids always join; parents use listen-only
+    });
+  }
+  for (const a of hh?.allowlist || []) {
+    if (!a.target_line_id || seen.has(a.target_line_id)) continue;
+    if (isHiddenTestReviewContact(a, hh)) continue;
+    if ((hh?.lines || []).some((l) => l.id === a.target_line_id)) continue;
+    seen.add(a.target_line_id);
+    candidates.push({
+      line_id: a.target_line_id,
+      name: contactDisplayName(a),
+      kind: "contact",
+      always: false,
+    });
+  }
+  const joinRows = candidates
+    .map((c) => {
+      const locked = Boolean(c.always);
+      const on = locked || approved.has(c.line_id);
+      const label = String(c.name || "Line").replace(/</g, "");
+      const kindLabel =
+        c.kind === "parent"
+          ? "parent · listen only"
+          : c.kind === "kid"
+            ? "kid · always allowed"
+            : "family";
+      const action = locked
+        ? `<span class="tiny familyroom-locked-chip" title="Kids in this house can always join TreeHouse">Always on</span>`
+        : c.kind === "parent"
+          ? `<span class="tiny familyroom-locked-chip" title="Parents listen from the section below — they don’t join as talkers">Listen below</span>`
+          : `<button type="button" class="${on ? "ghost tiny-btn danger" : "primary tiny-btn"}" data-familyroom-toggle="${c.line_id}" data-approved="${on ? "1" : "0"}">${
+              on ? "Remove" : "Allow in"
+            }</button>`;
+      return `<li class="familyroom-approve-row${locked ? " is-always" : ""}">
+        <span>${label}<small class="tiny"> · ${kindLabel}</small></span>
+        ${action}
+      </li>`;
+    })
+    .join("");
+
+  const joinEligible = candidates.filter((c) => c.always || approved.has(c.line_id));
+  const talkPairs = hh?.family_room_talk_pairs || [];
+  const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const pairSet = new Set(talkPairs.map((p) => pairKey(p.line_a, p.line_b)));
+  const talkKids = joinEligible.filter((c) => c.kind !== "parent");
+  let talkRows = "";
+  for (let i = 0; i < talkKids.length; i++) {
+    for (let j = i + 1; j < talkKids.length; j++) {
+      const a = talkKids[i];
+      const b = talkKids[j];
+      const bothHouseKids = a.always && b.always;
+      const on = bothHouseKids || pairSet.has(pairKey(a.line_id, b.line_id));
+      const aName = String(a.name || "").replace(/</g, "");
+      const bName = String(b.name || "").replace(/</g, "");
+      talkRows += `<li class="familyroom-approve-row${bothHouseKids ? " is-always" : ""}">
+        <span>${aName} ↔ ${bName}${bothHouseKids ? `<small class="tiny"> · household kids</small>` : ""}</span>
+        ${
+          bothHouseKids
+            ? `<span class="tiny familyroom-locked-chip">Always talk</span>`
+            : `<button type="button" class="${on ? "ghost tiny-btn danger" : "primary tiny-btn"}" data-playroom-talk="${a.line_id}" data-playroom-talk-b="${b.line_id}" data-on="${on ? "1" : "0"}">${
+                on ? "Unlink" : "Allow talk"
+              }</button>`
+        }
+      </li>`;
+    }
+  }
+
+  const live = familyRoomPresenceMembers();
+  const liveSet = new Set(live);
+  const kidLines = (hh?.lines || []).filter((l) => (l.mode || "parent") === "child");
+  const listeningChild = state.playRoomListen?.childLineId;
+  const listenRows = kidLines
+    .map((l) => {
+      const name = String(l.child_label || friendlyPersonName(l.name) || l.name || "Kid").replace(
+        /</g,
+        ""
+      );
+      const inRoom = liveSet.has(l.id);
+      const on = listeningChild === l.id;
+      return `<li class="familyroom-approve-row">
+        <span>${name}<small class="tiny"> · ${inRoom ? "in TreeHouse now" : "not in room"}</small></span>
+        <button type="button" class="${on ? "ghost tiny-btn danger" : "primary tiny-btn"}" data-playroom-listen="${l.id}" data-on="${on ? "1" : "0"}" ${
+          !inRoom && !on ? "disabled" : ""
+        }>${on ? "Stop listening" : "Listen only"}</button>
+      </li>`;
+    })
+    .join("");
+
+  const explicitCount = [...approved].filter((id) => !always.has(id)).length;
+  return `<div class="parent-field" style="margin-top:0;padding-top:0;border-top:0">
+    <p class="tiny">TreeHouse is the house button (<strong>0</strong>) — a hangout room for kids. Kids in this house can always go in. Cousins and other family need your OK first. Two kids only hear each other if you allow both (brothers and sisters always can). Parents <strong>listen only</strong>, and everyone in the room hears that a parent is listening.</p>
+    <p class="tiny parent-inline-meta">${always.size} kids · ${explicitCount} contact${explicitCount === 1 ? "" : "s"} · max ${MAX_FAMILY_ROOM}${
+      live.length ? ` · ${live.length} in room now` : ""
+    }</p>
+    <h3 class="parent-subhead" style="margin-top:12px">Who can join</h3>
+    ${
+      candidates.length
+        ? `<ul class="guardian-list familyroom-approve-list">${joinRows}</ul>`
+        : `<p class="tiny">Add a child line or invite a contact, then approve outside contacts for TreeHouse.</p>`
+    }
+    <h3 class="parent-subhead" style="margin-top:14px">Who can hear each other</h3>
+    <p class="tiny">Kids in this house always hear each other. For cousins and friends, tap Allow talk so both sides can hear — never one-way.</p>
+    ${
+      talkRows
+        ? `<ul class="guardian-list familyroom-approve-list">${talkRows}</ul>`
+        : `<p class="tiny">Approve a contact to join first, then allow talk pairs here.</p>`
+    }
+    <h3 class="parent-subhead parent-subhead-with-badge" style="margin-top:14px">${withBetaBadge("Listen only")}</h3>
+    <p class="tiny">Hear what your child hears. Everyone in TreeHouse hears “{child}’s parent is listening.” It is never silent.</p>
+    ${
+      listenRows
+        ? `<ul class="guardian-list familyroom-approve-list">${listenRows}</ul>`
+        : `<p class="tiny">Add a kid line to enable listen-only.</p>`
+    }
+  </div>`;
+}
+
+/** Household admin → FamilyRoom (# IVR): approve kids and adults. */
+function renderAdultFamilyRoomParentBlock(hh) {
+  if (!isHouseholdAdmin(hh)) {
+    return `<p class="tiny">Only the household admin can choose who may enter FamilyRoom (the <strong>#</strong> button).</p>`;
+  }
+  const approved = adultFamilyRoomApprovedIds(hh);
+  const candidates = [];
+  const seen = new Set();
+  for (const l of hh?.lines || []) {
+    if (!l.id || seen.has(l.id)) continue;
+    seen.add(l.id);
+    const isKid = (l.mode || "parent") === "child";
+    candidates.push({
+      line_id: l.id,
+      name: isKid
+        ? l.child_label || friendlyPersonName(l.name) || l.name
+        : parentDisplayLabel(l, hh),
+      kind: isKid ? "kid" : "parent",
+    });
+  }
+  for (const a of hh?.allowlist || []) {
+    if (!a.target_line_id || seen.has(a.target_line_id)) continue;
+    if (isHiddenTestReviewContact(a, hh)) continue;
+    seen.add(a.target_line_id);
+    candidates.push({
+      line_id: a.target_line_id,
+      name: contactDisplayName(a),
+      kind: "contact",
+    });
+  }
+  const kindLabel = (kind) =>
+    kind === "kid" ? "kid in this house" : kind === "parent" ? "parent in this house" : "family";
+  const rows = candidates
+    .map((c) => {
+      const on = approved.has(c.line_id);
+      const label = String(c.name || "Line").replace(/</g, "");
+      return `<li class="familyroom-approve-row">
+        <span>${label}<small class="tiny"> · ${kindLabel(c.kind)}</small></span>
+        <button type="button" class="${on ? "ghost tiny-btn danger" : "primary tiny-btn"}" data-adult-familyroom-toggle="${c.line_id}" data-approved="${on ? "1" : "0"}">${
+          on ? "Remove" : "Approve"
+        }</button>
+      </li>`;
+    })
+    .join("");
+  return `<div class="parent-field">
+    <p class="tiny">FamilyRoom is the <strong>#</strong> button (when you’re not already on a call). After you approve someone, kids and adults can talk together. In the app they pick the family from a list. On a house phone, a voice asks them to press <strong>1</strong> for ${String(
+      hh?.name || "your family"
+    ).replace(/</g, "")}, or <strong>2</strong> for the other parent’s last name (or Mom / Dad if you set that in Account).</p>
+    ${
+      rows
+        ? `<ul class="guardian-list familyroom-approve-list">${rows}</ul>`
+        : `<p class="tiny">Add a household line or a contact, then approve them for FamilyRoom.</p>`
+    }
+  </div>`;
+}
+
+/** Sphere ids that gate the active line’s dial pad (parent = own circle; kid = attached circles). */
+function activeLineSphereGateIds(hh = state.households[0]) {
+  const active = (hh?.lines || []).find((l) => l.id === state.activeLineId);
+  if (!active) return null;
+  if ((active.mode || "parent") === "child") {
+    return new Set(active.sphere_access || []);
+  }
+  // Parent pad: only contacts in *this* parent’s circle (co-parent contacts stay in theirs).
+  if (hh?.my_sphere_id) return new Set([hh.my_sphere_id]);
+  const mine = (hh?.spheres || []).find((s) => s.is_mine);
+  return mine ? new Set([mine.id]) : null;
+}
+
+/** True if contact identity is visible on the active line’s pad via shared circle membership. */
+function contactInActiveSphereGate(entry, hh = state.households[0]) {
+  const gate = activeLineSphereGateIds(hh);
+  if (!gate || !gate.size) return false;
+  const ids = entry?.sphere_ids || [];
+  return ids.some((id) => gate.has(id));
+}
+
+/**
+ * Designated admin parent — owner’s parent line, else first parent line.
+ * Kid softphone pad 1; ATA dial 1. Matches server householdAdminParentLine.
+ */
+function householdAdminParentLine(hh = state.households[0]) {
+  const parents = (hh?.lines || [])
+    .filter((l) => l.id && (l.mode || "parent") !== "child")
+    .slice()
+    .sort((a, b) =>
+      String(a.created_at || a.id).localeCompare(String(b.created_at || b.id))
+    );
+  if (!parents.length) return null;
+  const ownerId = hh?.owner_user_id;
+  if (ownerId) {
+    const ownerLine = parents.find((l) => l.owner_user_id === ownerId);
+    if (ownerLine) return ownerLine;
+  }
+  return parents[0];
+}
+
+/** Second parent-mode line in the household (excluding admin). */
+function householdSecondaryParentLine(hh = state.households[0]) {
+  const admin = householdAdminParentLine(hh);
+  const parents = (hh?.lines || [])
+    .filter((l) => l.id && (l.mode || "parent") !== "child")
+    .slice()
+    .sort((a, b) =>
+      String(a.created_at || a.id).localeCompare(String(b.created_at || b.id))
+    );
+  return parents.find((l) => l.id !== admin?.id) || null;
+}
+
+/** Slot 2 stays reserved only when another parent-mode line exists (and isn't this pad). */
+function isSecondaryParentSlotReserved(hh = state.households[0]) {
+  const secondary = householdSecondaryParentLine(hh);
+  return Boolean(secondary && secondary.id !== state.activeLineId);
+}
+
+/** @deprecated use householdAdminParentLine */
+function householdHomeParentLine(hh = state.households[0]) {
+  return householdAdminParentLine(hh);
+}
+
+function parentTitleForUserId(userId, hh = state.households[0]) {
+  if (!userId) return null;
+  const member = (hh?.members || []).find((m) => m.user_id === userId);
+  if (member?.parent_title) return member.parent_title;
+  if (state.user?.id === userId && state.user?.parent_title) return state.user.parent_title;
+  return null;
+}
+
+/** Mom / Dad / name for a parent-mode line. */
+function parentDisplayLabel(line, hh = state.households[0]) {
+  if (!line) return "Parent";
+  const title = parentTitleForUserId(line.owner_user_id, hh);
+  if (title === "mom") return "Mom";
+  if (title === "dad") return "Dad";
+  return line.child_label || friendlyPersonName(line.name) || "Parent";
+}
+
+function adultFamilyRoomApprovedIds(hh = state.households[0]) {
+  return new Set(hh?.adult_family_room_approved || []);
+}
+
+function isHouseholdAdmin(hh = state.households[0]) {
+  return Boolean(hh?.owner_user_id && state.user?.id === hh.owner_user_id);
+}
+
+/**
+ * Primary household child for **parent** softphone pad 1.
+ * Prefer: active line when it is a child; else Analog Phone target kid when set;
+ * else first child by created_at then id. Additional kids fill 3–9 (TreeHouse is 0).
+ */
+function householdPad0ChildLine(hh = state.households[0]) {
+  const kids = (hh?.lines || [])
+    .filter((l) => l.id && (l.mode || "parent") === "child")
+    .slice()
+    .sort((a, b) =>
+      String(a.created_at || a.id).localeCompare(String(b.created_at || b.id))
+    );
+  if (!kids.length) return null;
+  const activeKid = kids.find((l) => l.id === state.activeLineId);
+  if (activeKid) return activeKid;
+  if (state.ataTargetLineId) {
+    const ataKid = kids.find((l) => l.id === state.ataTargetLineId);
+    if (ataKid) return ataKid;
+  }
+  return kids[0];
+}
+
+/** Next free speed-dial slot from `min`–9; marks `taken`. */
+function claimSpeedDialSlot(taken, min = 2) {
+  for (let s = min; s <= 9; s++) {
     if (!taken.has(s)) {
       taken.add(s);
       return s;
@@ -2515,27 +5274,55 @@ function claimSpeedDialSlot(taken) {
 
 /**
  * Speed-dial / call targets for the active softphone:
- * Home (0) = designated parent, other household lines (1–9) + external allowlist, never self.
- *
- * On a parent line pad, household child lines always default to the earliest slots
- * (primary kid → 1). House lines are not rearrangeable; externals that collide are
- * shifted to the next free pad slots for display. Kid pads still respect stored
- * external speed dials first so parent-arranged contacts stay put.
+ * Pad 0 = TreeHouse (rendered separately). Pad 1 = locked child (parent pad) or admin parent (kid pad).
+ * Pad 2 = secondary parent when present, else contacts. Pads 3–9 = kids / contacts.
  */
 function dialableAllowlist(hh = state.households[0]) {
+  // Parent preview: show what Grandma’s pad looks like (assigned kids on 1…n).
+  if (isGpPreviewMode()) {
+    const rel = gpPreviewRelative(hh);
+    const kidIds = rel?.kid_line_ids || [];
+    const kids = householdKidLines(hh).filter((l) => kidIds.includes(l.id));
+    const ordered = kidIds
+      .map((id) => kids.find((k) => k.id === id))
+      .filter(Boolean);
+    return ordered.map((kid, i) => ({
+      id: `gp-preview-${rel.id}-${kid.id}`,
+      target_line_id: kid.id,
+      label: kid.child_label || friendlyPersonName(kid.name) || "Grandchild",
+      speed_dial: i === 0 ? ADMIN_PARENT_SLOT : Math.min(2 + (i - 1), 9),
+      favorite: 1,
+      always_allow: 1,
+      mutual: true,
+      household_line: true,
+      home_grandchild: i === 0,
+      locked_slot: true,
+      gp_preview: true,
+    }));
+  }
+
   const active = state.activeLineId;
-  const external = externalAllowlist(hh);
-  const homeParent = householdHomeParentLine(hh);
-  const homeParentId = homeParent?.id || null;
+  const seenTargets = new Set();
+  const external = externalAllowlist(hh).filter((a) => {
+    if (seenTargets.has(a.target_line_id)) return false;
+    seenTargets.add(a.target_line_id);
+    return true;
+  });
+  const adminParent = householdAdminParentLine(hh);
+  const adminParentId = adminParent?.id || null;
+  const secondaryParent = householdSecondaryParentLine(hh);
+  const secondaryParentId =
+    secondaryParent && secondaryParent.id !== active ? secondaryParent.id : null;
   const activeLine = (hh?.lines || []).find((l) => l.id === active) || null;
-  // Parent softphone: child line(s) own slot 1+ by default. Kid softphone: keep
-  // external layout priority (parent may have arranged 1–9 for the handset).
   const parentPad = Boolean(activeLine) && (activeLine.mode || "parent") !== "child";
+  const primaryChild = parentPad ? householdPad0ChildLine(hh) : null;
+  const primaryChildId = primaryChild?.id || null;
 
   const siblingLines = (hh?.lines || [])
     .filter((l) => l.id && l.id !== active)
-    // Parent lives on locked slot 0 — do not also auto-place on 1–9.
-    .filter((l) => l.id !== homeParentId)
+    .filter((l) => l.id !== adminParentId)
+    .filter((l) => l.id !== secondaryParentId)
+    .filter((l) => l.id !== primaryChildId)
     .slice()
     .sort((a, b) => {
       if (parentPad) {
@@ -2546,9 +5333,15 @@ function dialableAllowlist(hh = state.households[0]) {
       return String(a.created_at || a.id).localeCompare(String(b.created_at || b.id));
     });
 
-  const taken = new Set();
+  const taken = new Set([TREEHOUSE_SLOT, ADMIN_PARENT_SLOT]);
+  if (secondaryParentId) taken.add(SECONDARY_PARENT_SLOT);
+  const contactMin = secondaryParentId ? 3 : 2;
+
   const toSiblingEntry = (l, speed) => {
-    const label = l.child_label || friendlyPersonName(l.name) || "Family";
+    const label =
+      (l.mode || "parent") === "child"
+        ? l.child_label || friendlyPersonName(l.name) || "Child"
+        : parentDisplayLabel(l, hh);
     return {
       id: `hh-line-${l.id}`,
       target_line_id: l.id,
@@ -2564,34 +5357,86 @@ function dialableAllowlist(hh = state.households[0]) {
   let siblings;
   let externalsOut;
   if (parentPad) {
-    siblings = siblingLines.map((l) => toSiblingEntry(l, claimSpeedDialSlot(taken)));
+    siblings = siblingLines.map((l) => toSiblingEntry(l, claimSpeedDialSlot(taken, contactMin)));
     externalsOut = external.map((a) => {
       const want = Number(a.speed_dial);
-      let speed = Number.isInteger(want) && want >= 1 && want <= 9 ? want : null;
-      if (speed == null || taken.has(speed)) {
-        speed = claimSpeedDialSlot(taken);
-      } else {
-        taken.add(speed);
-      }
+      let speed =
+        Number.isInteger(want) && want >= contactMin && want <= 9 && !taken.has(want) ? want : null;
+      if (speed == null) speed = claimSpeedDialSlot(taken, contactMin);
+      else taken.add(speed);
       return speed === a.speed_dial ? a : { ...a, speed_dial: speed };
     });
   } else {
     for (const a of external) {
       const n = Number(a.speed_dial);
-      if (Number.isInteger(n) && n >= 1 && n <= 9) taken.add(n);
+      if (Number.isInteger(n) && n >= contactMin && n <= 9) taken.add(n);
     }
-    siblings = siblingLines.map((l) => toSiblingEntry(l, claimSpeedDialSlot(taken)));
-    externalsOut = external;
+    siblings = siblingLines.map((l) => toSiblingEntry(l, claimSpeedDialSlot(taken, contactMin)));
+    externalsOut = external.map((a) => {
+      const n = Number(a.speed_dial);
+      if (n === TREEHOUSE_SLOT || n === ADMIN_PARENT_SLOT) {
+        const speed = claimSpeedDialSlot(taken, contactMin);
+        return speed == null ? { ...a, speed_dial: null } : { ...a, speed_dial: speed };
+      }
+      if (secondaryParentId && n === SECONDARY_PARENT_SLOT) {
+        const speed = claimSpeedDialSlot(taken, contactMin);
+        return speed == null ? { ...a, speed_dial: null } : { ...a, speed_dial: speed };
+      }
+      return a;
+    });
   }
 
   const out = [...siblings, ...externalsOut];
-  // Slot 0: Home / parent — synthesized, locked. Skip when active line is that parent.
-  if (homeParent && homeParent.id !== active) {
+
+  if (secondaryParentId && !isGrandparentExperience()) {
     out.unshift({
-      id: `hh-home-0-${homeParent.id}`,
-      target_line_id: homeParent.id,
-      label: homeParent.child_label || friendlyPersonName(homeParent.name) || "Home",
-      speed_dial: 0,
+      id: `hh-secondary-${secondaryParentId}`,
+      target_line_id: secondaryParentId,
+      label: parentDisplayLabel(secondaryParent, hh),
+      speed_dial: SECONDARY_PARENT_SLOT,
+      favorite: 1,
+      always_allow: 1,
+      mutual: true,
+      household_line: true,
+      secondary_parent: true,
+      locked_slot: true,
+    });
+  }
+
+  // Grandparent pad: slot 1 = primary grandchild (circle contact), not "Add kid".
+  if (parentPad && isGrandparentExperience()) {
+    const gc = pickPrimaryGrandchildContact(hh, external);
+    if (gc) {
+      const idx = out.findIndex((e) => e.target_line_id === gc.target_line_id);
+      if (idx >= 0) out.splice(idx, 1);
+      taken.add(ADMIN_PARENT_SLOT);
+      out.unshift({
+        ...gc,
+        id: gc.id || `gp-home-1-${gc.target_line_id}`,
+        speed_dial: ADMIN_PARENT_SLOT,
+        home_grandchild: true,
+        locked_slot: true,
+      });
+    }
+  } else if (parentPad && primaryChild && primaryChild.id !== active) {
+    out.unshift({
+      id: `hh-home-1-${primaryChild.id}`,
+      target_line_id: primaryChild.id,
+      label: primaryChild.child_label || friendlyPersonName(primaryChild.name) || "Child",
+      speed_dial: ADMIN_PARENT_SLOT,
+      favorite: 1,
+      always_allow: 1,
+      mutual: true,
+      household_line: true,
+      home_child: true,
+      locked_slot: true,
+    });
+  } else if (!parentPad && adminParent && adminParent.id !== active) {
+    out.unshift({
+      id: `hh-home-1-${adminParent.id}`,
+      target_line_id: adminParent.id,
+      label: parentDisplayLabel(adminParent, hh),
+      speed_dial: ADMIN_PARENT_SLOT,
       favorite: 1,
       always_allow: 1,
       mutual: true,
@@ -2601,6 +5446,30 @@ function dialableAllowlist(hh = state.households[0]) {
     });
   }
   return out;
+}
+
+/** Prefer a child-mode contact in this adult’s circle for pad #1. */
+function pickPrimaryGrandchildContact(hh, external = externalAllowlist(hh)) {
+  const list = (external || []).filter((a) => a?.target_line_id);
+  if (!list.length) return null;
+  const modeOf = (lineId) => {
+    const dir = state.directory.find((d) => d.id === lineId);
+    if (dir?.mode) return dir.mode;
+    for (const h of state.households || []) {
+      const line = (h.lines || []).find((l) => l.id === lineId);
+      if (line) return line.mode || "parent";
+    }
+    return null;
+  };
+  const kids = list.filter((a) => modeOf(a.target_line_id) === "child");
+  const pool = kids.length ? kids : list;
+  const mutual = pool.filter((a) => a.mutual);
+  const pick = (mutual.length ? mutual : pool).slice().sort((a, b) => {
+    const as = a.speed_dial == null ? 99 : Number(a.speed_dial);
+    const bs = b.speed_dial == null ? 99 : Number(b.speed_dial);
+    return as - bs;
+  })[0];
+  return pick || null;
 }
 
 function lineHasAvatar(lineId) {
@@ -2698,21 +5567,348 @@ function fitSpeedFaceNames(root = document) {
 }
 
 /* PhoneHome palette variety: forest/sage/teal + panel-olive + --ok + accent gold. */
-const AVATAR_HUES = [122, 138, 148, 160, 172, 145, 40, 46];
+const AVATAR_HUES_MODERN = [122, 138, 148, 160, 172, 145, 40, 46];
+/*
+ * 90s Tech — atomic purple / grape-led fruit plastics (clear shell over dark internals).
+ * Mid-dark so white initials stay readable.
+ */
+const AVATAR_FRUIT_RETRO = [
+  { h: 268, s: 62, l: 34 }, /* Grape / atomic */
+  { h: 280, s: 58, l: 36 }, /* Electric violet */
+  { h: 300, s: 55, l: 34 }, /* Magenta-grape */
+  { h: 328, s: 55, l: 34 }, /* Hot pink */
+  { h: 218, s: 50, l: 32 }, /* Blueberry */
+  { h: 118, s: 48, l: 28 }, /* Lime accent */
+  { h: 352, s: 58, l: 34 }, /* Strawberry */
+  { h: 24, s: 70, l: 34 }, /* Tangerine */
+];
+/* 70s–80s wood veneer: teak / walnut / rust — avoid bright avocado tops. */
+const AVATAR_HUES_WOOD = [
+  { h: 28, s: 42, l: 32 },
+  { h: 18, s: 45, l: 28 },
+  { h: 35, s: 40, l: 30 },
+  { h: 12, s: 48, l: 30 },
+  { h: 42, s: 38, l: 28 },
+  { h: 22, s: 44, l: 26 },
+  { h: 95, s: 28, l: 28 }, /* muted olive, not neon avocado */
+  { h: 8, s: 50, l: 30 },
+];
+/* CGA/EGA mid tones (not #00FF00 bloom) — dark enough for white ink. */
+const AVATAR_HUES_DOS = [
+  { h: 120, s: 70, l: 28 },
+  { h: 55, s: 75, l: 32 },
+  { h: 180, s: 65, l: 30 },
+  { h: 300, s: 55, l: 32 },
+  { h: 0, s: 70, l: 32 },
+  { h: 210, s: 65, l: 34 },
+  { h: 90, s: 55, l: 28 },
+  { h: 40, s: 80, l: 32 },
+];
+/* 16-bit jewel tones — capped lightness for white pixel labels. */
+const AVATAR_HUES_BIT = [
+  { h: 330, s: 65, l: 34 },
+  { h: 210, s: 70, l: 36 },
+  { h: 140, s: 55, l: 30 },
+  { h: 45, s: 70, l: 34 },
+  { h: 270, s: 60, l: 36 },
+  { h: 15, s: 75, l: 34 },
+  { h: 185, s: 55, l: 30 },
+  { h: 300, s: 55, l: 34 },
+];
+/* Aero / Frutiger — sky, teal, lime, soft violet (mid-dark for white ink). */
+const AVATAR_HUES_AERO = [
+  { h: 200, s: 58, l: 36 },
+  { h: 175, s: 48, l: 34 },
+  { h: 145, s: 42, l: 32 },
+  { h: 220, s: 50, l: 38 },
+  { h: 260, s: 40, l: 36 },
+  { h: 25, s: 55, l: 38 },
+  { h: 190, s: 52, l: 32 },
+  { h: 320, s: 35, l: 36 },
+];
+/* Classic 80s windbreaker — teal, purple, cream, navy (mid-dark for white ink). */
+const AVATAR_HUES_WINDBREAKER = [
+  { h: 168, s: 72, l: 28 },
+  { h: 280, s: 58, l: 30 },
+  { h: 210, s: 45, l: 26 },
+  { h: 175, s: 55, l: 32 },
+  { h: 295, s: 50, l: 28 },
+  { h: 40, s: 35, l: 36 },
+  { h: 160, s: 60, l: 26 },
+  { h: 265, s: 48, l: 32 },
+];
+/* Millennial greige — near-zero chroma charcoal/taupe (dark enough for white ink). */
+const AVATAR_HUES_MILLENNIAL = [
+  { h: 40, s: 6, l: 32 },
+  { h: 30, s: 4, l: 28 },
+  { h: 200, s: 5, l: 30 },
+  { h: 0, s: 0, l: 26 },
+  { h: 50, s: 8, l: 34 },
+  { h: 220, s: 4, l: 28 },
+  { h: 25, s: 5, l: 30 },
+  { h: 0, s: 0, l: 36 },
+];
+/* iTunes / Aqua metal — steel blues + classic Aqua candy (mid-dark for white ink). */
+const AVATAR_HUES_TUNES = [
+  { h: 210, s: 35, l: 36 },
+  { h: 205, s: 55, l: 38 },
+  { h: 220, s: 20, l: 32 },
+  { h: 200, s: 45, l: 34 },
+  { h: 230, s: 25, l: 30 },
+  { h: 195, s: 40, l: 36 },
+  { h: 215, s: 50, l: 40 },
+  { h: 0, s: 0, l: 34 },
+];
+/* Xenon / Zenon Y2K future — hot magenta, electric violet, neon cyan (mid-dark). */
+const AVATAR_HUES_XENON = [
+  { h: 300, s: 70, l: 36 },
+  { h: 280, s: 65, l: 34 },
+  { h: 190, s: 70, l: 32 },
+  { h: 320, s: 60, l: 38 },
+  { h: 260, s: 55, l: 36 },
+  { h: 175, s: 55, l: 30 },
+  { h: 330, s: 65, l: 34 },
+  { h: 220, s: 40, l: 36 },
+];
+/* GBA / Pokémon — LCD olive, menu blue, fire red, electric yellow (mid-dark). */
+const AVATAR_HUES_GBA = [
+  { h: 120, s: 40, l: 28 },
+  { h: 210, s: 55, l: 34 },
+  { h: 5, s: 70, l: 36 },
+  { h: 48, s: 70, l: 34 },
+  { h: 140, s: 35, l: 30 },
+  { h: 230, s: 45, l: 32 },
+  { h: 25, s: 60, l: 34 },
+  { h: 280, s: 30, l: 30 },
+];
+/* 80s Dad — denim, burgundy, forest polo, khaki (mid-dark). */
+const AVATAR_HUES_DAD = [
+  { h: 215, s: 45, l: 34 },
+  { h: 350, s: 50, l: 30 },
+  { h: 145, s: 40, l: 28 },
+  { h: 40, s: 25, l: 36 },
+  { h: 220, s: 35, l: 30 },
+  { h: 0, s: 45, l: 32 },
+  { h: 160, s: 30, l: 28 },
+  { h: 30, s: 20, l: 34 },
+];
+/* Emo / Hot Topic — black, maroon, purple, hot pink undertone (mid-dark). */
+const AVATAR_HUES_EMO = [
+  { h: 0, s: 0, l: 18 },
+  { h: 340, s: 55, l: 28 },
+  { h: 280, s: 40, l: 26 },
+  { h: 320, s: 60, l: 32 },
+  { h: 0, s: 5, l: 22 },
+  { h: 350, s: 45, l: 30 },
+  { h: 260, s: 35, l: 28 },
+  { h: 0, s: 0, l: 26 },
+];
+/* TomSpace / MySpace — hot pink, magenta, purple, lime, cyan clash. */
+const AVATAR_HUES_TOMSPACE = [
+  { h: 320, s: 90, l: 42 },
+  { h: 300, s: 85, l: 38 },
+  { h: 280, s: 70, l: 40 },
+  { h: 190, s: 85, l: 38 },
+  { h: 100, s: 80, l: 36 },
+  { h: 340, s: 75, l: 40 },
+  { h: 260, s: 65, l: 42 },
+  { h: 210, s: 90, l: 42 },
+];
+/* Craig / Craigslist — link blue, visited purple, gray result rows. */
+const AVATAR_HUES_CRAIG = [
+  { h: 240, s: 90, l: 42 },
+  { h: 275, s: 68, l: 32 },
+  { h: 0, s: 0, l: 38 },
+  { h: 210, s: 35, l: 40 },
+  { h: 30, s: 12, l: 42 },
+  { h: 250, s: 55, l: 36 },
+  { h: 0, s: 0, l: 48 },
+  { h: 200, s: 40, l: 36 },
+];
+/* Backrooms — sickly yellow / olive / brown (mid-dark for white ink). */
+const AVATAR_HUES_BACKROOMS = [
+  { h: 48, s: 45, l: 32 },
+  { h: 40, s: 35, l: 28 },
+  { h: 70, s: 30, l: 30 },
+  { h: 30, s: 40, l: 26 },
+  { h: 55, s: 50, l: 34 },
+  { h: 25, s: 25, l: 28 },
+  { h: 80, s: 28, l: 30 },
+  { h: 35, s: 38, l: 30 },
+];
 
-function avatarStyle(seed) {
+/* Cartoon Pop — saturated toon candy (mid for white ink). */
+const AVATAR_HUES_CARTOON = [
+  { h: 210, s: 90, l: 48 },
+  { h: 350, s: 85, l: 48 },
+  { h: 45, s: 95, l: 48 },
+  { h: 145, s: 70, l: 38 },
+  { h: 280, s: 70, l: 48 },
+  { h: 20, s: 90, l: 48 },
+  { h: 190, s: 75, l: 40 },
+  { h: 320, s: 70, l: 46 },
+];
+/* Baja — tropical cyan / teal / lime (mid for white ink). */
+/* Baja — neon teal liquid / electric lime / deep wave (mid for dark ink). */
+const AVATAR_HUES_BAJA = [
+  { h: 176, s: 95, l: 34 },
+  { h: 172, s: 80, l: 28 },
+  { h: 78, s: 95, l: 42 },
+  { h: 180, s: 70, l: 26 },
+  { h: 168, s: 85, l: 32 },
+  { h: 72, s: 90, l: 38 },
+  { h: 185, s: 55, l: 24 },
+  { h: 160, s: 70, l: 30 },
+];
+/* Coaster — park lawn / dirt / wood / sky (mid for white ink). */
+const AVATAR_HUES_COASTER = [
+  { h: 105, s: 45, l: 32 },
+  { h: 30, s: 40, l: 34 },
+  { h: 195, s: 55, l: 38 },
+  { h: 45, s: 70, l: 40 },
+  { h: 25, s: 35, l: 30 },
+  { h: 85, s: 40, l: 30 },
+  { h: 15, s: 45, l: 36 },
+  { h: 210, s: 40, l: 36 },
+];
+/* 2013 flat UI — saturated solid app-icon hues (mid for white ink). */
+const AVATAR_HUES_FLAT = [
+  { h: 211, s: 100, l: 42 },
+  { h: 4, s: 90, l: 48 },
+  { h: 145, s: 70, l: 36 },
+  { h: 280, s: 65, l: 42 },
+  { h: 35, s: 95, l: 48 },
+  { h: 190, s: 80, l: 38 },
+  { h: 340, s: 75, l: 48 },
+  { h: 0, s: 0, l: 32 },
+];
+/* ADA high contrast — solid primary hues with white ink (never pastel). */
+const AVATAR_HUES_HC = [
+  { h: 210, s: 100, l: 32 },
+  { h: 0, s: 85, l: 38 },
+  { h: 140, s: 70, l: 28 },
+  { h: 45, s: 100, l: 38 },
+  { h: 280, s: 70, l: 36 },
+  { h: 190, s: 90, l: 30 },
+  { h: 25, s: 95, l: 40 },
+  { h: 0, s: 0, l: 18 },
+];
+
+function avatarHueIndex(seed, len) {
   let h = 0;
   const s = String(seed || "x");
-  for (let i = 0; i < s.length; i++) h = (h + s.charCodeAt(i) * 17) % AVATAR_HUES.length;
-  const hue = AVATAR_HUES[h];
-  /* Amber needs a bit more sat so it reads gold (not mud); --ok a touch brighter. Dark enough for --ink. */
+  for (let i = 0; i < s.length; i++) h = (h + s.charCodeAt(i) * 17) % len;
+  return h;
+}
+
+/** Always pair fill + ink so theme skins never strand black-on-black or white-on-lime. */
+function avatarStyle(seed) {
+  const theme = getUiTheme();
+  const inkLight = "color:#fff;text-shadow:0 1px 1px rgba(0,0,0,0.45);";
+  if (theme === "retro90s") {
+    const fruit = AVATAR_FRUIT_RETRO[avatarHueIndex(seed, AVATAR_FRUIT_RETRO.length)];
+    return `${inkLight}background:linear-gradient(145deg,hsl(${fruit.h} ${fruit.s}% ${fruit.l + 4}%),hsl(${fruit.h} ${fruit.s + 4}% ${fruit.l - 6}%));`;
+  }
+  if (theme === "wood70s") {
+    const w = AVATAR_HUES_WOOD[avatarHueIndex(seed, AVATAR_HUES_WOOD.length)];
+    return `${inkLight}background:linear-gradient(145deg,hsl(${w.h} ${w.s}% ${w.l + 4}%),hsl(${w.h} ${w.s + 4}% ${w.l - 8}%));`;
+  }
+  if (theme === "dos80s") {
+    const d = AVATAR_HUES_DOS[avatarHueIndex(seed, AVATAR_HUES_DOS.length)];
+    return `${inkLight}background:linear-gradient(180deg,hsl(${d.h} ${d.s}% ${d.l + 4}%),hsl(${d.h} ${d.s}% ${d.l - 6}%));`;
+  }
+  if (theme === "bit1632") {
+    const b = AVATAR_HUES_BIT[avatarHueIndex(seed, AVATAR_HUES_BIT.length)];
+    return `${inkLight}background:linear-gradient(180deg,hsl(${b.h} ${b.s}% ${b.l + 4}%),hsl(${b.h} ${b.s}% ${b.l - 6}%));`;
+  }
+  if (theme === "aero2000s") {
+    const a = AVATAR_HUES_AERO[avatarHueIndex(seed, AVATAR_HUES_AERO.length)];
+    return `${inkLight}background:linear-gradient(160deg,hsl(${a.h} ${a.s}% ${a.l + 10}%) 0%,hsl(${a.h} ${a.s + 5}% ${a.l}%) 55%,hsl(${a.h} ${a.s}% ${a.l - 8}%) 100%);`;
+  }
+  if (theme === "windbreaker80s") {
+    const w = AVATAR_HUES_WINDBREAKER[avatarHueIndex(seed, AVATAR_HUES_WINDBREAKER.length)];
+    return `${inkLight}background:linear-gradient(145deg,hsl(${w.h} ${w.s}% ${w.l + 6}%) 0%,hsl(${w.h} ${w.s + 4}% ${w.l}%) 50%,hsl(${w.h} ${w.s}% ${w.l - 8}%) 100%);`;
+  }
+  if (theme === "millennialGray") {
+    const g = AVATAR_HUES_MILLENNIAL[avatarHueIndex(seed, AVATAR_HUES_MILLENNIAL.length)];
+    return `${inkLight}background:linear-gradient(180deg,hsl(${g.h} ${g.s}% ${g.l + 6}%),hsl(${g.h} ${g.s}% ${g.l - 6}%));`;
+  }
+  if (theme === "tunes2000s") {
+    const t = AVATAR_HUES_TUNES[avatarHueIndex(seed, AVATAR_HUES_TUNES.length)];
+    return `${inkLight}background:linear-gradient(180deg,hsl(${t.h} ${t.s}% ${t.l + 12}%) 0%,hsl(${t.h} ${t.s + 5}% ${t.l}%) 48%,hsl(${t.h} ${t.s}% ${t.l - 10}%) 100%);`;
+  }
+  if (theme === "xenon2000s") {
+    const x = AVATAR_HUES_XENON[avatarHueIndex(seed, AVATAR_HUES_XENON.length)];
+    return `${inkLight}background:linear-gradient(145deg,hsl(${x.h} ${x.s}% ${x.l + 10}%) 0%,hsl(${x.h} ${x.s}% ${x.l}%) 50%,hsl(${(x.h + 40) % 360} ${x.s - 10}% ${x.l - 8}%) 100%);`;
+  }
+  if (theme === "gba2000s") {
+    const g = AVATAR_HUES_GBA[avatarHueIndex(seed, AVATAR_HUES_GBA.length)];
+    return `${inkLight}background:linear-gradient(180deg,hsl(${g.h} ${g.s}% ${g.l + 6}%),hsl(${g.h} ${g.s}% ${g.l - 6}%));`;
+  }
+  if (theme === "dad80s") {
+    const d = AVATAR_HUES_DAD[avatarHueIndex(seed, AVATAR_HUES_DAD.length)];
+    return `${inkLight}background:linear-gradient(145deg,hsl(${d.h} ${d.s}% ${d.l + 6}%),hsl(${d.h} ${d.s + 4}% ${d.l - 8}%));`;
+  }
+  if (theme === "emo2000s") {
+    const e = AVATAR_HUES_EMO[avatarHueIndex(seed, AVATAR_HUES_EMO.length)];
+    return `${inkLight}background:linear-gradient(160deg,hsl(${e.h} ${e.s}% ${e.l + 8}%),hsl(${e.h} ${e.s}% ${e.l - 6}%));`;
+  }
+  if (theme === "tomspace") {
+    const t = AVATAR_HUES_TOMSPACE[avatarHueIndex(seed, AVATAR_HUES_TOMSPACE.length)];
+    return `${inkLight}background:linear-gradient(145deg,hsl(${t.h} ${t.s}% ${t.l + 10}%),hsl(${(t.h + 40) % 360} ${t.s - 5}% ${t.l - 8}%));`;
+  }
+  if (theme === "craigslist") {
+    const c = AVATAR_HUES_CRAIG[avatarHueIndex(seed, AVATAR_HUES_CRAIG.length)];
+    return `${inkLight}background:hsl(${c.h} ${c.s}% ${c.l}%);`;
+  }
+  if (theme === "flat2013") {
+    /* Candy tile (--pad-flat) is the fill — no second dark circle on the key. */
+    return "color:#fff;background:transparent;";
+  }
+  if (theme === "highContrast" || theme === "highContrastDark") {
+    /* Pad face carries the color — initials stay white, no nested disc. */
+    return "color:#fff;font-weight:800;background:transparent;";
+  }
+  if (theme === "backrooms") {
+    /* Fluorescent tile (--pad-br) is the fill — no second muddy circle. */
+    return "color:#1a1408;background:transparent;";
+  }
+  if (theme === "cartoon2000s") {
+    return "color:#fff;text-shadow:1px 1px 0 rgba(26,26,46,0.35);background:transparent;";
+  }
+  if (theme === "coaster") {
+    /* Bright circular toolbar buttons — tile color from --pad-co, not a second fill. */
+    return "color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,0.45);background:transparent;";
+  }
+  if (theme === "baja") {
+    return "color:#fff;text-shadow:0 1px 1px rgba(2,26,28,0.45);background:transparent;";
+  }
+  if (theme === "windbreaker80s") {
+    return "color:#fff;text-shadow:0 1px 1px rgba(4,30,26,0.45);background:transparent;";
+  }
+  if (theme === "dad80s") {
+    return "color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.45);background:transparent;";
+  }
+  if (theme === "bit1632") {
+    return "color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,0.45);background:transparent;";
+  }
+  const hue = AVATAR_HUES_MODERN[avatarHueIndex(seed, AVATAR_HUES_MODERN.length)];
   const amber = hue < 60;
   const okish = hue >= 140 && hue <= 150;
   const satTop = amber ? 44 : okish ? 38 : 34;
   const lightTop = amber ? 28 : okish ? 34 : 30;
   const satBot = amber ? 38 : okish ? 32 : 28;
   const lightBot = amber ? 13 : okish ? 16 : 14;
-  return `background: linear-gradient(145deg, hsl(${hue} ${satTop}% ${lightTop}%), hsl(${hue} ${satBot}% ${lightBot}%));`;
+  return `color:var(--ink);background:linear-gradient(145deg,hsl(${hue} ${satTop}% ${lightTop}%),hsl(${hue} ${satBot}% ${lightBot}%));`;
+}
+
+/** Re-apply initials/avatar face colors after a theme switch (inline styles). */
+function refreshAvatarPalettes(root = document) {
+  root.querySelectorAll("[data-avatar-seed]").forEach((el) => {
+    const seed = el.getAttribute("data-avatar-seed");
+    if (seed == null) return;
+    el.style.cssText = avatarStyle(seed);
+  });
 }
 
 function avatarHtml(name, seed, sizeClass = "", photoUrl = null) {
@@ -2720,7 +5916,8 @@ function avatarHtml(name, seed, sizeClass = "", photoUrl = null) {
   if (url) {
     return `<div class="avatar has-photo ${sizeClass}" aria-hidden="true"><img src="${url}" alt="" /></div>`;
   }
-  return `<div class="avatar ${sizeClass}" style="${avatarStyle(seed)}" aria-hidden="true">${initials(name)}</div>`;
+  const seedAttr = String(seed ?? name ?? "x").replace(/"/g, "");
+  return `<div class="avatar ${sizeClass}" data-avatar-seed="${seedAttr}" style="${avatarStyle(seed)}" aria-hidden="true">${initials(name)}</div>`;
 }
 
 /** Center-crop to a square JPEG (nightwatch-style upload without a crop UI). */
@@ -3323,20 +6520,107 @@ async function replaceOutboundAudio(track) {
 }
 
 /**
+ * Peer line has an ATA (FXS) — soft hold must use bridged Asterisk MOH, not WebRTC replaceTrack.
+ * Cap/WKWebView MediaStreamDestination tracks are often silent after mute.
+ */
+function peerLineHasAta(lineId) {
+  if (!lineId) return false;
+  const fromHh = allAccessibleLines().find((l) => l.id === lineId);
+  if (fromHh?.ata?.sip_extension) return true;
+  const fromDir = (state.directory || []).find((d) => d.id === lineId);
+  if (fromDir?.ata?.sip_extension) return true;
+  if (state.ataStatusByLine?.[lineId]?.sip_extension) return true;
+  return false;
+}
+
+/** Soft-initiated hold → bridge (same shape as bridged notifySoftphoneHold). */
+function notifySoftphoneHold(onHold, byLineId) {
+  const call = state.call;
+  if (!call || state.group) return;
+  if (!state.ws || state.ws.readyState !== 1) return;
+  const fromLineId = call.fromLineId || state.activeLineId;
+  const toLineId =
+    call.toLineId === state.activeLineId ? call.fromLineId : call.toLineId;
+  try {
+    const payload = {
+      type: "call.hold",
+      callId: call.callId,
+      fromLineId,
+      toLineId,
+      onHold: Boolean(onHold),
+    };
+    if (byLineId) payload.byLineId = byLineId;
+    state.ws.send(JSON.stringify(payload));
+  } catch (err) {
+    console.warn("[hold] call.hold send failed", err);
+  }
+}
+
+/** Directory / household mode for a line id. */
+function lineModeOf(lineId) {
+  if (!lineId) return null;
+  const fromDir = (state.directory || []).find((d) => d.id === lineId);
+  if (fromDir?.mode) return fromDir.mode;
+  for (const h of state.households || []) {
+    const line = (h.lines || []).find((l) => l.id === lineId);
+    if (line) return line.mode || "parent";
+  }
+  const fromAll = allAccessibleLines().find((l) => l.id === lineId);
+  return fromAll?.mode || null;
+}
+
+function lineIsChild(lineId) {
+  return (lineModeOf(lineId) || "parent") === "child";
+}
+
+/**
+ * Held party normally has no Resume (they didn't put anyone on hold).
+ * Exception: parent/grandparent may override a child's hold.
+ */
+function canOverrideRemoteHold() {
+  if (!state.onHold || !state.holdByLineId) return false;
+  if (state.holdByLineId === state.activeLineId) return false;
+  if (isKidExperience()) return false;
+  return lineIsChild(state.holdByLineId);
+}
+
+/** Show Hold, or Resume when we control the hold (initiator or adult override). */
+function shouldShowHoldControl() {
+  if (!state.onHold) return true;
+  if (state.holdByLineId === state.activeLineId) return true;
+  return canOverrideRemoteHold();
+}
+
+function holdControlLabel() {
+  return state.onHold ? "Resume" : "Hold";
+}
+
+/**
  * 90s office hold music (synthesized) — soft electric-piano muzak loop.
  * Routed to a MediaStreamTrack for the *remote* party via replaceTrack — not local speakers.
- * Not Cisco “Opus Number One”; same era vibe: easy-listening I–vi–IV–V, tinny and endless.
- * @returns {MediaStreamTrack | null}
+ * Soft↔soft only; soft↔ATA uses Asterisk MOH via call.hold.
+ * @returns {Promise<MediaStreamTrack | null>}
  */
-function startHoldMusic() {
+async function startHoldMusic() {
   stopHoldMusic();
   try {
     const ctx = ensureAudioCtx();
     if (!ctx) return null;
-    void ctx.resume?.();
+    // Cap/WKWebView: destination tracks are silent unless the context is running.
+    if (ctx.state !== "running") {
+      try {
+        await ctx.resume();
+      } catch (err) {
+        console.warn("[hold] AudioContext resume failed", err);
+      }
+    }
+    if (ctx.state !== "running") {
+      console.warn("[hold] AudioContext not running before MOH destination", ctx.state);
+    }
 
     const master = ctx.createGain();
-    master.gain.value = 0.22;
+    // Cap iOS: slightly higher gain — MediaStreamDestination often attenuates.
+    master.gain.value = isNativeIosShell() ? 0.32 : 0.22;
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
     filter.frequency.value = 2400;
@@ -3444,7 +6728,8 @@ function startHoldMusic() {
       },
     };
     return track;
-  } catch {
+  } catch (err) {
+    console.warn("[hold] startHoldMusic failed", err);
     return null;
   }
 }
@@ -3544,7 +6829,7 @@ function startSilenceWatch() {
       analyser.fftSize = 512;
       src.connect(analyser);
       state.silenceAnalyser = { local: analyser, remote: null };
-      const remoteEl = remoteAudio();
+      const remoteEl = typeof remoteAudio === "function" ? remoteAudio() : document.getElementById("remote-audio");
       if (remoteEl?.srcObject) {
         try {
           const rSrc = ctx.createMediaStreamSource(remoteEl.srcObject);
@@ -3565,15 +6850,40 @@ function startSilenceWatch() {
   }, 400);
 }
 
+/** TreeHouse (familyroom/playroom) — hold would mute the whole mesh; not allowed. */
+function isTreeHouseSession() {
+  return Boolean(state.group?.familyRoom || state.group?.playRoom || state.playRoomListen);
+}
+
 async function applyHoldAudio() {
+  // TreeHouse: never put the room on hold (no MOH swap / remote mute).
+  if (isTreeHouseSession()) {
+    if (state.onHold) {
+      state.onHold = false;
+      state.holdByLineId = null;
+      stopHoldMusic();
+      setOutboundMicEnabled(!state.muted);
+      const audio = remoteAudio();
+      if (audio) audio.muted = false;
+      for (const el of groupAudioRoot()?.querySelectorAll("audio") || []) el.muted = false;
+    }
+    return;
+  }
   if (state.onHold) {
-    // Holder: silence remote earpiece + stop sending mic; peer gets hold music instead.
+    // Holder: silence remote earpiece + stop sending mic.
     setOutboundMicEnabled(false);
     const audio = remoteAudio();
     if (audio) audio.muted = true;
     for (const el of groupAudioRoot()?.querySelectorAll("audio") || []) el.muted = true;
-    const musicTrack = startHoldMusic();
-    if (musicTrack) await replaceOutboundAudio(musicTrack);
+    const ataPeer = peerLineHasAta(otherLineId(state.call));
+    if (ataPeer) {
+      // Soft↔ATA: bridge plays Asterisk MOH on FXS — Cap replaceTrack MOH is often silent.
+      stopHoldMusic();
+    } else {
+      // Soft↔soft: synthesize hold music onto the outbound track.
+      const musicTrack = await startHoldMusic();
+      if (musicTrack) await replaceOutboundAudio(musicTrack);
+    }
     clearSilenceWatch();
   } else {
     // Resume with the PC clone (not master) so hangup never ends the page-lifetime stream.
@@ -3600,8 +6910,21 @@ async function applyHoldAudio() {
 }
 
 function toggleHold() {
-  state.onHold = !state.onHold;
-  void applyHoldAudio();
+  if (isTreeHouseSession()) return;
+  if (state.onHold && !shouldShowHoldControl()) return;
+  const next = !state.onHold;
+  if (next) {
+    state.onHold = true;
+    state.holdByLineId = state.activeLineId || null;
+    notifySoftphoneHold(true, state.holdByLineId);
+    void applyHoldAudio();
+  } else {
+    // Holder resume, or adult override of a child's hold.
+    state.onHold = false;
+    state.holdByLineId = null;
+    notifySoftphoneHold(false, state.activeLineId);
+    void applyHoldAudio();
+  }
   noteCallActivity();
   paintCallLayer();
 }
@@ -3635,9 +6958,128 @@ function isKidExperience() {
   return !ownsParent;
 }
 
+/**
+ * Grandparent / relative UX: phone + messages first; Settings (not Parent) with
+ * Quiet Time, Analog, approve family. Explicit profile_role wins; otherwise any
+ * adult household with no kid lines (invite-only relatives).
+ * Parents can also preview a provisioned grandparent’s chrome (session only).
+ */
+function isGpPreviewMode() {
+  return Boolean(state.gpPreviewRelativeId) && !isKidExperience();
+}
+
+function gpPreviewRelative(hh = state.households[0]) {
+  const id = state.gpPreviewRelativeId;
+  if (!id) return null;
+  return (hh?.provisioned_relatives || []).find((r) => r.id === id) || null;
+}
+
+function exitGpPreview() {
+  state.gpPreviewRelativeId = "";
+  state._forceFullParentSettings = false;
+  state.nav = "controls";
+  localStorage.setItem("kl_nav", "controls");
+  state.parentAccOpen = "parent-grandparents";
+  state.parentScrollTo = "parent-grandparents";
+  setFlash("Back to your parent phone", "ok");
+  render();
+}
+
+function startGpPreview(relativeId) {
+  const hh = state.households[0];
+  const rel = (hh?.provisioned_relatives || []).find((r) => r.id === relativeId);
+  if (!rel) {
+    setFlash("Grandparent not found", "error");
+    render();
+    return;
+  }
+  state.managingGrandparentId = relativeId;
+  state.gpPreviewRelativeId = relativeId;
+  state.nav = "phone";
+  localStorage.setItem("kl_nav", "phone");
+  state.screen = "home";
+  setFlash(
+    `Preview: ${rel.display_label || rel.display_name}'s phone — tap Exit preview when done`,
+    "ok"
+  );
+  render();
+}
+
+function gpPreviewBannerHtml() {
+  if (!isGpPreviewMode()) return "";
+  const rel = gpPreviewRelative();
+  const name = String(rel?.display_label || rel?.display_name || "Grandparent").replace(/</g, "");
+  return `<div class="gp-preview-banner" role="status">
+    <div>
+      <strong>Previewing ${name}’s phone</strong>
+      <span class="tiny">Looks like their simple version. Calls and Settings changes are off here — edit login and kids under Manage.</span>
+    </div>
+    <button type="button" class="primary" id="exit-gp-preview">Exit preview</button>
+  </div>`;
+}
+
+function bindGpPreviewChrome() {
+  document.getElementById("exit-gp-preview")?.addEventListener("click", () => exitGpPreview());
+}
+
+function isGrandparentExperience() {
+  if (isKidExperience()) return false;
+  if (isGpPreviewMode()) return true;
+  const role = String(state.user?.profile_role || "").toLowerCase();
+  if (role === "grandparent") return true;
+  if (role === "parent") return false;
+  const hh = state.households[0];
+  if (!hh) return false;
+  return householdKidLines(hh).length === 0;
+}
+
+/**
+ * Plain wording for late Gen X / Boomer / Silent Gen.
+ * Short sentences, no tech slang, no “circles / VIP / adapter / speed dial.”
+ */
+function gpEsc(s) {
+  return String(s || "").replace(/</g, "");
+}
+
+function gpCallName(contactOrName) {
+  if (!contactOrName) return "them";
+  if (typeof contactOrName === "string") return gpEsc(contactOrName);
+  return gpEsc(contactDisplayName(contactOrName) || "them");
+}
+
 /** Family invites are parent-only (never kid line accounts). */
 function canInviteFamily() {
-  return Boolean(state.user) && !isKidExperience();
+  return Boolean(state.user) && !isKidExperience() && !isGrandparentExperience();
+}
+
+/** SVG QR for invite/join URLs — large enough to scan across a table. */
+function inviteQrSvg(url) {
+  if (!url) return "";
+  try {
+    return toSvg(String(url), {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      moduleSize: 10,
+      foreground: "#0b1611",
+      background: "#ffffff",
+    });
+  } catch {
+    return "";
+  }
+}
+
+function paintInviteQr(elOrId, url) {
+  const el = typeof elOrId === "string" ? document.getElementById(elOrId) : elOrId;
+  if (!el) return;
+  const svg = inviteQrSvg(url);
+  if (!svg) {
+    el.replaceChildren();
+    el.setAttribute("hidden", "");
+    return;
+  }
+  el.removeAttribute("hidden");
+  el.innerHTML = svg;
+  el.setAttribute("aria-label", `QR code for invite link`);
 }
 
 function shellModeClass() {
@@ -3659,8 +7101,10 @@ function syncPhoneHomeLock() {
     !state.waitSheet &&
     !state.pinModal;
   document.documentElement.classList.toggle("phone-home", lock);
-  if (lock && (window.scrollY || document.documentElement.scrollTop)) {
+  if (lock && pageScrollTop() > 0) {
     window.scrollTo(0, 0);
+    if (document.body) document.body.scrollTop = 0;
+    if (document.documentElement) document.documentElement.scrollTop = 0;
   }
 }
 
@@ -3695,6 +7139,14 @@ function escapeWho(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Header wordmark only — taps go to Phone dialer via bindAppChrome / leave-vm.
+ * Rotary mark lives on the Phone dock tab (not header chrome). */
+function homeBrandLockupHtml() {
+  return `<button type="button" class="home-brand-lockup" aria-label="Phone dialer" title="Phone dialer">
+        <span class="mark wordmark home-wordmark">Phone<span>Home</span></span>
+      </button>`;
+}
+
 /**
  * Home topbar brand — PhoneHome wordmark + short who-line.
  * Kid account/device: line / kid name only (never “Parent · …”).
@@ -3709,7 +7161,7 @@ function homeBrandHtml() {
     : `Parent · ${family}`;
   return `
     <div class="home-brand">
-      <div class="mark wordmark home-wordmark">Phone<span>Home</span></div>
+      ${homeBrandLockupHtml()}
       <div class="who">${escapeWho(who)}</div>
     </div>`;
 }
@@ -3718,7 +7170,7 @@ function homeBrandHtml() {
 function pageBrandHtml(sectionWho) {
   return `
     <div class="home-brand">
-      <div class="mark wordmark home-wordmark">Phone<span>Home</span></div>
+      ${homeBrandLockupHtml()}
       <div class="who">${sectionWho}</div>
     </div>`;
 }
@@ -3787,27 +7239,46 @@ async function confirmAndDeleteChildLine(hh, lineId) {
   }
 }
 
+function deleteAccountConfirmOk(value) {
+  return String(value ?? "").trim().toLowerCase() === "delete";
+}
+
+function bindDeleteAccountConfirm() {
+  const input = document.getElementById("delete-account-confirm");
+  const btn = document.getElementById("delete-parent-account");
+  if (!input || !btn) return;
+  const sync = () => {
+    btn.disabled = !deleteAccountConfirmOk(input.value);
+  };
+  sync();
+  input.addEventListener("input", sync);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !btn.disabled) {
+      e.preventDefault();
+      btn.click();
+    }
+  });
+}
+
 async function confirmAndDeleteParentAccount() {
-  if (
-    !confirm(
-      "Delete your parent account permanently?\n\nIf you’re the only parent here, the whole household (kids, contacts, voicemails) is wiped. Type DELETE on the next step."
-    )
-  ) {
+  const input = document.getElementById("delete-account-confirm");
+  const typed = input?.value ?? "";
+  if (!deleteAccountConfirmOk(typed)) {
+    setFlash('Type "delete" to confirm account deletion', "error");
+    input?.focus();
     return false;
   }
-  const typed = prompt("Type DELETE to erase your account:");
-  if (typed == null) return false;
   try {
     await api("/api/account/delete", {
       method: "POST",
-      body: JSON.stringify({ confirm: typed }),
+      body: JSON.stringify({ confirm: typed.trim() }),
     });
     hardReleaseMicStream();
     state.sessionId = "";
     state.user = null;
     state.households = [];
     state.childMode = false;
-    localStorage.removeItem("kl_session");
+    await clearPersistedAuth({ keepLogin: false });
     localStorage.removeItem("kl_line");
     localStorage.removeItem("kl_child_mode");
     localStorage.removeItem("kl_child_line");
@@ -3865,6 +7336,8 @@ function selectActiveLine(lineId) {
   state.activeLineId = lineId;
   localStorage.setItem("kl_line", lineId);
   reconnectWs();
+  void syncIosAppBadge();
+  if (isNativeIosShell() && !callKitEnabled()) void registerIosApnsToken(lastIosApnsToken);
   return true;
 }
 
@@ -3951,9 +7424,62 @@ function analogIntroMode(line) {
   return ataIntroDismissed() ? "compact" : "full";
 }
 
+/** Kid on a house phone — shared by splash and How it works slide 1. */
+function splashStoryHtml() {
+  return `<figure class="splash-story">
+    <div class="splash-story-hero">
+      <img src="/assets/analog/kid-landline.jpg" width="1400" height="933" alt="A young kid talking on a house landline phone" />
+    </div>
+  </figure>`;
+}
+
+function tutorialBrandSlide() {
+  return TUTORIAL_SLIDES.find((s) => s.id === "brand") || TUTORIAL_SLIDES[0];
+}
+
+/** Kicker / title / body — same type as How it works slides. */
+function tutorialSlideCopyHtml(slide) {
+  const kicker = slide.beta
+    ? `<p class="tutorial-kicker">${slide.kicker} ${betaBadgeHtml()}</p>`
+    : `<p class="tutorial-kicker">${slide.kicker}</p>`;
+  return `
+    ${kicker}
+    <h2 class="tutorial-title">${slide.title}</h2>
+    <p class="tutorial-lead">${slide.body}</p>`;
+}
+
+/** Splash and How it works #1 share this hero (rotary + photo). */
+function brandSplashHeroHtml() {
+  return `
+    ${splashBrandHeroHtml({ compact: true })}
+    ${splashStoryHtml()}`;
+}
+
+function ht801ProductThumbsHtml() {
+  return `<ul class="ata-photos-thumbs">
+    <li><img src="/assets/analog/ht801-v2-1.png" width="500" height="500" alt="Grandstream HT801 v2, angled top view" /></li>
+    <li><img src="/assets/analog/ht801-v2-2.png" width="500" height="500" alt="Grandstream HT801 v2 top: POWER, PHONE, and NET lights" /></li>
+    <li><img src="/assets/analog/ht801-v2-3.png" width="500" height="500" alt="Grandstream HT801 v2 back: NET ethernet, reset, power, and phone jack" /></li>
+  </ul>`;
+}
+
+/** Kid on a house phone + official Grandstream HT801 v2 product shots. */
+function analogPhotosHtml() {
+  return `<figure class="ata-photos">
+    <div class="ata-photos-hero">
+      <img src="/assets/analog/kid-landline.jpg" width="1400" height="933" alt="A young kid talking on a house landline phone" />
+      <figcaption class="ata-photos-caption">The house phone kids actually pick up.</figcaption>
+    </div>
+    <div class="ata-photos-product" role="group" aria-label="Grandstream HT801 v2 analog adapter">
+      <p class="tiny ata-photos-product-label">The box it plugs into — Grandstream HT801 v2</p>
+      ${ht801ProductThumbsHtml()}
+    </div>
+  </figure>`;
+}
+
 function ataShopSearchLinksHtml(extraClass = "") {
   const cls = ["ata-shop-links", extraClass].filter(Boolean).join(" ");
-  return `<div class="${cls}" role="group" aria-label="Search for Grandstream HT801">
+  return `<div class="${cls}" role="group" aria-label="Search for Grandstream HT801 v2">
     <a class="ghost ata-shop-btn" href="${ATA_SHOP_AMAZON}" target="_blank" rel="noopener noreferrer">Amazon</a>
     <a class="ghost ata-shop-btn" href="${ATA_SHOP_EBAY}" target="_blank" rel="noopener noreferrer">eBay</a>
   </div>`;
@@ -3965,15 +7491,15 @@ function analogPhoneIntroHtml(line) {
   if (mode === "none") return "";
   if (mode === "compact") {
     return `<div class="ata-intro ata-intro-compact" id="ata-intro">
-      <p class="tiny ata-intro-compact-text"><strong>Need an adapter?</strong> Search for Grandstream HT801:</p>
+      <p class="tiny ata-intro-compact-text"><strong>Need an adapter?</strong> Search for Grandstream HT801 v2:</p>
       ${ataShopSearchLinksHtml("ata-shop-links-inline")}
     </div>`;
   }
   return `<div class="ata-intro" id="ata-intro" role="region" aria-labelledby="ata-intro-title">
     <h3 class="parent-subhead" id="ata-intro-title">What is Analog Phone?</h3>
-    <p class="ata-intro-body">A regular house phone (corded or cordless) plugs into a small <strong>Grandstream HT801</strong> adapter. PhoneHome talks to that box — not a magic USB cable into the phone.</p>
-    <p class="tiny">You’ll need one of those adapters (about the size of a deck of cards) on your home Wi‑Fi / Ethernet.</p>
-    <p class="tiny ata-intro-shop-label">Find a Grandstream HT801:</p>
+    <p class="ata-intro-body">A regular house phone (corded or cordless) plugs into a small <strong>Grandstream HT801 v2</strong> box. PhoneHome talks to that box — you don’t plug the house phone into the iPhone.</p>
+    <p class="tiny">The box is about the size of a deck of cards. It needs a home Ethernet cable (and its power brick).</p>
+    <p class="tiny ata-intro-shop-label">Find a Grandstream HT801 v2:</p>
     ${ataShopSearchLinksHtml()}
     <div class="btn-row two ata-intro-actions">
       <button type="button" class="primary" id="ata-intro-dismiss">Got it — continue</button>
@@ -3987,8 +7513,64 @@ function analogNeedAdapterLinkHtml() {
     <a href="${ATA_SHOP_AMAZON}" target="_blank" rel="noopener noreferrer">Amazon</a>
     ·
     <a href="${ATA_SHOP_EBAY}" target="_blank" rel="noopener noreferrer">eBay</a>
-    (search: Grandstream HT801)
+    (search: Grandstream HT801 v2)
   </p>`;
+}
+
+/** Click-path for the HT801 v2 web admin (same Wi-Fi as the box). */
+function analogHt801AdminStepsHtml({ purpose = "upload" } = {}) {
+  const afterLogin =
+    purpose === "config-path"
+      ? `<li>On the left, tap <strong>Maintenance</strong>, then <strong>Upgrade</strong>.</li>
+  <li>Set <strong>Config Upgrade via</strong> to <strong>HTTPS</strong>.</li>
+  <li>Paste the copied link into <strong>Config Server Path</strong>.</li>
+  <li>Leave <strong>Firmware Server Path</strong> empty.</li>
+  <li>Tap <strong>Save</strong> and <strong>Apply</strong>, then reboot the box.</li>`
+      : `<li>On the left, tap <strong>Maintenance</strong>, then <strong>Upgrade</strong>.</li>
+  <li>Scroll to <strong>Upload Configuration</strong> (not Firmware, not Config Server Path).</li>
+  <li>Tap <strong>Upload</strong> / Choose File and pick the <span class="mono">config.xml</span> you just downloaded.</li>
+  <li>Wait until it finishes. If it asks, tap <strong>Reboot</strong> (or left menu <strong>Maintenance → Reboot</strong>).</li>`;
+  return `<ol class="ata-admin-steps">
+  <li>Plug a regular phone into the <strong>green PHONE jack</strong> on the back of the box.</li>
+  <li>Pick up. Dial <span class="mono">***</span> (three stars). Wait for “Enter the menu option.”</li>
+  <li>Dial <span class="mono">02</span>. It reads the box’s IP (like <span class="mono">192.168.1.50</span>).</li>
+  <li>On a phone or laptop on the <strong>same Wi‑Fi</strong> as the box, open a browser and go to <span class="mono">https://</span> that IP.</li>
+  <li>If you see a certificate warning, tap <strong>Advanced</strong>, then <strong>Proceed</strong> / Continue — the box uses its own certificate.</li>
+  <li>Username: <span class="mono">admin</span>. Password: the sticker on the <strong>bottom</strong> of the box (or the one you chose last time).</li>
+  ${afterLogin}
+</ol>
+<p class="tiny">Older HT801 (tabs across the top, no left menu): open the <strong>Maintenance</strong> tab, then look for <strong>Upload Configuration</strong>.</p>`;
+}
+
+function analogFanvilAdminStepsHtml() {
+  return `<ol class="ata-admin-steps">
+  <li>Find the G100S IP (sticker or your router’s device list).</li>
+  <li>On the same Wi‑Fi, open <span class="mono">https://</span> that IP.</li>
+  <li>Log in (sticker password).</li>
+  <li>Go to <strong>System → Backup / Flash</strong>.</li>
+  <li>Under Import, choose the <span class="mono">.txt</span> you downloaded, then apply and reboot.</li>
+</ol>`;
+}
+
+function addKidCardHtml({ prominent = false } = {}) {
+  return `<div class="add-kid-card${prominent ? " add-kid-card-empty" : " parent-field"}" id="add-kid">
+  <h3 class="parent-subhead">${prominent ? "Who’s the kid?" : "Add another kid"}</h3>
+  <p class="tiny">${
+    prominent
+      ? "Type their first name. PhoneHome makes <strong>their</strong> phone — yours stays yours."
+      : "Another child in this family. Their phone stays separate from yours."
+  }</p>
+  <form id="add-kid-form" class="add-kid-form">
+    <label for="add-kid-name">First name</label>
+    <input id="add-kid-name" maxlength="64" placeholder="e.g. Maya" autocomplete="given-name" enterkeyhint="done" required />
+    <button type="submit" class="primary" id="add-kid-btn">${prominent ? "Add kid" : "Add another kid"}</button>
+  </form>
+</div>`;
+}
+
+/** Kid lines in this household (for Contacts / Kids UI — not only Analog targets). */
+function householdKidLines(hh = state.households[0]) {
+  return (hh?.lines || []).filter((l) => (l.mode || "parent") === "child");
 }
 
 const ATA_STATUS_CLIENT_TTL_MS = 18_000;
@@ -4097,7 +7679,7 @@ function analogPhoneStatusInfo(line) {
     return {
       kind: "no-line",
       short: "No kid line",
-      detail: "Add or lock a child line first, then link an adapter.",
+      detail: "Add a kid first (Parent → Kids), then link an adapter.",
       sip_extension: null,
     };
   }
@@ -4141,8 +7723,8 @@ function analogPhoneStatusInfo(line) {
       kind: "offline",
       short: "Offline",
       detail: ext
-        ? `Offline — ext ${ext} saved, not registered`
-        : "Offline — saved but not registered",
+        ? `Saved (ext ${ext}) but not registered yet — tap Download config, upload on the box, then reboot. Wait about a minute.`
+        : "Saved but not registered yet — Download config, upload on the box, reboot.",
       sip_extension: ext,
     };
   }
@@ -4355,7 +7937,8 @@ function isRemovableSpeedDialEntry(entryOrId) {
   if (!id) return false;
   if (id.startsWith("hh-line-") || id.startsWith("hh-home-0-")) return false;
   if (entryOrId && typeof entryOrId === "object") {
-    if (entryOrId.household_line || entryOrId.home_parent || entryOrId.locked_slot) return false;
+    if (entryOrId.household_line || entryOrId.home_parent || entryOrId.home_child || entryOrId.locked_slot)
+      return false;
   }
   return true;
 }
@@ -4420,17 +8003,32 @@ async function moveContactToSpeedDial(entryId, toSlot) {
   if (!hh || !entryId) return;
   // Synthetic household-sibling tiles are not allowlist rows.
   if (String(entryId).startsWith("hh-line-") || String(entryId).startsWith("hh-home-0-")) {
+    const activeLine = (hh.lines || []).find((l) => l.id === state.activeLineId);
+    const parentPad = Boolean(activeLine) && (activeLine.mode || "parent") !== "child";
     setFlash(
       String(entryId).startsWith("hh-home-0-")
-        ? "Home (0) is locked to the parent line"
+        ? parentPad
+          ? "Pad 0 is locked to the household child"
+          : "Home (0) is locked to the parent line"
         : "House lines keep their own slots — drag external contacts only",
       "warn"
     );
     return;
   }
   const slot = Number(toSlot);
-  if (!Number.isInteger(slot) || slot < 1 || slot > 9) {
-    if (slot === 0) setFlash("Home (0) is locked to the parent line", "warn");
+  if (slot === TREEHOUSE_SLOT) {
+    setFlash("Pad 0 is TreeHouse — contacts use 2–9", "warn");
+    return;
+  }
+  if (slot === ADMIN_PARENT_SLOT) {
+    setFlash("Pad 1 is locked to the household child or parent", "warn");
+    return;
+  }
+  if (slot === SECONDARY_PARENT_SLOT && isSecondaryParentSlotReserved(hh)) {
+    setFlash("Pad 2 is reserved for the co-parent when present", "warn");
+    return;
+  }
+  if (!Number.isInteger(slot) || slot < 2 || slot > 9) {
     return;
   }
   if (!(await ensureLayoutUnlocked())) return;
@@ -4495,7 +8093,17 @@ function bindSpeedDialDrag(root = document) {
     });
     if (!slotEl) return;
     const toSlot = Number(slotEl.getAttribute("data-slot"));
-    if (!Number.isInteger(toSlot) || toSlot < 1 || toSlot === fromSlot) return;
+    if (
+      !Number.isInteger(toSlot) ||
+      toSlot < 2 ||
+      toSlot === TREEHOUSE_SLOT ||
+      toSlot === ADMIN_PARENT_SLOT ||
+      (toSlot === SECONDARY_PARENT_SLOT && isSecondaryParentSlotReserved()) ||
+      toSlot === fromSlot ||
+      slotEl.hasAttribute("data-familyroom")
+    ) {
+      return;
+    }
     slotEl.classList.add("drop-target");
     const occupied = slotEl.hasAttribute("data-entry");
     slotEl.setAttribute("data-drop-kind", occupied ? "swap" : "move");
@@ -4507,7 +8115,14 @@ function bindSpeedDialDrag(root = document) {
     document.querySelector(".speed-grid")?.classList.add("is-rearranging");
     document.querySelectorAll(".speed-slot[data-slot]").forEach((s) => {
       const slotN = Number(s.getAttribute("data-slot"));
-      if (slotN === 0 || slotN === fromSlot) return;
+      if (
+        slotN === TREEHOUSE_SLOT ||
+        slotN === ADMIN_PARENT_SLOT ||
+        (slotN === SECONDARY_PARENT_SLOT && isSecondaryParentSlotReserved()) ||
+        slotN === fromSlot
+      )
+        return;
+      if (s.hasAttribute("data-familyroom")) return;
       s.classList.add("drop-ready");
     });
     try {
@@ -4554,9 +8169,13 @@ function bindSpeedDialDrag(root = document) {
     const willMove = !!(
       armed &&
       Number.isInteger(toSlot) &&
-      toSlot >= 1 &&
+      toSlot >= 2 &&
       toSlot <= 9 &&
-      toSlot !== fromSlot
+      toSlot !== TREEHOUSE_SLOT &&
+      toSlot !== ADMIN_PARENT_SLOT &&
+      !(toSlot === SECONDARY_PARENT_SLOT && isSecondaryParentSlotReserved()) &&
+      toSlot !== fromSlot &&
+      !target?.hasAttribute("data-familyroom")
     );
     cleanupGhost();
     drag = null;
@@ -4605,14 +8224,74 @@ function bindSpeedDialDrag(root = document) {
     badge.addEventListener("click", onDelete);
   });
 
+  // TreeHouse (#1): never rearrangeable. Parent long-press → Parent → TreeHouse.
+  root.querySelectorAll(".speed-slot[data-familyroom]").forEach((el) => {
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button != null && e.button !== 0) return;
+      if (isKidExperience() || isChildMode()) return;
+
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const pointerId = e.pointerId;
+      let armed = false;
+      let cancelledEarly = false;
+      const prevTouchAction = el.style.touchAction;
+      el.style.touchAction = "none";
+
+      const armTimer = setTimeout(() => {
+        if (cancelledEarly) return;
+        armed = true;
+        suppressClickUntil = Date.now() + 450;
+        if (navigator.vibrate) navigator.vibrate(28);
+        void openParentPanel({ scrollTo: "parent-treehouse" });
+      }, LONG_MS);
+
+      const teardown = () => {
+        clearTimeout(armTimer);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onCancel);
+        el.style.touchAction = prevTouchAction;
+      };
+
+      const onMove = (ev) => {
+        if (ev.pointerId !== pointerId) return;
+        if (armed) return;
+        const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+        if (dist > CANCEL_PX) {
+          cancelledEarly = true;
+          clearTimeout(armTimer);
+          el.style.touchAction = prevTouchAction;
+        }
+      };
+      const onUp = (ev) => {
+        if (ev.pointerId !== pointerId) return;
+        teardown();
+        if (armed) suppressClickUntil = Date.now() + 450;
+      };
+      const onCancel = (ev) => {
+        if (ev.pointerId !== pointerId) return;
+        teardown();
+      };
+      window.addEventListener("pointermove", onMove, { passive: true });
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onCancel);
+    });
+  });
+
   root.querySelectorAll(".speed-slot[data-entry], .contact-tile[data-entry]").forEach((el) => {
     const entryId = el.getAttribute("data-entry");
     if (!entryId) return;
-    // Locked Home (0) parent slot — not rearrangeable.
+    // Locked pad 0 (Home/parent on kid pads, child on parent pads) — not rearrangeable.
     if (String(entryId).startsWith("hh-home-0-") || el.classList.contains("slot-locked")) return;
+    // TreeHouse is fixed at pad 0 — never drag/reorder.
+    if (el.hasAttribute("data-familyroom") || Number(el.getAttribute("data-slot")) === TREEHOUSE_SLOT) {
+      return;
+    }
     const rawSlot = el.getAttribute("data-slot");
     const fromSlot = rawSlot != null && rawSlot !== "" ? Number(rawSlot) : null;
-    if (fromSlot === 0) return;
+    if (fromSlot === TREEHOUSE_SLOT || fromSlot === ADMIN_PARENT_SLOT) return;
+    if (fromSlot === SECONDARY_PARENT_SLOT && isSecondaryParentSlotReserved()) return;
 
     el.addEventListener("pointerdown", (e) => {
       if (e.button != null && e.button !== 0) return;
@@ -4773,18 +8452,17 @@ function parentSetupSteps(hh = state.households[0]) {
   const lines = hh?.lines || [];
   const childLines = lines.filter((l) => (l.mode || "parent") === "child");
   const hasChild = childLines.length > 0;
-  // Parent pad always synthesizes household kids onto earliest dial slots
-  // (primary → 1). Do NOT use dialableAllowlist(activeLine): when Gemma’s line
-  // is active, she is omitted from her own pad and this step never completes.
-  const childOnDial1 = (() => {
+  // Parent pad synthesizes primary household child onto locked pad 1.
+  // Do NOT use dialableAllowlist(activeLine): when Gemma’s line is active, she is
+  // omitted from her own pad and this step never completes.
+  const childOnDial0 = (() => {
     if (!hasChild) return false;
-    if (householdHomeParentLine(hh)) return true;
     const parentLine = (hh?.lines || []).find((l) => (l.mode || "parent") !== "child");
     if (!parentLine) return true; // child-only household — pad synthesis still applies
     const saved = state.activeLineId;
     state.activeLineId = parentLine.id;
     try {
-      const slot1 = dialableAllowlist(hh).find((a) => Number(a.speed_dial) === 1);
+      const slot1 = dialableAllowlist(hh).find((a) => Number(a.speed_dial) === ADMIN_PARENT_SLOT);
       return Boolean(slot1 && childLines.some((l) => l.id === slot1.target_line_id));
     } finally {
       state.activeLineId = saved;
@@ -4803,22 +8481,22 @@ function parentSetupSteps(hh = state.households[0]) {
   return [
     {
       id: "account",
-      label: "Create / sign in",
-      detail: accountDone ? "Signed in with username" : "Username & password for next time",
+      label: "Create your sign-in",
+      detail: accountDone ? "Username saved" : "Pick a username and password",
       done: accountDone,
       scrollTo: "parent-account",
       required: true,
     },
     {
       id: "child",
-      label: "Add child line",
+      label: "Add a kid",
       detail: hasChild
         ? childLines.length === 1
-          ? childLines[0].child_label || childLines[0].name || "Child line ready"
-          : `${childLines.length} child lines`
-        : "A kid softphone or handset line",
+          ? childLines[0].child_label || childLines[0].name || "Kid ready"
+          : `${childLines.length} kids`
+        : "A kid’s app or house phone",
       done: hasChild,
-      scrollTo: "parent-line",
+      scrollTo: "parent-kids",
       required: true,
     },
     {
@@ -4831,39 +8509,31 @@ function parentSetupSteps(hh = state.households[0]) {
     },
     {
       id: "contacts",
-      label: "Contacts / allowlist",
-      detail: childOnDial1
-        ? "Child on speed dial 1"
+      label: "Kid on speed dial",
+      detail: childOnDial0
+        ? "Your kid is on button 1"
         : hasChild
-          ? "Put the child on speed dial 1"
-          : "Invite family · child on dial 1",
-      done: childOnDial1,
-      scrollTo: "parent-people",
+          ? "Your kid should appear on button 1"
+          : "Add a kid first — they land on button 1",
+      done: childOnDial0,
+      scrollTo: hasChild ? "parent-people" : "parent-kids",
       required: true,
     },
     {
       id: "hours",
-      label: "Quiet Time / Bedtime / School",
+      label: "Quiet Time schedule",
       detail: scheduleDone
         ? hh.schedule_preset && hh.schedule_preset !== "open"
           ? `Schedule · ${hh.schedule_preset}`
           : "Quiet Time set"
-        : "Pick a schedule or Quiet Time",
+        : "Pick bedtime or school hours for your kids",
       done: scheduleDone,
       scrollTo: "parent-hours",
       required: true,
     },
     {
-      id: "analog",
-      label: "Analog adapter",
-      detail: hasAta ? "Adapter linked" : "Optional — set up later",
-      done: hasAta,
-      scrollTo: "parent-ata",
-      required: false,
-    },
-    {
       id: "sounds",
-      label: "Sounds / greeting",
+      label: "Ringer & greeting",
       detail: soundsDone
         ? lines.some((l) => l.has_greeting)
           ? "Custom greeting set"
@@ -4875,11 +8545,87 @@ function parentSetupSteps(hh = state.households[0]) {
       scrollTo: "parent-sounds",
       required: true,
     },
+    {
+      id: "analog",
+      label: "House phone",
+      detail: hasAta ? "Adapter connected" : "Optional — analog adapter later",
+      done: hasAta,
+      scrollTo: "parent-ata",
+      required: false,
+    },
   ];
 }
 
+/**
+ * Grandparent / relative checklist — not the parent “add a kid / PIN” board.
+ * Only: know your login, get family on the phone, optional quiet / house phone.
+ */
+function grandparentSetupSteps(hh = state.households[0]) {
+  const user = state.user;
+  const accountDone = Boolean(user?.username && user?.has_password);
+  const gc = pickPrimaryGrandchildContact(hh);
+  const pending = pendingApprovals(hh);
+  const familyDone = Boolean(gc && (gc.mutual || gc.home_grandchild));
+  const familyName = gc ? contactDisplayName(gc) : "";
+  const quietOn = Boolean(hh?.dnd);
+  const hasAta = (hh?.lines || []).some((l) => l.ata);
+
+  return [
+    {
+      id: "account",
+      label: "How you sign in",
+      detail: accountDone
+        ? `Your name to sign in is ${gpEsc(user.username)}`
+        : "Ask your son or daughter for the name and password they made for you",
+      done: accountDone,
+      action: "account",
+      required: true,
+    },
+    {
+      id: "family",
+      label: familyDone ? "Your family is ready" : "Add your family",
+      detail: familyDone
+        ? familyName
+          ? `${gpEsc(familyName)} is button 1 — tap it once to call`
+          : "Ready — tap button 1 to call"
+        : pending.length
+          ? "Tap Yes, add them — then use button 1 to call"
+          : "When your family shows up, tap Yes, add them",
+      done: familyDone,
+      action: "family",
+      required: true,
+    },
+    {
+      id: "quiet",
+      label: "Silence the phone",
+      detail: quietOn
+        ? "On — your phone will not ring until you turn this off"
+        : "Optional — stop the phone from ringing for a while",
+      done: quietOn,
+      action: "quiet",
+      required: false,
+    },
+    {
+      id: "analog",
+      label: "Old-fashioned house phone",
+      detail: hasAta
+        ? "Connected"
+        : "Optional — only if you also use a regular wall phone",
+      done: hasAta,
+      action: "analog",
+      required: false,
+    },
+  ];
+}
+
+
+/** Setup steps for the current experience (parent vs grandparent). */
+function setupStepsForUser(hh = state.households[0]) {
+  return isGrandparentExperience() ? grandparentSetupSteps(hh) : parentSetupSteps(hh);
+}
+
 function parentSetupSummary(hh = state.households[0]) {
-  const steps = parentSetupSteps(hh);
+  const steps = setupStepsForUser(hh);
   const required = steps.filter((s) => s.required);
   const requiredDone = required.filter((s) => s.done).length;
   const openRequired = required.filter((s) => !s.done);
@@ -4893,6 +8639,7 @@ function parentSetupSummary(hh = state.households[0]) {
     allRequiredDone: openRequired.length === 0,
     optionalOpen: optional.filter((s) => !s.done),
     pct: required.length ? Math.round((requiredDone / required.length) * 100) : 100,
+    grandparent: isGrandparentExperience(),
   };
 }
 
@@ -4919,7 +8666,7 @@ function reopenSetupChecklist() {
   render();
 }
 
-/** Full setup board after sign-in when required steps remain (or Help re-entry). */
+/** Full setup board from Help / banner — not auto-opened after sign-in. */
 function shouldShowSetupBoard(hh = state.households[0]) {
   if (!state.user || !hh) return false;
   if (isKidExperience() || isChildMode()) return false;
@@ -4930,23 +8677,26 @@ function shouldShowSetupBoard(hh = state.households[0]) {
   return !setupChecklistDismissed() && !allRequiredDone;
 }
 
-/** Compact home banner when parent skipped the board but setup is still incomplete. */
+/** Compact home banner while required setup is still incomplete. */
 function shouldShowSetupBanner(hh = state.households[0]) {
   if (!state.user || !hh) return false;
   if (isKidExperience() || isChildMode()) return false;
-  if (!setupChecklistDismissed()) return false;
+  if (state.screen === "setup") return false;
+  // Grandparents: prefer the big “add family” banner when someone is waiting.
+  if (isGrandparentExperience() && pendingApprovals(hh).length) return false;
   return !parentSetupSummary(hh).allRequiredDone;
 }
 
 function setupBannerHtml(hh) {
   if (!shouldShowSetupBanner(hh)) return "";
-  const { requiredDone, requiredTotal, openRequired, pct } = parentSetupSummary(hh);
+  const { requiredDone, requiredTotal, openRequired, pct, grandparent } = parentSetupSummary(hh);
   const next = openRequired[0];
-  const nextLabel = next ? next.label : "Finish setup";
-  return `<button type="button" class="setup-banner" id="open-setup-banner" aria-label="Finish setup, ${requiredDone} of ${requiredTotal} done. Next: ${nextLabel}">
+  const nextLabel = next ? next.label : grandparent ? "Almost done" : "Finish setup";
+  const title = grandparent ? "A few steps to get started" : "Finish setup";
+  return `<button type="button" class="setup-banner${grandparent ? " gp-setup-banner" : ""}" id="open-setup-banner" aria-label="${title}, ${requiredDone} of ${requiredTotal} done. Next: ${nextLabel}">
     <span class="setup-banner-meta">
-      <strong>Finish setup</strong>
-      <small>${requiredDone}/${requiredTotal} · ${nextLabel}</small>
+      <strong>${title}</strong>
+      <small>${grandparent ? nextLabel : `${requiredDone}/${requiredTotal} · ${nextLabel}`}</small>
     </span>
     <span class="setup-banner-track" aria-hidden="true"><i style="width:${pct}%"></i></span>
   </button>`;
@@ -4957,6 +8707,38 @@ function bindSetupBanner() {
     reopenSetupChecklist();
   });
 }
+
+/**
+ * Jump from a grandparent setup step into the right simple screen.
+ * @param {string} action
+ */
+async function runGrandparentSetupAction(action) {
+  state.setupForceShow = false;
+  dismissSetupChecklist();
+  if (action === "family") {
+    state.screen = "manage-contacts";
+    state.nav = "phone";
+    render();
+    return;
+  }
+  if (action === "account" || action === "quiet") {
+    state.screen = "home";
+    state.nav = "controls";
+    localStorage.setItem("kl_nav", "controls");
+    state.gpSettingsFocus = action;
+    render();
+    return;
+  }
+  if (action === "analog") {
+    await openParentPanel({ scrollTo: "parent-ata" });
+    return;
+  }
+  state.screen = "home";
+  state.nav = "phone";
+  localStorage.setItem("kl_nav", "phone");
+  render();
+}
+
 
 /**
  * @param {{ scrollTo?: string, lineId?: string }} [opts]
@@ -5001,23 +8783,47 @@ function pendingApprovalKey(hh) {
     .join(",");
 }
 
-/** Auto-open Approve callers when a new pending set appears (no static home card). */
-function shouldAutoOpenApprovals(hh) {
-  if (isKidExperience()) return false;
-  if (state.screen !== "home" || (state.nav && state.nav !== "phone")) return false;
-  if (state.call || state.group) return false;
-  const key = pendingApprovalKey(hh);
-  if (!key) {
-    sessionStorage.removeItem("kl_pending_prompt");
-    return false;
-  }
-  return sessionStorage.getItem("kl_pending_prompt") !== key;
+/** Auto-open Approve was trapping adults (esp. grandparents) in a full-screen
+ *  contacts page with no dock. Prefer an on-home banner instead. */
+function shouldAutoOpenApprovals(_hh) {
+  return false;
 }
 
 function markApprovalsPrompted(hh) {
   const key = pendingApprovalKey(hh);
   if (key) sessionStorage.setItem("kl_pending_prompt", key);
   else sessionStorage.removeItem("kl_pending_prompt");
+}
+
+/** Big home banner: approve grandchild / family without leaving Phone. */
+function pendingApprovalsBannerHtml(hh) {
+  if (isKidExperience()) return "";
+  const pending = pendingApprovals(hh);
+  if (!pending.length) return "";
+  const first = pending[0];
+  const name = friendlyPersonName(first.name).replace(/</g, "");
+  const more = pending.length > 1 ? ` (+${pending.length - 1} more)` : "";
+  const lead = isGrandparentExperience()
+    ? `<strong>${name}</strong>${more} can be added to your phone`
+    : `<strong>${name}</strong>${more} needs your OK to call`;
+  return `<div class="gp-approve-banner" role="region" aria-label="${
+    isGrandparentExperience() ? "Add family to your phone" : "Approve family"
+  }">
+    <p>${lead}</p>
+    <div class="gp-approve-actions">
+      <button type="button" class="primary" id="banner-approve-first">${
+        isGrandparentExperience()
+          ? pending.length === 1
+            ? `Yes, add ${name}`
+            : "Yes, add them"
+          : `Approve${pending.length === 1 ? ` ${name}` : ""}`
+      }</button>
+      <button type="button" class="ghost" id="banner-open-approvals">${
+        isGrandparentExperience() ? "See who" : "Review"
+      }</button>
+      <button type="button" class="ghost" id="banner-later-approvals">Not now</button>
+    </div>
+  </div>`;
 }
 
 async function enableChildModeOnDevice() {
@@ -5028,6 +8834,12 @@ async function enableChildModeOnDevice() {
     setFlash("Set a parent PIN first so kids can’t exit Child mode", "warn");
     render();
     return;
+  }
+  if ((line.mode || "parent") !== "child") {
+    const ok = confirm(
+      "This locks THIS phone as a kid phone.\n\nTo add a kid and keep your parent phone, cancel and use Parent → Kids."
+    );
+    if (!ok) return;
   }
   try {
     await api(`/api/households/${hh.id}/lines/${line.id}`, {
@@ -5124,11 +8936,193 @@ function hangupButtonHtml(id = "hangup", label = "Hang up") {
   </button>`;
 }
 
+/**
+ * Identity of the call sheet layout. Same key ⇒ keep DOM (presence/render used to
+ * remount and restart sheetPresent, which looked like the incoming sheet flickering).
+ */
+function callLayerMountKey() {
+  if (
+    callKitOwnsUi() &&
+    state.call &&
+    !state.group &&
+    state.call.status === "incoming" &&
+    !callKitGate.answered
+  ) {
+    return `hidden-callkit:${state.call.callId || ""}`;
+  }
+  if (state.group) {
+    const status = state.group.status || "calling";
+    const isFr = Boolean(state.group.familyRoom || state.group.playRoom);
+    const listenOnly = Boolean(state.group.listenOnly);
+    const hostId = state.group.hostLineId || state.group.fromLineId || "";
+    const members = state.group.members || [];
+    const invited = (state.group.invited || []).filter((id) => !members.includes(id));
+    const people = [...members, ...invited.map((id) => `w:${id}`)].join(",");
+    const phase =
+      status === "incoming" ? "incoming" : status === "active" || status === "connecting" ? "in-call" : "outbound";
+    return `g:${state.group.roomId || ""}:${phase}:${status}:${isFr ? 1 : 0}:${listenOnly ? 1 : 0}:${hostId}:${people}`;
+  }
+  if (!state.call) {
+    if (state.vmMonitor?.role === "callee") {
+      return `vm:${state.vmMonitor.callId || state.vmMonitor.fromLineId || ""}`;
+    }
+    return "empty";
+  }
+  let status = state.call.status;
+  if (callKitOwnsUi() && callKitGate.answered && status === "incoming") {
+    status = "connecting";
+  }
+  const phase =
+    status === "incoming" ? "incoming" : status === "active" || status === "connecting" ? "in-call" : "outbound";
+  return `c:${state.call.callId || ""}:${phase}:${status}:${otherLineId(state.call) || ""}`;
+}
+
+/** Soft-update labels/banners without remounting (mute, hold, ICE hint, etc.). */
+function patchCallLayerChrome() {
+  const layer = document.getElementById("call-layer");
+  if (!layer) return;
+
+  const muteBtn = document.getElementById("mute");
+  if (muteBtn) muteBtn.textContent = state.muted ? "Unmute" : "Mute";
+
+  const holdBtn = document.getElementById("hold");
+  if (holdBtn) holdBtn.textContent = holdControlLabel();
+
+  const speakerBtn = document.getElementById("speaker");
+  if (speakerBtn) {
+    speakerBtn.setAttribute("aria-pressed", state.speakerOn ? "true" : "false");
+    speakerBtn.textContent = state.speakerOn ? "Earpiece" : "Speaker";
+  }
+
+  const identity = layer.querySelector(".call-identity");
+  if (identity) {
+    let still = identity.querySelector(".still-banner");
+    if (state.stillPrompt && !still) {
+      still = document.createElement("p");
+      still.className = "still-banner";
+      still.textContent = "Are you still there?";
+      identity.appendChild(still);
+    } else if (!state.stillPrompt && still) {
+      still.remove();
+    }
+
+    const isFr = Boolean(state.group?.familyRoom || state.group?.playRoom);
+    const wantHold = state.group ? Boolean(!isFr && state.onHold) : Boolean(state.onHold);
+    let holdBanner = identity.querySelector(".hold-banner");
+    if (wantHold && !holdBanner) {
+      holdBanner = document.createElement("p");
+      holdBanner.className = "hold-banner";
+      holdBanner.textContent = "On hold";
+      identity.appendChild(holdBanner);
+    } else if (!wantHold && holdBanner) {
+      holdBanner.remove();
+    }
+  }
+
+  if (state.call && !state.group) {
+    let status = state.call.status;
+    if (callKitOwnsUi() && callKitGate.answered && status === "incoming") {
+      status = "connecting";
+    }
+    const title =
+      status === "incoming"
+        ? "Incoming call"
+        : status === "active"
+          ? state.onHold
+            ? "On hold"
+            : "Connected"
+          : status === "connecting"
+            ? "Connecting…"
+            : status === "ringing"
+              ? "Ringing…"
+              : "Calling…";
+    const kicker = layer.querySelector(".call-kicker");
+    if (kicker) kicker.textContent = title;
+
+    const mediaHint =
+      state.iceState === "connected"
+        ? "Private · encrypted voice"
+        : state.iceState === "disconnected"
+          ? "Reconnecting…"
+          : status === "connecting"
+            ? "Setting up a private line…"
+            : status === "incoming"
+              ? "Someone you approved is calling"
+              : "Waiting for them to pick up…";
+    const media = layer.querySelector(".call-media");
+    if (media) media.textContent = mediaHint;
+  } else if (state.group?.familyRoom || state.playRoomListen) {
+    patchTreeHouseCallLayerPresence();
+  } else if (state.group) {
+    const status = state.group.status || "calling";
+    const isFr = Boolean(state.group.familyRoom || state.group.playRoom);
+    const listenOnly = Boolean(state.group.listenOnly);
+    const members = state.group.members || [];
+    const media = layer.querySelector(".call-media");
+    if (media && status !== "incoming") {
+      media.textContent = listenOnly
+        ? `Hearing ${state.playRoomListen?.childName || "your child"}’s mix`
+        : isFr
+          ? `${members.length} in TreeHouse`
+          : `${members.length} on the line`;
+    }
+  }
+}
+
+/** Mark first paint only — CSS .call-enter runs a short fade; remounts stay still. */
+function armCallLayerEnterAnimation(layer) {
+  if (!layer || layer.dataset.entered === "1") return;
+  layer.dataset.entered = "1";
+  layer.classList.add("call-enter");
+  const clear = () => layer.classList.remove("call-enter");
+  layer.addEventListener("animationend", clear, { once: true });
+  setTimeout(clear, 500);
+}
+
 function paintCallLayer() {
   const root = callRoot();
   if (!root) return;
+  const mountKey = callLayerMountKey();
+  const existing = document.getElementById("call-layer");
+  // Hard lock while softphone is ringing: never tear down the sheet for key churn.
+  const ringLock =
+    !callKitOwnsUi() &&
+    ((state.call?.status === "incoming" && state.call?.callId) ||
+      (state.group?.status === "incoming" && state.group?.roomId));
+  const ringId = state.group?.status === "incoming"
+    ? `g:${state.group.roomId}`
+    : state.call?.status === "incoming"
+      ? `c:${state.call.callId}`
+      : "";
+  if (ringLock && existing && existing.dataset.ringId === ringId) {
+    root.dataset.paintKey = mountKey;
+    root.hidden = false;
+    patchCallLayerChrome();
+    return;
+  }
+  // Presence refresh / duplicate offer / toast paint must not restart enter anim.
+  if (root.dataset.paintKey === mountKey) {
+    if (mountKey !== "empty" && !mountKey.startsWith("hidden-callkit") && !mountKey.startsWith("vm:")) {
+      patchCallLayerChrome();
+    }
+    return;
+  }
+  root.dataset.paintKey = mountKey;
+
+  // Native iOS + CallKit ON: system Answer/Decline while ringing. After answer,
+  // iOS foregrounds the app — show mute/hold/end. CallKit OFF (default): always
+  // show in-app softphone ring/answer card (alert APNs wake).
+  if (mountKey.startsWith("hidden-callkit")) {
+    stopRing();
+    root.innerHTML = "";
+    root.hidden = true;
+    return;
+  }
+  root.hidden = false;
   if (state.group) {
     const status = state.group.status || "calling";
+    const isFr = Boolean(state.group.familyRoom || state.group.playRoom);
+    const listenOnly = Boolean(state.group.listenOnly);
     const hostId = state.group.hostLineId || state.group.fromLineId;
     const who = lineName(hostId);
     const members = state.group.members || [];
@@ -5139,14 +9133,21 @@ function paintCallLayer() {
     ];
     const ringing = status === "incoming" || status === "calling";
     const inCall = status === "active" || status === "connecting";
+    const roomLabel = isFr ? "TreeHouse" : "Group call";
     const title =
       status === "incoming"
-        ? "Group call"
-        : status === "active"
-          ? "Group call"
-          : status === "connecting"
-            ? "Connecting…"
-            : "Calling group…";
+        ? roomLabel
+        : listenOnly
+          ? `Listening · ${state.playRoomListen?.childName || who}`
+          : status === "active"
+            ? roomLabel
+            : status === "connecting"
+              ? listenOnly
+                ? "Starting listen…"
+                : "Connecting…"
+              : isFr
+                ? "Joining TreeHouse…"
+                : "Calling group…";
     const timer =
       state.callStartedAt && inCall
         ? formatDuration(Date.now() - state.callStartedAt)
@@ -5154,7 +9155,9 @@ function paintCallLayer() {
           ? "0:00"
           : "";
     root.innerHTML = `
-      <div id="call-layer" class="call-stage group ${status}">
+      <div id="call-layer" class="call-stage group ${status}${isFr ? " familyroom" : ""}${listenOnly ? " listen-only" : ""}" data-ring-id="${
+        status === "incoming" ? `g:${state.group.roomId || ""}` : ""
+      }">
         <div class="call-stage-bg" aria-hidden="true"></div>
         <div class="call-card cinematic">
           <div class="call-identity">
@@ -5163,34 +9166,81 @@ function paintCallLayer() {
             ${people
               .map(
                 (p) => `
-              <div class="group-avatar-item ${p.waiting ? "waiting" : ""}">
+              <div class="group-avatar-item ${p.waiting ? "waiting" : ""} ${
+                  isFr &&
+                  !listenOnly &&
+                  p.id !== state.activeLineId &&
+                  members.length > 1 &&
+                  !canTalkInTreeHouse(state.activeLineId, p.id)
+                    ? "muted-peer"
+                    : ""
+                }">
                 ${avatarHtml(lineName(p.id), p.id, "lg")}
                 <span>${p.id === state.activeLineId ? "You" : lineName(p.id)}</span>
               </div>`
               )
               .join("")}
           </div>
-          <h2 class="call-who">${status === "incoming" ? who : "Group"}</h2>
-          <p class="call-media">${status === "incoming" ? "Join this group call?" : `${members.length} on the line`}</p>
+          <h2 class="call-who">${
+            status === "incoming" ? who : listenOnly ? "Listen only" : isFr ? "TreeHouse" : "Group"
+          }</h2>
+          <p class="call-media">${
+            status === "incoming"
+              ? "Join this group call?"
+              : listenOnly
+                ? `Hearing ${state.playRoomListen?.childName || "your child"}’s mix`
+                : isFr
+                  ? `${members.length} in TreeHouse`
+                  : `${members.length} on the line`
+          }</p>
           ${timer ? `<p class="call-timer" id="call-timer">${timer}</p>` : ""}
           ${state.stillPrompt ? `<p class="still-banner">Are you still there?</p>` : ""}
-          ${state.onHold ? `<p class="hold-banner">On hold</p>` : ""}
+          ${!isFr && state.onHold ? `<p class="hold-banner">On hold</p>` : ""}
           </div>
           <div class="call-actions ${status === "incoming" ? "incoming" : inCall ? "in-call" : "outbound"}">
             ${
-              inCall
+              inCall && !listenOnly
                 ? `<div class="call-secondary">
-            ${status === "active" ? `<button class="ghost" id="hold">${state.onHold ? "Resume" : "Hold"}</button>` : ""}
-            <button class="ghost" id="mute">${state.muted ? "Unmute" : "Mute"}</button>
-            </div>`
+            ${
+              status === "active" && !isFr && shouldShowHoldControl()
+                ? `<button class="ghost" id="hold">${holdControlLabel()}</button>`
                 : ""
+            }
+            <button class="ghost" id="mute">${state.muted ? "Unmute" : "Mute"}</button>
+            ${
+              isNativeIosShell() && callKitEnabled()
+                ? `<button class="ghost" id="speaker" aria-pressed="${state.speakerOn ? "true" : "false"}">${
+                    state.speakerOn ? "Earpiece" : "Speaker"
+                  }</button>`
+                : ""
+            }
+            </div>`
+                : inCall && listenOnly
+                  ? `<div class="call-secondary">
+            ${
+              isNativeIosShell() && callKitEnabled()
+                ? `<button class="ghost" id="speaker" aria-pressed="${state.speakerOn ? "true" : "false"}">${
+                    state.speakerOn ? "Earpiece" : "Speaker"
+                  }</button>`
+                : ""
+            }
+            </div>`
+                  : ""
             }
             ${status === "incoming" ? `<button type="button" class="danger call-hangup" id="hangup">Decline</button>` : ""}
             ${status === "incoming" ? `<button type="button" class="primary call-answer" id="accept">Answer</button>` : ""}
-            ${status !== "incoming" ? hangupButtonHtml() : ""}
+            ${
+              status !== "incoming"
+                ? hangupButtonHtml(
+                    undefined,
+                    listenOnly ? "Stop listening" : isFr ? "Leave" : "Hang up"
+                  )
+                : ""
+            }
           </div>
         </div>
       </div>`;
+    armCallLayerEnterAnimation(document.getElementById("call-layer"));
     document.getElementById("hangup")?.addEventListener("click", () => {
       noteCallActivity();
       if (status === "incoming") rejectGroupCall();
@@ -5203,6 +9253,7 @@ function paintCallLayer() {
     });
     document.getElementById("mute")?.addEventListener("click", toggleMute);
     document.getElementById("hold")?.addEventListener("click", toggleHold);
+    document.getElementById("speaker")?.addEventListener("click", toggleSpeaker);
     return;
   }
   if (!state.call) {
@@ -5210,7 +9261,11 @@ function paintCallLayer() {
     else root.innerHTML = "";
     return;
   }
-  const status = state.call.status;
+  let status = state.call?.status;
+  // Brief window: CallKit answered but acceptCall has not yet set connecting.
+  if (callKitOwnsUi() && callKitGate.answered && status === "incoming") {
+    status = "connecting";
+  }
   const title =
     status === "incoming"
       ? "Incoming call"
@@ -5240,12 +9295,14 @@ function paintCallLayer() {
         : status === "connecting"
           ? "Setting up a private line…"
           : status === "incoming"
-            ? "Someone on your allowlist is calling"
+            ? "Someone you approved is calling"
             : "Waiting for them to pick up…";
   const ringing = status === "incoming" || status === "ringing" || status === "calling";
 
   root.innerHTML = `
-    <div id="call-layer" class="call-stage ${status}">
+    <div id="call-layer" class="call-stage ${status}" data-ring-id="${
+      status === "incoming" ? `c:${state.call.callId || ""}` : ""
+    }">
       <div class="call-stage-bg" aria-hidden="true"></div>
       <div class="call-card cinematic">
         <div class="call-identity">
@@ -5266,8 +9323,19 @@ function paintCallLayer() {
           ${
             status === "active" || status === "connecting"
               ? `<div class="call-secondary">
-          ${status === "active" ? `<button class="ghost" id="hold">${state.onHold ? "Resume" : "Hold"}</button>` : ""}
+          ${
+            status === "active" && shouldShowHoldControl()
+              ? `<button class="ghost" id="hold">${holdControlLabel()}</button>`
+              : ""
+          }
           <button class="ghost" id="mute">${state.muted ? "Unmute" : "Mute"}</button>
+          ${
+            isNativeIosShell() && callKitEnabled()
+              ? `<button class="ghost" id="speaker" aria-pressed="${state.speakerOn ? "true" : "false"}">${
+                  state.speakerOn ? "Earpiece" : "Speaker"
+                }</button>`
+              : ""
+          }
           </div>`
               : ""
           }
@@ -5278,6 +9346,7 @@ function paintCallLayer() {
       </div>
     </div>`;
 
+  armCallLayerEnterAnimation(document.getElementById("call-layer"));
   document.getElementById("hangup")?.addEventListener("click", () => {
     noteCallActivity();
     hangup();
@@ -5289,21 +9358,18 @@ function paintCallLayer() {
   });
   document.getElementById("mute")?.addEventListener("click", toggleMute);
   document.getElementById("hold")?.addEventListener("click", toggleHold);
+  document.getElementById("speaker")?.addEventListener("click", toggleSpeaker);
 }
 
 function renderWelcome() {
   const invite = new URLSearchParams(location.search).get("invite") || "";
   const showHost = new URLSearchParams(location.search).get("host") === "1";
   app.innerHTML = `
-    <div class="auth-screen">
+    <div class="auth-screen" id="welcome-root">
       <div class="auth-hero welcome-hero">
-        <div class="splash-mark-wrap compact">
-          <span class="splash-ring"></span>
-          <div class="splash-mark sm">${logoMarkHtml()}</div>
-        </div>
-        ${brandWordmarkHtml("brand splash-brand")}
-        <p class="auth-promise">The home phone, remixed.</p>
-        <p class="auth-sub">Family calls · softphone or analog · no strangers</p>
+        ${splashBrandHeroHtml({ compact: true })}
+        <p class="auth-promise">The home phone, reborn.</p>
+        <p class="auth-sub">Family & trusted friends · app or analog · no strangers</p>
       </div>
       <div class="sheet auth-sheet welcome-sheet">
         ${
@@ -5371,6 +9437,8 @@ function renderReturning() {
           <p class="auth-lede">Sign in with your username and password.</p>
         </div>
         ${flashHtml("inline")}
+        <button type="button" class="primary btn-block faceid-btn" id="faceid-login" hidden></button>
+        <p class="tiny auth-or" id="faceid-or" hidden>or type your password</p>
         <form id="login-form" class="auth-form">
           <div class="auth-field">
             <label for="username">Username</label>
@@ -5383,6 +9451,10 @@ function renderReturning() {
           </div>
           <button class="primary btn-block" type="submit" id="login">Sign in</button>
         </form>
+        <p class="tiny auth-hint" id="faceid-setup-hint" hidden>Sign in once on this iPhone to turn on Face ID for next time.</p>
+        <p class="tiny auth-hint" id="forget-saved-login" hidden>
+          <button type="button" class="linkish" id="forget-login">Forget saved sign-in on this iPhone</button>
+        </p>
         <p class="tiny auth-hint">Forgot password? Ask the host — they can reset it.</p>
         <nav class="auth-alt" aria-label="Other sign-in options">
           <button type="button" class="linkish auth-link" id="go-register">Create an account</button>
@@ -5430,15 +9502,18 @@ function renderReturning() {
   const doPasswordLogin = async () => {
     setFlash("");
     try {
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
       const data = await api("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({
-          username: document.getElementById("username").value.trim(),
-          password: document.getElementById("password").value,
-        }),
+        body: JSON.stringify({ username, password }),
       });
-      state.sessionId = data.sessionId;
-      localStorage.setItem("kl_session", data.sessionId);
+      await persistSession(data.sessionId);
+      const saved = await persistPasswordLogin(username, password);
+      if (saved) setFlash("Face ID sign-in is ready on this iPhone", "ok");
+      else if (isNativeIosShell()) {
+        setFlash("Signed in, but Face ID could not save a password. Open Parent → Account.", "warn");
+      }
       await refresh();
       if (state.pendingGuardianCode) {
         try {
@@ -5446,7 +9521,7 @@ function renderReturning() {
             method: "POST",
             body: JSON.stringify({ code: state.pendingGuardianCode }),
           });
-          setFlash("You’re now a guardian of that child line", "ok");
+          setFlash("You’re now a co-parent for that kid", "ok");
           state.pendingGuardianCode = "";
           history.replaceState({}, "", location.pathname);
           await refresh();
@@ -5474,8 +9549,7 @@ function renderReturning() {
           displayName: document.getElementById("name").value.trim(),
         }),
       });
-      state.sessionId = data.sessionId;
-      localStorage.setItem("kl_session", data.sessionId);
+      await persistSession(data.sessionId);
       await refresh();
     } catch (e) {
       setFlash(e.message || "Could not sign in", "error");
@@ -5486,7 +9560,153 @@ function renderReturning() {
     e.preventDefault();
     await doCodeLogin();
   };
+  const userEl = document.getElementById("username");
+  if (userEl && lastUsername()) userEl.value = lastUsername();
+  void setupFaceIdLogin();
   queueMicrotask(() => document.getElementById("username")?.focus());
+}
+
+function faceIdButtonLabel(biometry) {
+  if (biometry === "touch") return "Sign in with Touch ID";
+  if (biometry === "passcode") return "Sign in with device passcode";
+  return "Sign in with Face ID";
+}
+
+async function setupFaceIdLogin() {
+  const btn = document.getElementById("faceid-login");
+  const or = document.getElementById("faceid-or");
+  const forgetWrap = document.getElementById("forget-saved-login");
+  const forgetBtn = document.getElementById("forget-login");
+  const plugin = await nativePluginReady();
+  if (!btn || !plugin?.hasSavedLogin) return;
+  let info = { saved: false, username: "", biometry: "none" };
+  try {
+    info = await plugin.hasSavedLogin();
+  } catch {
+    return;
+  }
+  if (!info?.saved) {
+    const hint = document.getElementById("faceid-setup-hint");
+    if (hint) hint.hidden = false;
+    return;
+  }
+  btn.hidden = false;
+  if (or) or.hidden = false;
+  if (forgetWrap) forgetWrap.hidden = false;
+  btn.textContent = faceIdButtonLabel(info.biometry);
+  const named = document.getElementById("username");
+  if (named && info.username && !named.value) named.value = info.username;
+  const runFaceId = async () => {
+    setFlash("");
+    try {
+      const creds = await plugin.getLogin({ reason: "Sign in to PhoneHome" });
+      const username = String(creds?.username || "").trim();
+      const password = String(creds?.password || "");
+      if (!username || !password) throw new Error("No saved sign-in");
+      const data = await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      });
+      await persistSession(data.sessionId);
+      await persistPasswordLogin(username, password);
+      await refresh();
+    } catch (e) {
+      const msg = String(e?.message || "");
+      if (/cancel/i.test(msg)) return;
+      setFlash(msg || "Could not sign in with Face ID", "error");
+      render();
+    }
+  };
+  btn.onclick = () => void runFaceId();
+  if (forgetBtn) {
+    forgetBtn.onclick = async () => {
+      await clearPersistedAuth({ keepLogin: false });
+      btn.hidden = true;
+      if (or) or.hidden = true;
+      forgetWrap.hidden = true;
+    };
+  }
+  if (info.biometry !== "none" && !faceIdAutoTried) {
+    faceIdAutoTried = true;
+    queueMicrotask(() => void runFaceId());
+  }
+}
+
+function faceIdKindLabel(biometry) {
+  if (biometry === "touch") return "Touch ID";
+  if (biometry === "passcode") return "device passcode";
+  if (biometry === "optic") return "Optic ID";
+  return "Face ID";
+}
+
+async function bindFaceIdAccountSettings() {
+  const status = document.getElementById("faceid-account-status");
+  const enableWrap = document.getElementById("faceid-enable-wrap");
+  const forgetBtn = document.getElementById("faceid-forget");
+  const enableBtn = document.getElementById("faceid-enable");
+  if (!status) return;
+  const plugin = await nativePluginReady();
+  if (!plugin?.saveLogin && !plugin?.hasSavedLogin) {
+    status.textContent = "This iPhone app build cannot save Face ID yet. Reinstall PhoneHome from Xcode.";
+    return;
+  }
+  const username = String(state.user?.username || "").trim();
+  let info = { saved: false, username: "", biometry: "none" };
+  try {
+    info = (await plugin.hasSavedLogin?.()) || info;
+  } catch {
+    status.textContent = "Could not check Face ID on this iPhone.";
+    return;
+  }
+  const kind = faceIdKindLabel(info.biometry);
+  if (info.saved) {
+    status.textContent = `${kind} is ready for ${info.username || username || "this account"}.`;
+    if (enableWrap) enableWrap.hidden = true;
+    if (forgetBtn) forgetBtn.hidden = false;
+  } else if (!username) {
+    status.textContent = "Create a username and password first, then you can save Face ID on this iPhone.";
+    if (enableWrap) enableWrap.hidden = true;
+  } else {
+    status.textContent = `${kind} needs your password saved once on this iPhone.`;
+    if (enableWrap) enableWrap.hidden = false;
+  }
+  if (forgetBtn && !forgetBtn.dataset.bound) {
+    forgetBtn.dataset.bound = "1";
+    forgetBtn.addEventListener("click", async () => {
+      try {
+        await plugin.clearLogin?.();
+      } catch {
+        /* ignore */
+      }
+      setFlash("Face ID sign-in forgotten on this iPhone", "ok");
+      await bindFaceIdAccountSettings();
+    });
+  }
+  if (enableBtn && !enableBtn.dataset.bound) {
+    enableBtn.dataset.bound = "1";
+    enableBtn.addEventListener("click", async () => {
+      const password = document.getElementById("faceid-enable-pass")?.value || "";
+      if (!password) {
+        setFlash("Enter your password", "warn");
+        return;
+      }
+      try {
+        const data = await api("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ username, password }),
+        });
+        await persistSession(data.sessionId);
+        const saved = await persistPasswordLogin(username, password);
+        const passEl = document.getElementById("faceid-enable-pass");
+        if (passEl) passEl.value = "";
+        if (saved) setFlash("Face ID sign-in is ready on this iPhone", "ok");
+        else setFlash("Password was correct, but this iPhone could not save it. Rebuild the PhoneHome app.", "error");
+        await bindFaceIdAccountSettings();
+      } catch (e) {
+        setFlash(e.message || "That password did not work", "error");
+      }
+    });
+  }
 }
 
 function renderRegister() {
@@ -5549,7 +9769,11 @@ function renderRegister() {
         }),
       });
       state.sessionId = data.sessionId;
-      localStorage.setItem("kl_session", data.sessionId);
+      await persistSession(data.sessionId);
+      await persistPasswordLogin(
+        document.getElementById("reg-user").value.trim(),
+        document.getElementById("reg-pass").value
+      );
       state.mode = invite ? "join" : state.mode || "join";
       state.screen = invite ? "join" : "home";
       await refresh();
@@ -5619,7 +9843,16 @@ function renderSetPassword() {
         body: JSON.stringify(body),
       });
       state.user = data.user;
-      setFlash("Login saved — use username and password next time.", "ok");
+      const saved = await persistPasswordLogin(
+        needsUser ? document.getElementById("set-user").value.trim() : state.user?.username,
+        document.getElementById("set-pass").value
+      );
+      setFlash(
+        saved
+          ? "Login saved — Face ID sign-in is ready on this iPhone."
+          : "Login saved — use username and password next time.",
+        "ok"
+      );
       state.screen = "home";
       await refresh();
     } catch (e) {
@@ -5637,16 +9870,48 @@ function phoneSvg() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1.1-.3 1.2.4 2.5.6 3.8.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.8.1.4 0 .8-.3 1.1L6.6 10.8z"/></svg>`;
 }
 
-/** App logo mark — same asset as favicon / PWA icon (gold handset tile). */
+/**
+ * Canonical rotary desk-phone glyph (Trevor SVG → /rotary-phone.svg).
+ * Used in Phone dock tab, splash hero, Parent → Analog Phone accordion.
+ * CSS mask + currentColor → gold; splash/logo keep soft plate via .logo-badge.
+ */
+function rotaryPhoneSvg() {
+  return `<span class="rotary-phone-glyph" aria-hidden="true"></span>`;
+}
+
+/** Dock Phone tab — bare rotary glyph (larger; centered in shared dock icon slot). */
+function dockPhoneIconHtml() {
+  return `<span class="rotary-phone-glyph dock-phone-glyph" aria-hidden="true"></span>`;
+}
+/** App logo mark — same rotary glyph in a soft raised circular badge (not icon.svg tile). */
 function logoMarkHtml(extraClass = "") {
-  const cls = extraClass ? `logo-mark ${extraClass}` : "logo-mark";
-  return `<img class="${cls}" src="/icon.svg" alt="" width="128" height="128" decoding="async" />`;
+  const cls = extraClass ? `logo-badge ${extraClass}` : "logo-badge";
+  return `<span class="${cls}" aria-hidden="true">${rotaryPhoneSvg()}</span>`;
 }
 
 /** Brand wordmark — matches home/topbar Phone<span>Home</span> treatment. */
 function brandWordmarkHtml(extraClass = "") {
   const cls = ["mark", "wordmark", "home-wordmark", extraClass].filter(Boolean).join(" ");
   return `<div class="${cls}">Phone<span>Home</span></div>`;
+}
+
+/**
+ * Splash / welcome hero: gold rotary glyph + wordmark (not the framed app-icon tile).
+ * Framed icon.svg inside .splash-mark was clipping/double-rounding after the rotary asset swap.
+ */
+function splashBrandHeroHtml({ compact = false } = {}) {
+  const wrap = compact ? "splash-hero-lockup compact" : "splash-hero-lockup";
+  const rings = compact
+    ? `<span class="splash-ring"></span>`
+    : `<span class="splash-ring"></span><span class="splash-ring delay"></span>`;
+  return `
+    <div class="${wrap}">
+      <div class="splash-hero-glyph-wrap" aria-hidden="true">
+        ${rings}
+        <span class="splash-hero-glyph">${rotaryPhoneSvg()}</span>
+      </div>
+      ${brandWordmarkHtml("splash-brand")}
+    </div>`;
 }
 
 /** Adult + child silhouettes — Profile topbar + Parent dock. */
@@ -5663,131 +9928,169 @@ function activitySvg() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v2.2H4V5.5zm0 5.4h16v2.2H4v-2.2zm0 5.4h11v2.2H4v-2.2z"/><circle cx="18.2" cy="16.6" r="2.2"/></svg>`;
 }
 
+/** Cassette / answering-machine tape — Messages inbox (not a chat bubble). */
 function voicemailSvg() {
-  return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.2" cy="12" r="3.4"/><circle cx="16.8" cy="12" r="3.4"/><path d="M10.6 12h2.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M4 4.75h16A2.25 2.25 0 0 1 22.25 7v10A2.25 2.25 0 0 1 20 19.25H4A2.25 2.25 0 0 1 1.75 17V7A2.25 2.25 0 0 1 4 4.75zM8.25 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm7.5 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>`;
+}
+
+/** Generated inclusive demo faces for How it works slides (not real contacts). */
+function tutorialFaceHtml(file, alt) {
+  return `<img class="tutorial-face" src="/assets/tutorial/${file}" width="320" height="320" alt="${alt}" />`;
+}
+
+function tutorialFaceCardHtml(file, name) {
+  return `<figure class="tutorial-face-card">
+    ${tutorialFaceHtml(file, name)}
+    <figcaption>${name}</figcaption>
+  </figure>`;
 }
 
 function tutorialScene(id) {
   if (id === "brand") {
     return `
       <div class="scene scene-brand">
-        <div class="scene-brand-mark">${logoMarkHtml()}</div>
-        ${brandWordmarkHtml("brand scene-brand-wordmark")}
-        <p class="scene-caption">Home phone energy · family only</p>
+        ${brandSplashHeroHtml()}
       </div>`;
   }
-  if (id === "lines") {
+  if (id === "treehouse" || id === "playroom" || id === "familyroom") {
     return `
-      <div class="scene scene-lines">
-        <div class="scene-line-cards">
-          <div class="scene-line parent">
-            <div class="scene-avatar">P</div>
-            <div>
-              <strong>Parent</strong>
-              <small>Picture · greeting · Parent tools</small>
-            </div>
-          </div>
-          <div class="scene-line kid">
-            <div class="scene-avatar kid">K</div>
-            <div>
-              <strong>Kid line</strong>
-              <small>Pad · analog handset · Messages</small>
-            </div>
-          </div>
+      <div class="scene scene-th-room">
+        <div class="scene-th-kids">
+          ${tutorialFaceCardHtml("kid-maya.jpg", "Maya")}
+          ${tutorialFaceCardHtml("kid-jamal.jpg", "Jamal")}
+          ${tutorialFaceCardHtml("kid-sofia.jpg", "Sofia")}
         </div>
-        <p class="scene-caption">Name · photo · voicemail greeting</p>
+        <div class="scene-th-pad">
+          ${tutorialTreeHouseHouseHtml()}
+          <span class="scene-th-pad-n">0</span>
+          <strong>TreeHouse</strong>
+        </div>
+        <p class="scene-th-listen">Maya’s parent is listening</p>
       </div>`;
   }
-  if (id === "analog") {
+  if (id === "circles") {
     return `
-      <div class="scene scene-analog">
-        <div class="scene-handset" aria-hidden="true">
-          <span class="scene-handset-ear"></span>
-          <span class="scene-handset-body">0</span>
-          <span class="scene-handset-mouth"></span>
+      <div class="scene scene-kid-calls">
+        <div class="scene-kid-calls-who">
+          ${tutorialFaceHtml("kid-maya.jpg", "Maya")}
+          <p>Maya can call</p>
         </div>
-        <div class="scene-controls">
-          <div class="scene-chip accent">Always on</div>
-          <div class="scene-chip">Dial 0 · Parent</div>
+        <div class="scene-kid-calls-list">
+          ${tutorialFaceCardHtml("grand-eleanor.jpg", "Grandma")}
+          ${tutorialFaceCardHtml("cousin-priya.jpg", "Priya")}
+          ${tutorialFaceCardHtml("parent-kenji.jpg", "Dad")}
         </div>
-        <p class="scene-caption">Kid line · analog handset</p>
       </div>`;
   }
-  if (id === "dial") {
+  if (id === "invite") {
+    let demoUrl = "https://y5876647.eero.online:8443/";
+    try {
+      if (location.protocol === "https:" && location.host) demoUrl = `${location.origin}/`;
+    } catch {
+      /* bundled / file */
+    }
+    const qr = inviteQrSvg(demoUrl);
+    return `
+      <div class="scene scene-invite">
+        <figure class="tutorial-invite-visual">
+          <img src="/assets/analog/invite-qr-table.jpg" width="1536" height="1024" alt="Two parents at the table. One shows a PhoneHome QR code; the other is ready to scan." />
+          ${
+            qr
+              ? `<div class="tutorial-invite-qr" role="img" aria-label="Example PhoneHome QR code">${qr}</div>`
+              : ""
+          }
+        </figure>
+      </div>`;
+  }
+  if (id === "phone") {
     return `
       <div class="scene scene-phone">
-        <div class="scene-dial">
-          <span class="on">1<div>Maya</div></span>
-          <span>2<div>Gram</div></span>
-          <span>3<div>Sam</div></span>
+        <div class="scene-phone-app">
+          <span class="scene-way-label">In the app</span>
+          <div class="scene-way-faces">
+            ${tutorialFaceCardHtml("grand-nokomis.jpg", "Grandma")}
+            ${tutorialFaceCardHtml("kid-owen.jpg", "Owen")}
+            ${tutorialFaceCardHtml("parent-kenji.jpg", "Dad")}
+          </div>
         </div>
-        <p class="scene-caption">Photos on the pad · glow when online</p>
+        <div class="scene-phone-house">
+          <span class="scene-way-label">House phone</span>
+          <img class="scene-way-photo" src="/assets/analog/kid-landline-call.jpg" width="1280" height="720" alt="A kid talking on a house landline" />
+        </div>
       </div>`;
   }
-  if (id === "sounds") {
+  if (id === "next") {
     return `
-      <div class="scene scene-sounds">
-        <div class="scene-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="scene-controls">
-          <div class="scene-chip">Dial tone</div>
-          <div class="scene-chip accent">DTMF</div>
-          <div class="scene-chip">Ringback</div>
-        </div>
-        <p class="scene-caption">Sounds like the kitchen phone</p>
-      </div>`;
-  }
-  if (id === "messages") {
-    return `
-      <div class="scene scene-messages">
-        <div class="scene-vm">“Hi — leave a message after the beep.”</div>
-        <div class="scene-controls" style="margin-top:14px">
-          <div class="scene-chip accent">Play</div>
-          <div class="scene-chip">Skip</div>
-          <div class="scene-chip danger">Delete</div>
-        </div>
-        <p class="scene-caption">Answering machine, not chat</p>
+      <div class="scene scene-next">
+        <ol class="tutorial-next-steps">
+          <li>
+            ${tutorialFaceHtml("parent-amara.jpg", "A parent")}
+            <span><strong>Sign in</strong><small>Your account</small></span>
+          </li>
+          <li>
+            ${tutorialFaceHtml("kid-maya.jpg", "A child")}
+            <span><strong>Add a kid</strong><small>Their phone</small></span>
+          </li>
+          <li>
+            ${tutorialFaceHtml("grand-eleanor.jpg", "Grandma")}
+            <span><strong>Invite family</strong><small>One person to start</small></span>
+          </li>
+        </ol>
       </div>`;
   }
   if (id === "install") {
     const platform = installPlatform();
     const canQuick = Boolean(deferredInstallPrompt);
-    const chips =
+    const steps =
       platform === "ios"
-        ? `<div class="scene-chip">Safari</div><div class="scene-chip accent">Share</div><div class="scene-chip">Add to Home Screen</div>`
+        ? ["Safari", "Share", "Add to Home Screen"]
         : platform === "android"
           ? canQuick
-            ? `<div class="scene-chip accent">Install</div><div class="scene-chip">Home screen</div>`
-            : `<div class="scene-chip">Chrome</div><div class="scene-chip accent">⋮ Menu</div><div class="scene-chip">Install app</div>`
-          : `<div class="scene-chip">iOS Share</div><div class="scene-chip accent">Add to Home</div><div class="scene-chip">Android Install</div>`;
-    const caption =
-      platform === "ios"
-        ? "Safari · Share · Home Screen"
-        : platform === "android"
-          ? canQuick
-            ? "One tap install when Chrome offers it"
-            : "Chrome · menu · Install / Add to Home"
-          : "Phone tip · works best on mobile";
+            ? ["Tap Install", "Open from Home"]
+            : ["Chrome menu", "Install app"]
+          : ["Share or Install", "Add to Home Screen"];
     return `
       <div class="scene scene-install">
         <div class="scene-home-icon" aria-hidden="true">
           <span class="scene-home-glyph">${logoMarkHtml()}</span>
           <span class="scene-home-label">PhoneHome</span>
         </div>
-        <div class="scene-controls">${chips}</div>
-        <p class="scene-caption">${caption}</p>
+        <ol class="tutorial-next-steps tutorial-install-steps">
+          ${steps
+            .map(
+              (label, i) =>
+                `<li><span class="splash-path-n">${i + 1}</span><span><strong>${label}</strong></span></li>`
+            )
+            .join("")}
+        </ol>
       </div>`;
   }
-  return `
-    <div class="scene scene-safety">
-      <div class="scene-lock"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 9V7a5 5 0 0 0-10 0v2H5v12h14V9h-2zm-8 0V7a3 3 0 0 1 6 0v2H9z"/></svg></div>
-      <div class="scene-controls">
-        <div class="scene-chip accent">Quiet Time</div>
-        <div class="scene-chip danger">PIN</div>
-        <div class="scene-chip">Child mode</div>
-        <div class="scene-chip">Activity</div>
-      </div>
-      <p class="scene-caption">Parents hold the keys</p>
-    </div>`;
+  if (id === "safety") {
+    return `
+      <div class="scene scene-safety">
+        <ul class="scene-safety-cards">
+          <li>
+            <strong>Encrypted</strong>
+            <span>App and house phone. We don't listen in.</span>
+          </li>
+          <li>
+            <strong>Your tools</strong>
+            <span>Quiet Time, PIN, and Timeout</span>
+          </li>
+          <li>
+            <strong>Activity</strong>
+            <span>Who called — not what they said</span>
+          </li>
+        </ul>
+      </div>`;
+  }
+  if (id === "themes") {
+    return `
+      <div class="scene scene-themes">
+        ${uiThemeSelectorHtml({ bare: true })}
+      </div>`;
+  }
+  return "";
 }
 
 
@@ -5796,18 +10099,30 @@ function advanceFromSplash() {
     clearTimeout(state.splashTimer);
     state.splashTimer = null;
   }
-  const done = localStorage.getItem(TUTORIAL_KEY) === "1";
-  state.screen = done ? "welcome" : "tutorial";
-  if (!done) state.tutorialIndex = 0;
+  // Splash already is How it works #1 (same hero + copy). Continue starts at “tap a face”.
+  state.tutorialFromSettings = false;
+  state.tutorialIndex = 1;
+  state.tutorialFarthest = 1;
+  state.screen = "tutorial";
+  render();
+}
+
+function skipSplashToSignIn() {
+  if (mustCompleteHowItWorks()) return;
+  if (state.splashTimer) {
+    clearTimeout(state.splashTimer);
+    state.splashTimer = null;
+  }
+  state.screen = "welcome";
   render();
 }
 
 /**
  * Cold-start splash: iOS Add to Home Screen steps (or compact tip for parents on other devices).
- * Hidden when already running as an installed / standalone app.
+ * Browser tabs only — hidden in the native app and installed PWA.
  */
 function splashHomescreenHtml() {
-  if (isPhoneHomeStandalone()) return "";
+  if (isInstalledPhoneHome()) return "";
   const onIos = installPlatform() === "ios";
   if (onIos) {
     const steps = ["Tap Share", "Add to Home Screen", "Tap Add"];
@@ -5824,31 +10139,40 @@ function splashHomescreenHtml() {
 
 function renderSplash() {
   const homescreen = splashHomescreenHtml();
+  if (state.splashTimer) {
+    clearTimeout(state.splashTimer);
+    state.splashTimer = null;
+  }
   app.innerHTML = `
-    <div class="splash ${homescreen ? "splash-with-setup" : ""}" id="splash-root" role="button" tabindex="0" aria-label="Continue">
+    <div class="splash splash-story-screen${homescreen ? " splash-with-setup" : ""}" id="splash-root">
       <div class="splash-glow" aria-hidden="true"></div>
-      <div class="splash-mark-wrap">
-        <span class="splash-ring"></span>
-        <span class="splash-ring delay"></span>
-        <div class="splash-mark">${logoMarkHtml()}</div>
+      ${brandSplashHeroHtml()}
+      <div class="splash-brand-copy">
+        ${tutorialSlideCopyHtml(tutorialBrandSlide())}
       </div>
-      ${brandWordmarkHtml("brand splash-brand")}
-      <p class="lede splash-lede">The home phone, remixed.</p>
-      <p class="splash-sub">Softphone or analog. Family only.</p>
+      ${splashPathPreviewHtml()}
       ${homescreen}
-      <div class="splash-progress" aria-hidden="true"><i></i></div>
-      <p class="splash-hint">Tap to continue</p>
+      <div class="splash-continue-row">
+        <button type="button" class="primary btn-block" id="splash-continue">How it works</button>
+        ${
+          mustCompleteHowItWorks()
+            ? ""
+            : `<button type="button" class="linkish auth-link" id="splash-signin">Already have an account? Sign in</button>`
+        }
+      </div>
+      <p class="splash-hint" id="splash-hint">Next: How it works</p>
     </div>
   `;
-  const go = () => advanceFromSplash();
-  document.getElementById("splash-root")?.addEventListener("click", go);
-  document.getElementById("splash-root")?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      go();
-    }
+  document.getElementById("splash-continue")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    advanceFromSplash();
   });
-  state.splashTimer = setTimeout(go, homescreen ? 4800 : 3200);
+  document.getElementById("splash-signin")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    skipSplashToSignIn();
+  });
 }
 
 /**
@@ -5863,67 +10187,136 @@ function renderSetupChecklist() {
     render();
     return;
   }
+  const gp = isGrandparentExperience();
   const summary = parentSetupSummary(hh);
-  const { steps, requiredDone, requiredTotal, pct, allRequiredDone, openRequired } = summary;
+  const { steps, requiredDone, requiredTotal, pct, allRequiredDone, openRequired, optionalOpen } = summary;
   const next = openRequired[0] || steps.find((s) => !s.done) || null;
-  const title = allRequiredDone ? "You’re set" : "Finish parent setup";
-  const lede = allRequiredDone
-    ? "Required steps are done. Analog is optional anytime."
-    : `Progress from your family network — ${requiredDone} of ${requiredTotal} done. Tap a step to jump in.`;
+  const nextOpenIdx = steps.findIndex((s) => !s.done);
+  const analogOpen = optionalOpen.some((s) => s.id === "analog");
+  const title = gp
+    ? allRequiredDone
+      ? "You’re all set"
+      : "A few steps to get started"
+    : allRequiredDone
+      ? "You’re set"
+      : "Finish family setup";
+  const lede = gp
+    ? allRequiredDone
+      ? analogOpen
+        ? "Tap button 1 once to call your family. A regular house phone is optional."
+        : "Tap button 1 once to call your family."
+      : "We will walk you through it. Big buttons. Plain words."
+    : allRequiredDone
+      ? analogOpen
+        ? "The family line is ready. A house phone is optional."
+        : "The family line is ready. Go call someone."
+      : `${requiredDone} of ${requiredTotal} required — tap a step to jump in.`;
+  const checkSvg =
+    '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M9.3 16.3 5 12l1.4-1.4 2.9 2.9 8.3-8.3L19 6.6z"/></svg>';
+  const chevronSvg =
+    '<svg class="setup-step-chevron" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>';
 
-  app.innerHTML = `
-    <div class="setup-board" id="setup-board">
-      <div class="setup-board-hero">
-        ${brandWordmarkHtml("brand splash-brand")}
-        <h1>${title}</h1>
-        <p class="lede">${lede}</p>
-        <div class="setup-board-progress" aria-label="${requiredDone} of ${requiredTotal} required steps">
-          <div class="setup-board-progress-meta">
-            <span>${allRequiredDone ? "All required done" : "Your progress"}</span>
-            <strong>${pct}%</strong>
-          </div>
-          <div class="setup-board-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
+  const listHtml = steps
+    .map((step, i) => {
+      const isNow = !step.done && i === nextOpenIdx;
+      const cls = [step.done ? "done" : "", isNow ? "now" : "", step.required ? "" : "optional"]
+        .filter(Boolean)
+        .join(" ");
+      const status = step.done ? "Done" : isNow ? "Next" : step.required ? "To do" : "Optional";
+      const detail = String(step.detail || "").replace(/</g, "&lt;");
+      const label = String(step.label || "").replace(/</g, "&lt;");
+      const mark = step.done
+        ? `<span class="setup-step-mark is-done" aria-hidden="true">${checkSvg}</span>`
+        : `<span class="setup-step-mark ${isNow ? "is-now" : ""}" aria-hidden="true">${i + 1}</span>`;
+      const scroll = step.scrollTo || "";
+      const action = step.action || "";
+      return `<li class="${cls}" data-step="${step.id}">
+        <button type="button" class="setup-step-go" data-setup-step="${step.id}" data-scroll="${scroll}" data-action="${action}">
+          ${mark}
+          <span class="setup-step-copy">
+            <strong>${label}</strong>
+            <span>${detail}</span>
+          </span>
+          <em class="setup-step-status">${status}</em>
+          ${chevronSvg}
+        </button>
+      </li>`;
+    })
+    .join("");
+
+  const progressHtml = allRequiredDone
+    ? `<p class="setup-board-ready">${checkSvg} ${gp ? "You can make calls now" : "All required steps done"}</p>`
+    : gp
+      ? `<p class="setup-board-ready gp-setup-hint">${
+          openRequired[0]
+            ? String(openRequired[0].detail || openRequired[0].label).replace(/</g, "&lt;")
+            : "A few things left"
+        }</p>`
+      : `<div class="setup-board-progress" aria-label="${requiredDone} of ${requiredTotal} required steps">
+        <div class="setup-board-progress-meta">
+          <span>${requiredDone} of ${requiredTotal} required</span>
+          <strong>${pct}%</strong>
         </div>
-      </div>
-      <ol class="setup-steps setup-board-list" aria-label="Parent setup checklist">
-        ${steps
-          .map((step, i) => {
-            const cls = step.done ? "done" : i === steps.findIndex((s) => !s.done) ? "now" : "";
-            const status = step.done ? "Done" : step.required ? "To do" : "Optional";
-            const detail = String(step.detail || "").replace(/</g, "&lt;");
-            const label = String(step.label || "").replace(/</g, "&lt;");
-            if (step.done) {
-              return `<li class="${cls}" data-step="${step.id}">
-                <div class="setup-step-go" aria-hidden="true">
-                  <strong>${label}</strong>
-                  <span>${detail}</span>
-                  <em class="setup-step-status">${status}</em>
-                </div>
-              </li>`;
-            }
-            return `<li class="${cls}">
-              <button type="button" class="setup-step-go" data-setup-step="${step.id}" data-scroll="${step.scrollTo}">
-                <strong>${label}</strong>
-                <span>${detail}</span>
-                <em class="setup-step-status">${status}</em>
-              </button>
-            </li>`;
-          })
-          .join("")}
-      </ol>
-      <div class="btn-row ${next && !allRequiredDone ? "two" : ""} setup-board-actions">
-        <button type="button" class="ghost" id="setup-skip">${allRequiredDone ? "Go to phone" : "Skip for now"}</button>
+        <div class="setup-board-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
+      </div>`;
+
+  const topActions = allRequiredDone
+    ? `<div class="setup-board-actions setup-board-actions-top">
+        <button type="button" class="primary btn-block" id="setup-skip">${gp ? "Go to my phone" : "Go to phone"}</button>
         ${
-          next && !allRequiredDone
-            ? `<button type="button" class="primary" id="setup-next">Continue · ${String(next.label).replace(/</g, "&lt;")}</button>`
+          analogOpen
+            ? `<button type="button" class="ghost btn-block" id="setup-analog">${gp ? "Set up a regular house phone" : "Set up house phone"}</button>`
             : ""
         }
-      </div>
-      <p class="tiny setup-board-note">Calling stays available — reopen anytime from Parent → Help → Finish setup.</p>
+      </div>`
+    : "";
+
+  const bottomActions = allRequiredDone
+    ? ""
+    : `<div class="btn-row ${next ? "two" : ""} setup-board-actions">
+        <button type="button" class="ghost" id="setup-skip">${gp ? "Skip for now — go to phone" : "Skip for now"}</button>
+        ${
+          next
+            ? `<button type="button" class="primary" id="setup-next">${gp ? "Next step" : `Next · ${String(next.label).replace(/</g, "&lt;")}`}</button>`
+            : ""
+        }
+      </div>`;
+
+  const listHead = allRequiredDone ? (gp ? "Finished" : "Finished") : gp ? "What to do" : "Your list";
+  const note = gp
+    ? allRequiredDone
+      ? "Need help later? Open Settings at the bottom, then Your family."
+      : "You can still use the phone. Open Settings anytime if you get stuck."
+    : allRequiredDone
+      ? "Reopen anytime from Parent → Help → Finish setup."
+      : "Calling stays available — reopen anytime from Parent → Help → Finish setup.";
+
+  app.innerHTML = `
+    <div class="setup-board${allRequiredDone ? " is-complete" : ""}${gp ? " gp-setup-board" : ""}" id="setup-board">
+      <header class="setup-board-hero">
+        ${brandWordmarkHtml("brand splash-brand")}
+        <p class="tutorial-kicker">${gp ? "Simple setup" : "Family setup"}</p>
+        <h1>${title}</h1>
+        <p class="lede">${lede}</p>
+        ${progressHtml}
+      </header>
+      ${topActions}
+      <section class="sheet control-card setup-card setup-checklist" aria-labelledby="setup-list-head">
+        <div class="setup-card-head">
+          <h2 id="setup-list-head">${listHead}</h2>
+          ${gp ? "" : `<p class="tiny">${requiredDone}/${requiredTotal} required</p>`}
+        </div>
+        <ol class="setup-board-list" aria-label="${gp ? "Grandparent setup" : "Parent setup checklist"}">
+          ${listHtml}
+        </ol>
+      </section>
+      ${gp ? uiThemeSelectorHtml({ setup: true, grandparent: true }) : uiThemeSelectorHtml({ setup: true })}
+      ${bottomActions}
+      <p class="tiny setup-board-note">${note}</p>
     </div>
   `;
 
-  const goStep = async (scrollTo) => {
+  const goParentStep = async (scrollTo) => {
     state.setupForceShow = false;
     dismissSetupChecklist();
     await openParentPanel({ scrollTo });
@@ -5931,11 +10324,21 @@ function renderSetupChecklist() {
 
   document.querySelectorAll("[data-setup-step]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      void goStep(btn.getAttribute("data-scroll") || "parent-line");
+      if (gp) {
+        void runGrandparentSetupAction(btn.getAttribute("data-action") || "family");
+      } else {
+        void goParentStep(btn.getAttribute("data-scroll") || "parent-line");
+      }
     });
   });
   document.getElementById("setup-next")?.addEventListener("click", () => {
-    if (next) void goStep(next.scrollTo);
+    if (!next) return;
+    if (gp) void runGrandparentSetupAction(next.action || "family");
+    else void goParentStep(next.scrollTo);
+  });
+  document.getElementById("setup-analog")?.addEventListener("click", () => {
+    if (gp) void runGrandparentSetupAction("analog");
+    else void goParentStep("parent-ata");
   });
   document.getElementById("setup-skip")?.addEventListener("click", () => {
     dismissSetupChecklist();
@@ -5944,17 +10347,40 @@ function renderSetupChecklist() {
     localStorage.setItem("kl_nav", "phone");
     render();
   });
+  bindUiThemeSelector(document.getElementById("setup-board") || document);
 }
 
-function finishTutorial() {
+
+function finishTutorial({ completed = false } = {}) {
+  if (isForcedHowItWorksRun() && !completed) return;
   localStorage.setItem(TUTORIAL_KEY, "1");
-  if (state.tutorialFromSettings) {
-    state.tutorialFromSettings = false;
+  if (completed) {
+    try {
+      localStorage.setItem(HOW_IT_WORKS_INSTALL_KEY, "1");
+    } catch {
+      /* private mode */
+    }
+  }
+  const fromSettings = state.tutorialFromSettings;
+  state.tutorialFromSettings = false;
+  if (fromSettings) {
     if (state.user) {
       state.nav = "controls";
       state.parentScrollTo = "parent-help";
       state.screen = "home";
     } else state.screen = "welcome";
+  } else if (state.user) {
+    const hh = state.households[0];
+    if (!hh || !hh.lines?.length) {
+      state.screen = state.mode === "join" ? "join" : "host";
+    } else {
+      state.screen = "home";
+      state.nav = "phone";
+      localStorage.setItem("kl_nav", "phone");
+    }
+    void bootIosCallKit();
+  } else if (state.pendingGuardianCode) {
+    state.screen = "login";
   } else {
     state.screen = "welcome";
   }
@@ -5967,37 +10393,45 @@ function renderTutorial() {
   const slide = slides[state.tutorialIndex];
   const last = state.tutorialIndex === slides.length - 1;
   const n = slides.length;
+  const forced = isForcedHowItWorksRun();
   const canQuickInstall = slide.id === "install" && Boolean(deferredInstallPrompt);
+  const progressSegs = Array.from({ length: n }, (_, i) => {
+    const cls = i === state.tutorialIndex ? "on" : i < state.tutorialIndex ? "done" : "";
+    const locked = forced && i > state.tutorialFarthest;
+    if (locked) return `<span class="tp-seg ${cls}" aria-hidden="true"></span>`;
+    return `<button type="button" class="tp-seg ${cls}" data-jump="${i}" aria-label="Go to step ${i + 1}"></button>`;
+  }).join("");
   app.innerHTML = `
     <div class="tutorial" id="tutorial-root">
       <div class="tutorial-top">
-        <button type="button" class="linkish tutorial-skip-top" id="skip">Skip</button>
+        ${forced ? "" : `<button type="button" class="linkish tutorial-skip-top" id="skip">Skip</button>`}
         <div class="tutorial-progress" aria-label="Step ${state.tutorialIndex + 1} of ${n}">
-          ${Array.from({ length: n }, (_, i) => `<button type="button" class="tp-seg ${i === state.tutorialIndex ? "on" : i < state.tutorialIndex ? "done" : ""}" data-jump="${i}" aria-label="Go to step ${i + 1}"></button>`).join("")}
+          ${progressSegs}
         </div>
       </div>
-      <div class="tutorial-body">
-        <div class="tutorial-visual scene-${slide.id}">
-          ${tutorialScene(slide.id)}
+      <div class="tutorial-stage">
+        <div class="tutorial-body">
+          <div class="tutorial-visual scene-${slide.id}">
+            ${tutorialScene(slide.id)}
+          </div>
+          ${tutorialSlideCopyHtml(slide)}
         </div>
-        <p class="tutorial-kicker">${slide.kicker}</p>
-        <h2>${slide.title}</h2>
-        <p>${slide.body}</p>
-      </div>
-      <div class="tutorial-footer">
-        ${canQuickInstall ? `<button class="primary" id="pwa-install" type="button">Install</button>` : ""}
-        <div class="btn-row ${state.tutorialIndex > 0 ? "two" : ""}">
-          ${state.tutorialIndex > 0 ? `<button class="ghost" id="prev">Back</button>` : ""}
-          <button class="${canQuickInstall ? "ghost" : "primary"}" id="next">${last ? "Let’s go" : "Next"}</button>
+        <div class="tutorial-footer">
+          ${canQuickInstall ? `<button class="primary" id="pwa-install" type="button">Install</button>` : ""}
+          <div class="btn-row ${state.tutorialIndex > 0 ? "two" : ""}">
+            ${state.tutorialIndex > 0 ? `<button class="ghost" id="prev">Back</button>` : ""}
+            <button class="${canQuickInstall ? "ghost" : "primary"}" id="next">${last ? "Let’s go" : "Next"}</button>
+          </div>
         </div>
       </div>
     </div>
   `;
 
   const goNext = () => {
-    if (last) finishTutorial();
+    if (last) finishTutorial({ completed: true });
     else {
       state.tutorialIndex += 1;
+      state.tutorialFarthest = Math.max(state.tutorialFarthest || 0, state.tutorialIndex);
       render();
     }
   };
@@ -6020,13 +10454,23 @@ function renderTutorial() {
   });
   document.getElementById("next").onclick = goNext;
   document.getElementById("prev")?.addEventListener("click", goPrev);
-  document.getElementById("skip")?.addEventListener("click", finishTutorial);
+  document.getElementById("skip")?.addEventListener("click", () => finishTutorial());
   document.querySelectorAll("[data-jump]").forEach((btn) => {
     btn.onclick = () => {
-      state.tutorialIndex = Number(btn.getAttribute("data-jump"));
+      const jump = Number(btn.getAttribute("data-jump"));
+      if (forced && jump > state.tutorialFarthest) return;
+      state.tutorialIndex = jump;
       render();
     };
   });
+  if (slide.id === "themes") {
+    bindUiThemeSelector(document.querySelector(".scene-themes") || document);
+    document.querySelector(".scene-themes .theme-grid")?.addEventListener(
+      "touchstart",
+      (e) => e.stopPropagation(),
+      { passive: true }
+    );
+  }
 
   const root = document.getElementById("tutorial-root");
   let startX = 0;
@@ -6099,7 +10543,7 @@ function renderHost() {
               <label for="line-name">Line name</label>
               <input id="line-name" placeholder="e.g. Trevor’s phone" value="${state.user.display_name}'s phone" enterkeyhint="go" />
             </div>
-            <button class="primary btn-block" type="submit" id="add-line">Add softphone</button>
+            <button class="primary btn-block" type="submit" id="add-line">Add app</button>
           </form>`
                 : `
           <div class="auth-head">
@@ -6130,7 +10574,7 @@ function renderHost() {
         }),
       });
       state.sessionId = data.sessionId;
-      localStorage.setItem("kl_session", data.sessionId);
+      await persistSession(data.sessionId);
       await refresh();
     } catch (e) {
       setFlash(e.message, "error");
@@ -6157,7 +10601,7 @@ function renderHost() {
       await api(`/api/households/${hh.id}/lines`, {
         method: "POST",
         body: JSON.stringify({
-          name: document.getElementById("line-name").value || "Softphone",
+          name: document.getElementById("line-name").value || "App",
           type: "softphone",
         }),
       })
@@ -6241,7 +10685,7 @@ function renderJoin() {
               <label for="line-name">Line name</label>
               <input id="line-name" placeholder="e.g. Kitchen phone" value="${state.user.display_name}'s phone" enterkeyhint="go" />
             </div>
-            <button class="primary btn-block" type="submit" id="add-line">Add softphone</button>
+            <button class="primary btn-block" type="submit" id="add-line">Add app</button>
           </form>`
                 : `
           <div class="auth-head">
@@ -6276,7 +10720,11 @@ function renderJoin() {
         }),
       });
       state.sessionId = data.sessionId;
-      localStorage.setItem("kl_session", data.sessionId);
+      await persistSession(data.sessionId);
+      await persistPasswordLogin(
+        document.getElementById("reg-user").value.trim(),
+        document.getElementById("reg-pass").value
+      );
       setFlash("");
       await refresh();
     } catch (err) {
@@ -6309,7 +10757,7 @@ function renderJoin() {
       await api(`/api/households/${hh.id}/lines`, {
         method: "POST",
         body: JSON.stringify({
-          name: document.getElementById("line-name").value || "Softphone",
+          name: document.getElementById("line-name").value || "App",
           type: "softphone",
         }),
       })
@@ -6339,15 +10787,19 @@ function dockIndex(active) {
 
 function dockHtml(active) {
   const unreadVm = unreadVoicemailCount();
+  const gp = isGrandparentExperience();
+  const settingsLabel = gp ? "Settings" : "Parent";
+  const activityLabel = gp ? "Recent" : "Activity";
+  const messagesLabel = gp ? "Messages" : "Messages";
   const parentBtn = isChildMode()
     ? `<button type="button" class="dock-btn" data-nav="parent-unlock"><span>${parentSvg()}</span>Parent</button>`
-    : `<button type="button" class="dock-btn ${active === "controls" ? "on" : ""}" data-nav="controls"><span>${parentSvg()}</span>Parent</button>`;
+    : `<button type="button" class="dock-btn ${active === "controls" ? "on" : ""}" data-nav="controls"><span>${parentSvg()}</span>${settingsLabel}</button>`;
   return `
-    <nav class="dock" style="--dock-i:${dockIndex(active)}" aria-label="Main">
+    <nav class="dock" data-gp-chrome="${gp ? "1" : "0"}" style="--dock-i:${dockIndex(active)}" aria-label="Main">
       <i class="dock-indicator" aria-hidden="true"></i>
-      <button type="button" class="dock-btn ${active === "phone" ? "on" : ""}" data-nav="phone"><span>${phoneSvg()}</span>Phone</button>
-      <button type="button" class="dock-btn ${active === "activity" ? "on" : ""}" data-nav="activity"><span>${activitySvg()}</span>Activity</button>
-      <button type="button" class="dock-btn ${active === "voicemail" ? "on" : ""}" data-nav="voicemail"><span>${voicemailSvg()}</span>Messages${unreadVm ? `<em class="${unreadVm ? "blink" : ""}">${Math.min(unreadVm, 9)}</em>` : ""}</button>
+      <button type="button" class="dock-btn ${active === "phone" ? "on" : ""}" data-nav="phone"><span>${dockPhoneIconHtml()}</span>Phone</button>
+      <button type="button" class="dock-btn ${active === "activity" ? "on" : ""}" data-nav="activity"><span>${activitySvg()}</span>${activityLabel}</button>
+      <button type="button" class="dock-btn ${active === "voicemail" ? "on" : ""}" data-nav="voicemail"><span>${voicemailSvg()}</span>${messagesLabel}${unreadVm ? `<em class="${unreadVm ? "blink" : ""}">${Math.min(unreadVm, 9)}</em>` : ""}</button>
       ${parentBtn}
     </nav>`;
 }
@@ -6370,9 +10822,9 @@ function chromeWhoLabel() {
     const person = state.user?.display_name || (isKidExperience() ? "Kid" : "Parent");
     return isKidExperience() ? `Profile · ${lineLabel}` : `Profile · ${person} · ${lineLabel}`;
   }
-  if (state.nav === "activity") return "Activity";
+  if (state.nav === "activity") return isGrandparentExperience() ? "Recent calls" : "Activity";
   if (state.nav === "voicemail") return "Messages";
-  if (state.nav === "controls") return "Parent";
+  if (state.nav === "controls") return isGrandparentExperience() ? "Settings" : "Parent";
   const hh = state.households[0];
   const family = hh?.name || "Family";
   if (isKidExperience()) {
@@ -6380,6 +10832,15 @@ function chromeWhoLabel() {
     return family.trim().toLowerCase() === String(person).trim().toLowerCase()
       ? `Child · ${person}`
       : `Child · ${family}`;
+  }
+  if (isGrandparentExperience()) {
+    const rel = gpPreviewRelative();
+    if (rel) {
+      const name = rel.display_label || rel.display_name || "Grandparent";
+      return `Preview · ${name}`;
+    }
+    const person = state.user?.display_name || "Family";
+    return `Family · ${person}`;
   }
   const active = activeLine();
   const asKid = active?.mode === "child" ? kidLineShortName(active) : null;
@@ -6425,7 +10886,10 @@ function syncPersistentDock(active = chromeDockNav()) {
   if (!dock) return;
   const wantUnlock = isChildMode();
   const hasUnlock = Boolean(dock.querySelector('[data-nav="parent-unlock"]'));
-  if (wantUnlock !== hasUnlock) {
+  const wantGp = isGrandparentExperience();
+  const hasGp = dock.dataset.gpChrome === "1";
+  if (wantUnlock !== hasUnlock || wantGp !== hasGp) {
+    // Rebuild when Child unlock or Parent↔Settings labels change (incl. GP preview).
     dock.outerHTML = dockHtml(active);
     return;
   }
@@ -6457,13 +10921,25 @@ async function onDockNav(nav) {
   state.nav = nav;
   localStorage.setItem("kl_nav", nav);
   state.screen = "home";
+  if (nav === "activity") markMissedCallsSeen();
   render();
+  void syncIosAppBadge();
 }
 
 function bindAppChrome(shell) {
   if (!shell || shell.dataset.chromeBound === "1") return;
   shell.dataset.chromeBound = "1";
   shell.addEventListener("click", (e) => {
+    const brandHome = e.target.closest(".home-brand-lockup");
+    if (brandHome) {
+      void onDockNav("phone");
+      return;
+    }
+    const talkToday = e.target.closest("button.usage-bar");
+    if (talkToday) {
+      void onDockNav("activity");
+      return;
+    }
     const dockBtn = e.target.closest(".dock [data-nav]");
     if (dockBtn) {
       void onDockNav(dockBtn.getAttribute("data-nav"));
@@ -6510,7 +10986,7 @@ function ensureAppChrome() {
       <div class="app-shell ${phoneFit ? "phone-fit" : ""} ${shellModeClass()}" id="app-shell">
         <div class="topbar" id="app-topbar">
           <div class="home-brand">
-            <div class="mark wordmark home-wordmark">Phone<span>Home</span></div>
+            ${homeBrandLockupHtml()}
             <div class="who" id="app-topbar-who"></div>
           </div>
           <div id="app-topbar-end"></div>
@@ -6525,6 +11001,7 @@ function ensureAppChrome() {
     shell.classList.toggle("phone-fit", phoneFit);
     shell.classList.toggle("parent-chrome", !isKidExperience());
     shell.classList.toggle("child-chrome", isKidExperience());
+    shell.classList.toggle("grandparent-chrome", isGrandparentExperience());
     syncPersistentDock(dockNav);
   }
   syncPersistentTopbar();
@@ -6710,51 +11187,98 @@ function activityInsightsHtml(hh, lineId) {
 function usageBarHtml(hh) {
   const cap = hh?.daily_cap_minutes;
   const used = hh?.usage_today_minutes || 0;
+  const a11y = `aria-label="Open activity" title="Open activity"`;
   if (cap == null) {
-    return `<div class="usage-bar open"><div class="usage-meta"><span>Talk today</span><strong>${used} min</strong></div></div>`;
+    return `<button type="button" class="usage-bar open" ${a11y}><div class="usage-meta"><span>Talk today</span><strong>${used} min</strong></div></button>`;
   }
   const pct = Math.min(100, Math.round((used / Math.max(cap, 1)) * 100));
   const hot = pct >= 90;
-  return `<div class="usage-bar ${hot ? "hot" : ""}">
+  return `<button type="button" class="usage-bar ${hot ? "hot" : ""}" ${a11y}>
     <div class="usage-meta"><span>Talk today</span><strong>${used} / ${cap} min</strong></div>
     <div class="usage-track"><i style="width:${pct}%"></i></div>
-  </div>`;
+  </button>`;
 }
 
 function statusLine(hh, onlineCount) {
-  if (hh.kill_switch) return { text: "Timeout is on", live: false, danger: true };
-  if (hh.dnd) return { text: "Quiet Time on — VIP still ring", live: false, danger: true };
+  const gp = isGrandparentExperience();
+  if (hh.kill_switch) {
+    return { text: gp ? "Calls are paused" : "Timeout is on", live: false, danger: true };
+  }
+  if (hh.dnd) {
+    return {
+      text: gp ? "Phone is silent" : "Quiet Time on — VIP still ring",
+      live: false,
+      danger: true,
+    };
+  }
   if (isQuietHoursActiveClient(hh)) {
     const name = quietWindowName(hh);
     const range = `${formatQuietClock(hh.quiet_start)}–${formatQuietClock(hh.quiet_end)}`;
     return { text: `${name} · ${range}`, live: false };
   }
+  if (isParentDndActiveClient(hh)) {
+    return {
+      text: `Your phone · ${formatQuietClock(hh.parent_quiet_start)}–${formatQuietClock(hh.parent_quiet_end)}`,
+      live: false,
+    };
+  }
   if (state.ataPreferred) {
-    return { text: "Calls ring the analog phone", live: true };
+    return {
+      text: gp ? "Calls go to the house phone" : "Calls ring the analog phone",
+      live: true,
+    };
   }
   const cap = hh.daily_cap_minutes;
   const used = hh.usage_today_minutes || 0;
-  if (cap != null) return { text: `${used}/${cap} min today · ${onlineCount} online`, live: onlineCount > 0 };
+  if (cap != null) {
+    return {
+      text: gp
+        ? `${used} of ${cap} minutes used today`
+        : `${used}/${cap} min today · ${onlineCount} online`,
+      live: onlineCount > 0,
+    };
+  }
   return {
-    text: onlineCount ? `${onlineCount} online` : "Waiting for family",
+    text: onlineCount
+      ? gp
+        ? onlineCount === 1
+          ? "1 person is free to call"
+          : `${onlineCount} people are free to call`
+        : `${onlineCount} online`
+      : gp
+        ? "Ready when you are"
+        : "Waiting for family",
     live: onlineCount > 0,
   };
 }
 
 function approvalStatus(entry) {
-  if (entry?.mutual) return { ready: true, label: "Ready to call", badge: "ok" };
+  if (entry?.mutual) {
+    return {
+      ready: true,
+      label: isGrandparentExperience() ? "You can call" : "Ready to call",
+      badge: "ok",
+    };
+  }
   const who = contactDisplayName(entry || { label: "", target_line_id: "" }) || "them";
   if (isChildMode()) return { ready: false, label: `Waiting for ${who}`, badge: "wait" };
+  if (isGrandparentExperience()) {
+    return { ready: false, label: "They still need to add you", badge: "wait" };
+  }
   return { ready: false, label: "Needs their OK", badge: "wait" };
 }
 
-/** Other households’ lines not yet on our allowlist (and not declined). */
+/** Other households’ lines in our circle not yet on our allowlist (and not declined). */
 function pendingApprovals(hh) {
   const approved = new Set((hh?.allowlist || []).map((a) => a.target_line_id));
   const declined = new Set(hh?.declined_line_ids || []);
-  return (state.directory || []).filter(
-    (d) => d.household_id !== hh?.id && !approved.has(d.id) && !declined.has(d.id)
-  );
+  const mySphere = (hh?.spheres || []).find((s) => s.is_mine || s.id === hh?.my_sphere_id);
+  const inMyCircle = new Set(mySphere?.member_line_ids || []);
+  return (state.directory || []).filter((d) => {
+    if (d.household_id === hh?.id || approved.has(d.id) || declined.has(d.id)) return false;
+    if (inMyCircle.size && !inMyCircle.has(d.id)) return false;
+    return true;
+  });
 }
 
 function liveCallBannerHtml(hh) {
@@ -6775,6 +11299,56 @@ function liveCallBannerHtml(hh) {
 
 function unreadVoicemailCount(hh = state.households[0]) {
   return voicemailsForActiveLine(hh).filter((v) => !v.listened).length;
+}
+
+/** localStorage cursor: inbound missed calls at/before this ISO are "seen" for icon badge. */
+function missedSeenStorageKey(lineId = state.activeLineId) {
+  return lineId ? `ph_missed_seen_${lineId}` : "";
+}
+
+/**
+ * Inbound missed calls for the active line that the user hasn't opened Activity for yet.
+ * Outbound no-answer is the caller's leave-a-message flow, not a badge on their icon.
+ */
+function unseenMissedCallCount(hh = state.households[0]) {
+  const lineId = state.activeLineId;
+  if (!lineId) return 0;
+  const seenAt = localStorage.getItem(missedSeenStorageKey(lineId)) || "";
+  let n = 0;
+  for (const log of activityLogsForLine(hh?.call_logs, lineId)) {
+    if (log.outcome !== "missed") continue;
+    if (log.to_line_id !== lineId) continue;
+    const when = log.ended_at || log.started_at || "";
+    if (seenAt && when && when <= seenAt) continue;
+    n += 1;
+  }
+  // Optimistic CallKit bump only until the missed row shows up in call_logs.
+  if (n > 0) {
+    state.pendingNativeMissed = 0;
+    return n;
+  }
+  return Math.max(0, Number(state.pendingNativeMissed) || 0);
+}
+
+/** Badge = unread VM (server `listened`) + unseen inbound missed (local Activity cursor). */
+function iosAppBadgeCount(hh = state.households[0]) {
+  return unreadVoicemailCount(hh) + unseenMissedCallCount(hh);
+}
+
+function markMissedCallsSeen(hh = state.households[0]) {
+  const lineId = state.activeLineId;
+  const key = missedSeenStorageKey(lineId);
+  if (!key) return;
+  let max = localStorage.getItem(key) || "";
+  for (const log of activityLogsForLine(hh?.call_logs, lineId)) {
+    if (log.outcome !== "missed" || log.to_line_id !== lineId) continue;
+    const when = log.ended_at || log.started_at || "";
+    if (when > max) max = when;
+  }
+  const now = new Date().toISOString();
+  if (now > max) max = now;
+  localStorage.setItem(key, max);
+  state.pendingNativeMissed = 0;
 }
 
 /** Messages left *for* the Active line (recipient mailbox), not ones you left for others. */
@@ -6913,16 +11487,19 @@ function showWaitingSheet(contact, lineId) {
   const wrap = document.createElement("div");
   wrap.id = "wait-sheet";
   wrap.className = "sheet-modal";
+  const gpWait = isGrandparentExperience();
   wrap.innerHTML = `
     <div class="sheet-modal-card" role="dialog" aria-labelledby="wait-sheet-title">
-      <h2 id="wait-sheet-title">${isKidExperience() ? `Waiting for ${name}` : `${name} isn’t ready yet`}</h2>
+      <h2 id="wait-sheet-title">${isKidExperience() ? `Waiting for ${name}` : gpWait ? `Not quite yet` : `${name} isn’t ready yet`}</h2>
       <p>${
         isKidExperience()
           ? `They still need to approve you on their phone. Ask a parent if you need help.`
+          : gpWait
+            ? `<strong>${name}</strong> still needs to add you on their phone. Ask them (or their parent) to open PhoneHome and add you. Then you can call.`
           : `<strong>${name}</strong> still needs to approve you on their phone before you can call. Ask them to open Approve callers and add you.`
       }</p>
       <div class="btn-row ${canInviteFamily() ? "two" : ""}">
-        <button type="button" class="primary btn-block" id="wait-sheet-ok">Got it</button>
+        <button type="button" class="primary btn-block" id="wait-sheet-ok">${gpWait ? "OK" : "Got it"}</button>
         ${
           canInviteFamily()
             ? `<button type="button" class="ghost btn-block" id="wait-sheet-invite">Invite again</button>`
@@ -7004,7 +11581,7 @@ function patchHomePresence() {
 
 function renderPhone() {
   const hh = state.households[0];
-  if (shouldAutoOpenApprovals(hh)) {
+  if (!isGpPreviewMode() && shouldAutoOpenApprovals(hh)) {
     markApprovalsPrompted(hh);
     state.screen = "manage-contacts";
     render();
@@ -7027,48 +11604,102 @@ function renderPhone() {
   for (let i = 1; i <= 9; i++) {
     dialSlots.push(contacts.find((c) => Number(c.speed_dial) === i) || null);
   }
-  const homeSlot = contacts.find((c) => Number(c.speed_dial) === 0) || null;
+  const treeHouseTile = { familyRoom: true };
+  const activeLine = (hh?.lines || []).find((l) => l.id === state.activeLineId) || null;
+  const parentPad = Boolean(activeLine) && (activeLine.mode || "parent") !== "child";
 
+  const gpPad = isGrandparentExperience();
   const renderSpeedSlot = (c, n, extraClass = "") => {
+    if (c?.familyRoom || n === TREEHOUSE_SLOT) {
+      return renderTreeHouseSlot(extraClass);
+    }
     if (!c) {
-      if (n === 0) {
-        return `<button class="speed-slot empty pad-home slot-locked ${extraClass}" data-slot="0" type="button" disabled aria-label="Parent — unavailable on this line">
+      if (n === ADMIN_PARENT_SLOT) {
+        if (parentPad && gpPad) {
+          return `<button class="speed-slot empty pad-home ${extraClass}" data-slot="${ADMIN_PARENT_SLOT}" data-open-approvals="1" type="button" aria-label="Add family on dial 1">
             <span class="speed-face">
-              <span class="speed-placeholder speed-key-glyph" aria-hidden="true">0</span>
+              <span class="speed-placeholder speed-key-glyph" aria-hidden="true">${ADMIN_PARENT_SLOT}</span>
             </span>
-            <span class="speed-name">Parent</span>
+            <span class="speed-cap">
+              <strong class="speed-name">Family</strong>
+              <span class="speed-tap-hint">Tap to add them</span>
+            </span>
+          </button>`;
+        }
+        if (parentPad && !householdKidLines(hh).length) {
+          return `<button class="speed-slot empty pad-home ${extraClass}" data-slot="${ADMIN_PARENT_SLOT}" data-add-kid="1" type="button" aria-label="Add a kid">
+            <span class="speed-face">
+              <span class="speed-placeholder speed-key-glyph" aria-hidden="true">${ADMIN_PARENT_SLOT}</span>
+            </span>
+            <span class="speed-name">Add kid</span>
+          </button>`;
+        }
+        const emptyName = parentPad ? "Child" : "Parent";
+        return `<button class="speed-slot empty pad-home slot-locked ${extraClass}" data-slot="${ADMIN_PARENT_SLOT}" type="button" disabled aria-label="${emptyName} — unavailable on this line">
+            <span class="speed-face">
+              <span class="speed-placeholder speed-key-glyph" aria-hidden="true">${ADMIN_PARENT_SLOT}</span>
+            </span>
+            <span class="speed-name">${emptyName}</span>
           </button>`;
       }
-      return `<button class="speed-slot empty ${extraClass}" data-slot="${n}" data-add="1" type="button" aria-label="Add contact to dial ${n}">
+      // Grandparents: empty keys are just numbers — no “+ add contact” clutter.
+      if (gpPad) {
+        return `<button class="speed-slot empty slot-locked ${extraClass}" data-slot="${n}" type="button" disabled aria-label="Dial ${n} — empty">
                 <span class="speed-face">
                   <span class="speed-placeholder speed-key-glyph" aria-hidden="true">${n}</span>
                 </span>
-                <span class="speed-name">Add</span>
+              </button>`;
+      }
+      return `<button class="speed-slot empty ${extraClass}" data-slot="${n}" data-add="1" type="button" aria-label="Add contact to dial ${n}">
+                <span class="speed-face">
+                  <span class="speed-placeholder speed-key-glyph" aria-hidden="true">+</span>
+                </span>
+                <span class="speed-cap">
+                  <span class="speed-num" aria-hidden="true">${n}</span>
+                </span>
               </button>`;
     }
     const st = approvalStatus(c);
     const name = contactDisplayName(c);
-    const padLabel = n === 0 && (c.home_parent || c.locked_slot) ? "Parent" : speedPadLabel(name);
+    // Kid pads: locked 1 caption is Mom/Dad/parent name. Parent pads: show the child's name.
+    const padLabel = n === ADMIN_PARENT_SLOT && c.home_parent ? parentDisplayLabel(
+      (hh?.lines || []).find((l) => l.id === c.target_line_id),
+      hh
+    ) : speedPadLabel(name);
     const presence = st.ready ? (c.online ? "on" : "away") : "wait";
     const status = st.ready ? (c.online ? "Online" : "Away") : st.label;
     const aria = (st.ready ? `Call ${name}, dial ${n}, ${status}` : `${name}, dial ${n}, ${status}`).replace(
       /"/g,
       "&quot;"
     );
-    const locked = n === 0 || c.locked_slot || c.home_parent;
+    // Slot 2 is locked only when a co-parent tile is synthesized (locked_slot / secondary_parent).
+    const locked =
+      n === ADMIN_PARENT_SLOT ||
+      c.locked_slot ||
+      c.home_parent ||
+      c.home_child ||
+      c.home_grandchild ||
+      c.secondary_parent;
     const removable = isRemovableSpeedDialEntry(c);
     const hasPhoto = lineHasAvatar(c.target_line_id);
     const faceName = friendlyPersonName(name);
     const faceNameAttr = faceName.replace(/"/g, "&quot;");
     const faceInner = hasPhoto
       ? avatarHtml(name, c.target_line_id, "speed")
-      : `<span class="speed-initials-key" style="${avatarStyle(c.target_line_id)}" aria-hidden="true">
+      : `<span class="speed-initials-key" data-avatar-seed="${String(c.target_line_id).replace(/"/g, "")}" style="${avatarStyle(c.target_line_id)}" aria-hidden="true">
             <span class="speed-initials" data-full-name="${faceNameAttr}">${faceName.replace(/</g, "&lt;")}</span>
           </span>`;
-    // Photo keys: name + digit under circle. Text faces: name is in the circle — caption is just the digit.
-    const caption = hasPhoto
+    const tapHint = gpPad
+      ? st.ready
+        ? `<span class="speed-tap-hint">Tap once to call</span>`
+        : `<span class="speed-tap-hint">Not ready yet</span>`
+      : "";
+    // Grandparents always see the name under the button (not only when there’s a photo).
+    const caption =
+      gpPad || hasPhoto
       ? `<span class="speed-cap">
                   <strong class="speed-name">${padLabel}</strong>
+                  ${tapHint}
                   <span class="speed-num" aria-hidden="true">${n}</span>
                 </span>`
       : `<span class="speed-cap">
@@ -7077,7 +11708,7 @@ function renderPhone() {
     const deleteBadge = removable
       ? `<span class="speed-delete" role="button" tabindex="-1" data-delete-entry="${c.id}" aria-label="Remove ${name.replace(/"/g, "&quot;")} from speed dial">×</span>`
       : "";
-    return `<button class="speed-slot ${st.ready ? "" : "not-ready"} ${locked ? "slot-locked pad-home" : ""} ${extraClass}" data-slot="${n}" data-entry="${c.id}" data-${st.ready ? "call" : "wait"}="${c.target_line_id}" type="button" aria-label="${aria}">
+    return `<button class="speed-slot ${st.ready ? "" : "not-ready"} ${locked ? "slot-locked pad-home" : ""} ${gpPad && st.ready ? "gp-call-ready" : ""} ${gpPad && n === ADMIN_PARENT_SLOT && st.ready ? "gp-primary-call" : ""} ${extraClass}" data-slot="${n}" data-entry="${c.id}" data-${st.ready ? "call" : "wait"}="${c.target_line_id}" type="button" aria-label="${aria}">
                 ${deleteBadge}
                 <span class="speed-face presence-${presence}" title="${status.replace(/"/g, "&quot;")}">
                   ${faceInner}
@@ -7086,23 +11717,47 @@ function renderPhone() {
               </button>`;
   };
 
-  const waitTip = contacts.length
+  const hasKidLine = householdKidLines(hh).length > 0;
+  const gpPrimary = gpPad ? pickPrimaryGrandchildContact(hh) || contacts.find((c) => Number(c.speed_dial) === ADMIN_PARENT_SLOT) : null;
+  const gpPrimaryName = gpPrimary ? contactDisplayName(gpPrimary) : "";
+  const gpPrimaryReady = Boolean(gpPrimary && approvalStatus(gpPrimary).ready);
+  const waitTip = gpPad
+    ? ""
+    : contacts.length
     ? readyCount > 0
       ? ""
       : `<p class="tiny home-wait-tip">Waiting on their OK</p>`
     : pending.length
       ? ""
       : `<p class="tiny home-wait-tip">${
-          isKidExperience() ? "Ask a parent to add family" : "Invite family to get started"
+          isKidExperience()
+            ? "Ask a parent to add family"
+            : !hasKidLine
+              ? `Add your kid first — tap <strong>1</strong> or open <button type="button" class="linkish" id="home-add-kid">Parent → Kids</button>`
+              : "Invite family to get started"
         }</p>`;
+
+  const gpCoachHtml = gpPad
+    ? `<div class="gp-call-coach" role="region" aria-label="How to make a call">
+        <p class="gp-call-coach-title">${
+          gpPrimaryReady && gpPrimaryName
+            ? `To call <strong>${String(gpPrimaryName).replace(/</g, "")}</strong>, tap the big <strong>1</strong>`
+            : pending.length
+              ? "First add your family above, then tap button <strong>1</strong>"
+              : "Tap a person’s picture once to call them"
+        }</p>
+      </div>`
+    : "";
 
   setAppPage(`
       <div class="phone-stack">
         <div class="phone-fit-chrome">
-          ${state.celebrate ? `<p class="celebrate-banner">${state.celebrate}</p>` : ""}
-          ${liveCallBannerHtml(hh)}
-          ${newVoicemailBannerHtml(hh)}
-          ${setupBannerHtml(hh)}
+          ${gpPreviewBannerHtml()}
+          ${state.celebrate && !isGpPreviewMode() ? `<p class="celebrate-banner">${state.celebrate}</p>` : ""}
+          ${isGpPreviewMode() ? "" : liveCallBannerHtml(hh)}
+          ${isGpPreviewMode() ? "" : newVoicemailBannerHtml(hh)}
+          ${isGpPreviewMode() ? "" : setupBannerHtml(hh)}
+          ${isGpPreviewMode() ? "" : pendingApprovalsBannerHtml(hh)}
           ${
             showCreds
               ? `<p class="creds-banner">Create a username &amp; password so you can sign in next time without a code.
@@ -7112,7 +11767,7 @@ function renderPhone() {
           }
           ${
             !isSecureMicContext()
-              ? `<p class="flash-banner warn">Calls need HTTPS on iPad. Use the trycloudflare.com link, not http://10.0.5.x</p>`
+              ? `<p class="flash-banner warn">Calls need the secure PhoneHome address — open the app from the usual link, not a 10.x number.</p>`
               : ""
           }
           <div class="home-chrome-ata" id="kid-phone-status-mount" aria-live="polite">
@@ -7128,41 +11783,48 @@ function renderPhone() {
 
         <div class="home-pad-block">
           <div class="home-pad-head">
-            <h1 class="home-title">Speed dial</h1>
+            <h1 class="home-title">${gpPad ? "Your phone" : "Speed dial"}</h1>
             <div class="home-pad-head-actions">
               ${
                 state.speedDialEditing
                   ? `<button type="button" class="speed-dial-done" id="speed-dial-done">Done</button>`
-                  : canInviteFamily()
+                  : canInviteFamily() && !gpPad
                     ? `<button type="button" class="invite-btn" id="invite" title="Invite family" aria-label="Invite family">${inviteSvg()}<span>Invite</span></button>`
                     : ""
               }
             </div>
           </div>
 
+          ${gpCoachHtml}
           ${waitTip ? `<div class="home-pad-lead">${waitTip}</div>` : ""}
 
-          <div class="speed-grid ${isSpeedDialLayoutLocked() ? "layout-locked" : ""} ${state.speedDialEditing ? "is-editing" : ""}">
+          <div class="speed-grid ${isSpeedDialLayoutLocked() ? "layout-locked" : ""} ${state.speedDialEditing ? "is-editing" : ""}${gpPad ? " gp-speed-grid" : ""}">
             ${dialSlots.map((c, idx) => renderSpeedSlot(c, idx + 1)).join("")}
-            <button class="speed-slot empty pad-action" data-pad="star" type="button" aria-label="Star — Messages">
+            <button class="speed-slot empty pad-action" data-pad="star" type="button" aria-label="${gpPad ? "Messages" : "Star — Messages"}">
               <span class="speed-face">
                 <span class="speed-placeholder speed-key-glyph" aria-hidden="true">*</span>
               </span>
-              <span class="speed-name">Msgs</span>
-            </button>
-            ${renderSpeedSlot(homeSlot, 0)}
-            <button class="speed-slot empty pad-action" data-pad="pound" type="button" aria-label="Pound — Redial">
-              <span class="speed-face">
-                <span class="speed-placeholder speed-key-glyph" aria-hidden="true">#</span>
+              <span class="speed-cap">
+                <strong class="speed-name">${gpPad ? "Messages" : "Msgs"}</strong>
+                ${gpPad ? `<span class="speed-tap-hint">Voice mail</span>` : ""}
               </span>
-              <span class="speed-name">Redial</span>
             </button>
+            ${
+              gpPad
+                ? `<button class="speed-slot empty pad-action" type="button" disabled aria-label="Not used">
+              <span class="speed-face"><span class="speed-placeholder speed-key-glyph" aria-hidden="true">0</span></span>
+              <span class="speed-name">—</span>
+            </button>`
+                : `${renderSpeedSlot(treeHouseTile, TREEHOUSE_SLOT)}
+            ${renderAdultFamilyRoomSlot()}`
+            }
           </div>
         </div>
       </div>
   `);
 
   paintToast();
+  bindGpPreviewChrome();
   bindNewVoicemailBanner();
   bindSetupBanner();
   if (state.celebrate) {
@@ -7193,26 +11855,70 @@ function renderPhone() {
     state.screen = "invite";
     render();
   });
+  const goHomeAddKid = () => {
+    void openParentPanel({ scrollTo: "parent-kids" });
+  };
+  document.getElementById("home-add-kid")?.addEventListener("click", goHomeAddKid);
+  document.querySelectorAll("[data-add-kid]").forEach((b) => {
+    b.onclick = (e) => {
+      e.preventDefault();
+      if (state.speedDialEditing) return;
+      goHomeAddKid();
+    };
+  });
   document.getElementById("speed-dial-done")?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
     exitSpeedDialEditMode();
   });
+  document.querySelector(".speed-grid")?.addEventListener(
+    "click",
+    (e) => {
+      const slot = e.target.closest("[data-slot]")?.getAttribute("data-slot");
+      if (slot && tryFamilyRoomPickerDigit(slot)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    true
+  );
   document.querySelectorAll("[data-add]").forEach((b) => {
     b.onclick = () => {
       if (state.speedDialEditing) return;
+      const slot = b.closest("[data-slot]")?.getAttribute("data-slot");
+      if (slot && tryFamilyRoomPickerDigit(slot)) return;
       openApprove();
     };
   });
   document.querySelectorAll("[data-call]").forEach((btn) => {
     btn.onclick = () => {
       if (state.speedDialEditing) return;
+      const slot = btn.closest("[data-slot]")?.getAttribute("data-slot");
+      if (slot && tryFamilyRoomPickerDigit(slot)) return;
       placeCall(btn.getAttribute("data-call"));
+    };
+  });
+  document.querySelectorAll("[data-familyroom]").forEach((btn) => {
+    btn.onclick = () => {
+      if (state.speedDialEditing) return;
+      if (tryFamilyRoomPickerDigit(TREEHOUSE_SLOT)) return;
+      void unlockAudioCtx().then(() => playDtmf(String(TREEHOUSE_SLOT), 0.09));
+      if (state.group?.familyRoom && !state.group.listenOnly) {
+        setFlash("You’re already in TreeHouse", "info");
+        return;
+      }
+      if (isHouseholdParentPad()) {
+        parentTreeHousePadAction();
+        return;
+      }
+      joinTreeHouse();
     };
   });
   document.querySelectorAll("[data-wait]").forEach((btn) => {
     btn.onclick = () => {
       if (state.speedDialEditing) return;
+      const slot = btn.closest("[data-slot]")?.getAttribute("data-slot");
+      if (slot && tryFamilyRoomPickerDigit(slot)) return;
       const id = btn.getAttribute("data-wait");
       const c = contacts.find((x) => x.target_line_id === id);
       showWaitingSheet(c, id);
@@ -7223,10 +11929,20 @@ function renderPhone() {
     void unlockAudioCtx().then(() => playDtmf("*", 0.09));
     openMessages({ autoPlay: true });
   });
-  document.querySelector('[data-pad="pound"]')?.addEventListener("click", () => {
-    if (state.speedDialEditing) return;
-    void unlockAudioCtx().then(() => playDtmf("#", 0.09));
-    redialLast();
+  document.querySelectorAll("[data-adult-familyroom]").forEach((btn) => {
+    btn.onclick = () => {
+      if (state.speedDialEditing) return;
+      void unlockAudioCtx().then(() => playDtmf("#", 0.09));
+      if (state.call || (state.group && !state.group?.adultFamilyRoom)) {
+        setFlash("Finish your call first", "info");
+        return;
+      }
+      if (state.group?.adultFamilyRoom) {
+        setFlash("You’re already in FamilyRoom", "info");
+        return;
+      }
+      startAdultFamilyRoomIvr();
+    };
   });
   bindSpeedDialDrag(app);
   fitSpeedFaceNames(app);
@@ -7240,6 +11956,13 @@ function renderPhone() {
         const data = await api("/api/me");
         state.directory = data.directory || [];
         state.households = data.households || [];
+        void syncIosAppBadge();
+        // Parent / Activity / Messages: keep data fresh but never remount.
+        // A full render() reset scroll and slammed open sections back to default.
+        if (state.nav && state.nav !== "phone") {
+          if (state.nav === "controls") patchAnalogPhoneStatus(state.households[0]);
+          return;
+        }
         if (shouldAutoOpenApprovals(state.households[0])) {
           render();
           return;
@@ -7254,6 +11977,8 @@ function renderPhone() {
 
 function renderActivity() {
   const hh = state.households[0];
+  markMissedCallsSeen(hh);
+  void syncIosAppBadge();
   const contacts = hh?.allowlist || [];
   const lineId = state.activeLineId;
   const logs = activityLogsForLine(hh?.call_logs, lineId);
@@ -7805,6 +12530,8 @@ function renderVoicemail() {
         counter.classList.remove("has-new");
         counter.innerHTML = `<span class="am-led" aria-hidden="true"></span>${vms.length}`;
       }
+      patchDockVmBadge(hh);
+      void syncIosAppBadge();
     } catch {
       /* ignore */
     }
@@ -8028,7 +12755,7 @@ const PROFILE_ACC_KEY = "ph_profile_acc";
 function profileAccIds(kid) {
   return kid
     ? ["profile-photo", "profile-greeting"]
-    : ["profile-photo", "profile-name", "profile-greeting", "profile-sounds", "profile-more"];
+    : ["profile-photo", "profile-name", "profile-greeting", "profile-sounds"];
 }
 
 /** Search index for Profile modules (parents / multi-section views). */
@@ -8054,7 +12781,7 @@ function profileSearchMeta(kid) {
       id: "profile-name",
       kind: "section",
       title: "Display name",
-      keywords: "name display label kid label line softphone identity rename",
+      keywords: "name display label kid label line app identity rename",
     },
     base[1],
     {
@@ -8062,13 +12789,13 @@ function profileSearchMeta(kid) {
       kind: "section",
       title: "Ringer & speaker",
       keywords:
-        "sounds ringer ring volume style speaker screening answering machine classic chirp chime modern urgent",
+        "sounds ringer ring volume style speaker screening answering machine classic chirp chime modern urgent callkit lock screen answer voip",
     },
     {
-      id: "profile-more",
-      kind: "section",
-      title: "More",
-      keywords: "household parent quiet time pin child mode contacts account help",
+      id: "profile-parent-controls",
+      kind: "action",
+      title: "Parental controls",
+      keywords: "household parent quiet time pin child mode contacts account help more parental",
     },
   ];
 }
@@ -8186,6 +12913,58 @@ function profileSecHtml(id, title, hint, open, icon, bodyHtml) {
       </section>`;
 }
 
+function parentTitlePickerHtml() {
+  const cur = state.user?.parent_title || "";
+  return `<label>I’m this child’s</label>
+    <div class="ringer-grid" style="margin-bottom:10px">
+      ${[
+        ["", "Use my name"],
+        ["mom", "Mom"],
+        ["dad", "Dad"],
+      ]
+        .map(
+          ([id, label]) =>
+            `<button type="button" class="ringer-opt ${cur === id ? "on" : ""}" data-parent-title="${id}">${label}</button>`
+        )
+        .join("")}
+    </div>
+    <button type="button" class="primary" data-save-parent-title style="margin-bottom:12px">Save Mom / Dad label</button>`;
+}
+
+function bindParentTitlePicker() {
+  document.querySelectorAll("[data-parent-title]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-parent-title]").forEach((b) => b.classList.remove("on"));
+      btn.classList.add("on");
+    });
+  });
+  document.querySelectorAll("[data-save-parent-title]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const picked =
+          document.querySelector("[data-parent-title].on")?.getAttribute("data-parent-title") ?? "";
+        const data = await api("/api/user/profile", {
+          method: "PATCH",
+          body: JSON.stringify({ parent_title: picked || null }),
+        });
+        state.user = data.user || state.user;
+        setFlash(
+          picked === "mom"
+            ? "Saved — kids will see you as Mom"
+            : picked === "dad"
+              ? "Saved — kids will see you as Dad"
+              : "Saved — kids will see your name",
+          "ok"
+        );
+        await refresh();
+      } catch (e) {
+        setFlash(e.message || "Could not save parent label", "error");
+        render();
+      }
+    });
+  });
+}
+
 /** Focused line profile — photo, greeting, ringer. Household Parent stays in the dock. */
 function renderProfile() {
   const hh = state.households[0];
@@ -8225,6 +13004,7 @@ function renderProfile() {
         <p class="tiny" style="margin-bottom:12px">Editing a kid line here does not switch your live phone or kick them offline.</p>`
               : ""
           }
+          ${!kid ? parentTitlePickerHtml() : ""}
           <label>Display name</label>
           <input id="profile-line-name" maxlength="64" value="${(line?.name || "").replace(/"/g, "&quot;")}" placeholder="e.g. Mom’s phone" />
           <label style="margin-top:10px">Kid label (optional)</label>
@@ -8254,10 +13034,10 @@ function renderProfile() {
   const soundsBody = `
           <div class="parent-field" style="margin-top:0;padding-top:0;border-top:none">
           <h3 class="parent-subhead">Ringer</h3>
-          <p class="tiny">Volume and style for the <strong>incoming</strong> ringer — not the caller’s ringback.</p>
+          <p class="tiny">Volume and ring sound for the <strong>incoming</strong> ringer — not the caller’s ringback.</p>
           <label id="profile-ring-volume-label">Volume (${ringVol})</label>
           <input id="profile-ring-volume" type="range" min="0" max="100" step="5" value="${ringVol}" />
-          <label style="margin-top:10px">Style</label>
+          <label style="margin-top:10px">Ring sound</label>
           <div class="ringer-grid">
             ${[
               ["classic", "90s bell"],
@@ -8278,17 +13058,22 @@ function renderProfile() {
           </div>
         </div>
         <div class="parent-field">
-          <h3 class="parent-subhead">Speaker (call screening)</h3>
+          <h3 class="parent-subhead parent-subhead-with-badge">${withBetaBadge("Speaker (call screening)")}</h3>
           <p class="tiny">Optional — off by default. Like a 90s answering machine speaker: play the caller’s message out loud while they record. Messages still save either way.</p>
           <label class="check-row">
             <input type="checkbox" id="profile-answering-machine" ${line?.answering_machine ? "checked" : ""} />
             Play messages out loud as they’re left
           </label>
-        </div>`;
+        </div>
+        ${iosCallKitToggleHtml("profile-ios-callkit")}`;
 
-  const moreBody = `
-          <p class="tiny">Quiet Time, PIN, Child mode, and people live in Parent controls.</p>
-          <button type="button" class="ghost" id="profile-to-parent">Parent controls</button>`;
+  const parentControlsCard = !kid
+    ? `<section class="sheet control-card" id="profile-parent-controls">
+        <h2>Parental controls</h2>
+        <p class="tiny">Quiet Time, PIN, Child mode, and people live here.</p>
+        <button type="button" class="primary" id="profile-to-parent">Open parental controls</button>
+      </section>`
+    : "";
 
   const sections = [
     profileSecHtml(
@@ -8305,7 +13090,7 @@ function renderProfile() {
       profileSecHtml(
         "profile-name",
         "Display name",
-        "How this softphone is labeled for family.",
+        "How this app is labeled for family.",
         accOpen === "profile-name",
         "name",
         nameBody
@@ -8331,14 +13116,6 @@ function renderProfile() {
         accOpen === "profile-sounds",
         "sounds",
         soundsBody
-      ),
-      profileSecHtml(
-        "profile-more",
-        "More",
-        "Quiet Time, PIN, and household tools.",
-        accOpen === "profile-more",
-        "more",
-        moreBody
       )
     );
   }
@@ -8351,7 +13128,7 @@ function renderProfile() {
       <p class="lede tight">${
         kid
           ? "Your picture and greeting. Ask a parent for Quiet Time and other household settings."
-          : "Edit any household line’s picture and greeting — your softphone stays on the line that’s ringing for you."
+          : "Edit any household line’s picture and greeting — your app stays on the line that’s ringing for you."
       }</p>
       ${
         showSearch
@@ -8376,11 +13153,12 @@ function renderProfile() {
         <a href="#profile-name">Name</a>
         <a href="#profile-greeting">Greeting</a>
         <a href="#profile-sounds">Sounds</a>
-        <a href="#profile-more">More</a>
+        <a href="#profile-parent-controls">Parental controls</a>
       </nav>`
           : ""
       }
       ${sections.join("\n")}
+      ${parentControlsCard}
   `);
 
   bindProfileAccordion(kid);
@@ -8392,7 +13170,8 @@ function renderProfile() {
         const el = id ? document.getElementById(id) : null;
         if (!el) return;
         e.preventDefault();
-        setProfileAccordionOpen(id, kid);
+        // Only accordion sections toggle; parental-controls is a flat card.
+        if (el.hasAttribute("data-profile-acc")) setProfileAccordionOpen(id, kid);
         el.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     });
@@ -8429,6 +13208,7 @@ function renderProfile() {
       render();
     }
   });
+  bindParentTitlePicker();
   document.getElementById("profile-avatar-change")?.addEventListener("click", () => {
     document.getElementById("profile-avatar-file")?.click();
   });
@@ -8521,18 +13301,40 @@ function renderProfile() {
       setFlash(err.message || "Could not update answering machine", "error");
     }
   });
+  bindIosCallKitToggle("profile-ios-callkit");
 }
 
 const PARENT_ACC_IDS = [
-  "parent-line",
+  "parent-themes",
+  "parent-kids",
   "parent-people",
+  "parent-coparents",
+  "parent-grandparents",
+  "parent-treehouse",
+  "parent-adult-familyroom",
   "parent-hours",
   "parent-pin",
   "parent-ata",
-  "parent-sounds",
+  "parent-line",
   "parent-help",
   "parent-account",
 ];
+
+/** Old section ids now live inside This phone, Themes, or Kids. */
+const PARENT_ACC_ALIASES = {
+  "parent-sounds": "parent-line",
+  "parent-appearance": "parent-themes",
+  "add-kid": "parent-kids",
+};
+
+function canonicalParentAccId(id) {
+  if (!id) return "";
+  return PARENT_ACC_ALIASES[id] || id;
+}
+
+function parentGroupLabel(groupId, title) {
+  return `<p class="parent-group-label" data-parent-group="${groupId}">${title}</p>`;
+}
 
 /** Search index for Parent page modules + quick actions. */
 const PARENT_SEARCH_META = [
@@ -8544,58 +13346,101 @@ const PARENT_SEARCH_META = [
       "timeout end timeout pause resume phone quiet time dnd kill switch right now stop calls vip",
   },
   {
-    id: "parent-line",
+    id: "parent-kids",
     kind: "section",
-    title: "Active line",
+    title: "Kids",
     keywords:
-      "active line softphone profile picture avatar photo child mode lock device kid label guardian authorized parents child login password delete kid line erase",
+      "kids children add kid add child first name new kid profile delete kid erase photo greeting house phone",
   },
   {
     id: "parent-people",
     kind: "section",
     title: "Contacts & speed dials",
     keywords:
-      "contacts people speed dial invite family allowlist nickname vip dial pad slots kid profiles delete kid erase",
+      "contacts people speed dial invite family allowlist nickname vip dial pad slots",
+  },
+  {
+    id: "parent-coparents",
+    kind: "section",
+    title: "Co-parents",
+    keywords:
+      "co-parent second parent guardian authorized parents invite code share mom dad dual parent other parents",
+  },
+  {
+    id: "parent-grandparents",
+    kind: "section",
+    title: "Grandparents",
+    keywords:
+      "grandparent grandma grandpa relative setup invite login username password nana papa mamaw papaw older adult family",
+  },
+  {
+    id: "parent-treehouse",
+    kind: "section",
+    title: "TreeHouse",
+    keywords:
+      "rooms treehouse tree house playroom play room group voice pad 0 house shared call multi party approve members room presence listen talk pair kids",
+  },
+  {
+    id: "parent-adult-familyroom",
+    kind: "section",
+    title: "FamilyRoom",
+    keywords:
+      "rooms familyroom family room pad hash # approve kids children adults family admin room presence talk",
   },
   {
     id: "parent-hours",
     kind: "section",
     title: "Quiet Time & limits",
     keywords:
-      "quiet time quiet hours limits schedule bedtime school open daily talk cap minutes timezone custom",
+      "quiet time quiet hours quiet schedule limits schedule bedtime school open daily talk cap minutes timezone custom dnd do not disturb parent evenings kid child",
   },
   {
     id: "parent-pin",
     kind: "section",
     title: "Parent PIN",
-    keywords: "pin parent lock layout speed dial unlock password digits kid",
+    keywords: "pin parent lock layout speed dial unlock password digits kid child mode",
+  },
+  {
+    id: "parent-line",
+    kind: "section",
+    title: "This phone",
+    keywords:
+      "active line this phone device profile picture avatar photo child mode lock device kid label child login password sounds ringer ring volume greeting answering machine speaker screening callkit lock screen answer voip add kid",
+  },
+  {
+    id: "parent-sounds",
+    kind: "section",
+    title: "Ringer & greeting",
+    keywords:
+      "sounds ringer ring volume ring sound greeting answering machine speaker screening beep classic chirp callkit lock screen answer voip",
+  },
+  {
+    id: "parent-themes",
+    kind: "section",
+    title: "Themes",
+    keywords:
+      "themes theme appearance app style look modern retro 90s tech atomic purple clear plastic wood walnut dos crt bit aero windbreaker millennial tunes xenon pocketgame dad tomspace craig emo flat backrooms yellow rooms carpet cartoon pop chunky toon candy playground flash bubble coaster park isometric lawn baja tropical neon teal turquoise lime wave ui skin",
   },
   {
     id: "parent-ata",
     kind: "section",
     title: "Analog Phone",
     keywords:
-      "analog phone adapter ata ht801 grandstream fanvil g100s house phone landline corded cordless fxs sip tls setup download config extension mac amazon ebay shop buy",
-  },
-  {
-    id: "parent-sounds",
-    kind: "section",
-    title: "Sounds",
-    keywords:
-      "sounds ringer ring volume style greeting answering machine speaker screening beep classic chirp",
+      "analog phone adapter ata ht801 grandstream fanvil g100s house phone landline corded cordless setup download ethernet green jack amazon ebay shop buy",
   },
   {
     id: "parent-help",
     kind: "section",
     title: "Help",
     keywords:
-      "help tutorial guide how to privacy encryption softphone mic finish setup checklist onboarding",
+      "help tutorial guide how to privacy encryption app mic finish setup checklist onboarding invite qr text scan analog house phone themes",
   },
   {
     id: "parent-account",
     kind: "section",
     title: "Account",
-    keywords: "account username password sign out logout credentials delete account erase wipe leave",
+    keywords:
+      "account username password sign out logout credentials delete account erase wipe leave face id touch id keychain saved sign-in",
   },
 ];
 
@@ -8648,6 +13493,13 @@ function applyParentSearch(rawQuery) {
   const clearBtn = document.getElementById("parent-search-clear");
   if (clearBtn) clearBtn.hidden = !String(rawQuery || "").length;
 
+  document.querySelectorAll(".parent-group-label").forEach((label) => {
+    const group = label.getAttribute("data-parent-group");
+    const secs = [...document.querySelectorAll(`section.parent-section[data-parent-group="${group}"]`)];
+    const any = secs.some((s) => !s.classList.contains("parent-search-hidden"));
+    label.classList.toggle("parent-search-hidden", Boolean(q) && !any);
+  });
+
   if (q && firstSectionId) setParentAccordionOpen(firstSectionId);
 }
 
@@ -8675,58 +13527,104 @@ function bindParentSearch() {
 const PARENT_HELP_ARTICLES = [
   {
     id: "analog",
-    title: "Analog Phone setup",
-    body: `<p>Use a Grandstream HT801 (or similar) so a real handset rings with the kid’s line.</p>
+    title: "House phone (Analog)",
+    body: `<p>Want a regular phone on the wall or nightstand for a kid? Plug it into a small <strong>Grandstream HT801 v2</strong> box. PhoneHome talks to that box.</p>
+<figure class="ata-photos ata-photos-help">
+  <img src="/assets/analog/kid-landline.jpg" width="1400" height="933" alt="A young kid talking on a house landline phone" />
+  <ul class="ata-photos-thumbs">
+    <li><img src="/assets/analog/ht801-v2-1.png" width="500" height="500" alt="Grandstream HT801 v2, angled top view" /></li>
+    <li><img src="/assets/analog/ht801-v2-2.png" width="500" height="500" alt="Grandstream HT801 v2 top lights" /></li>
+    <li><img src="/assets/analog/ht801-v2-3.png" width="500" height="500" alt="Grandstream HT801 v2 back ports" /></li>
+  </ul>
+</figure>
 <ol>
-  <li>Open <strong>Parent → Analog Phone</strong> and pick the kid line.</li>
-  <li>Choose the adapter model, then <strong>Save connection</strong>.</li>
-  <li>Prefer <strong>Set up adapter</strong> when PhoneHome at your house shares Wi‑Fi with the adapter. Otherwise plug Ethernet, open the adapter’s web page, <strong>Download config</strong> from the app, upload it on the adapter, and reboot.</li>
-  <li>Plug a phone into the FXS jack. Dial <strong>0</strong> for Home / parent, or <strong>1–9</strong> for speed dials.</li>
-  <li>Dial <strong>*98</strong> for Messages on the handset (same inbox as the app). Press <strong>2</strong> for greetings — record, play, or clear the answering-machine greeting shared with softphone Sounds.</li>
+  <li>Add the kid first under <strong>Parent → Kids</strong>.</li>
+  <li>Open <strong>Parent → Analog Phone</strong> and pick that kid.</li>
+  <li>Choose Grandstream HT801 v2, then tap <strong>Save connection</strong> (this creates the phone-system extension automatically).</li>
+  <li>If this PhoneHome and the box are in the same house, tap <strong>Set up adapter</strong>.</li>
+  <li>At another house (or if one-tap fails): tap <strong>Download config</strong>, then open the box’s admin page and upload the file:
+    <ul>
+      <li>Find the IP: house phone in the green jack → dial <span class="mono">***</span> → <span class="mono">02</span>.</li>
+      <li>On the same Wi‑Fi, open <span class="mono">https://</span> that IP. Username <span class="mono">admin</span>, sticker password on the bottom.</li>
+      <li>Left menu: <strong>Maintenance → Upgrade → Upload Configuration</strong>. Pick the downloaded <span class="mono">config.xml</span>, then reboot.</li>
+    </ul>
+  </li>
+  <li>Plug the house phone into the <strong>green phone jack</strong> on the back. Dial <strong>0</strong> for home / parent, or <strong>1–9</strong> for speed dials.</li>
+  <li>Dial <strong>*98</strong> to hear Messages on the handset (same inbox as the app). Press <strong>2</strong> to record or change the greeting.</li>
 </ol>
-<p>Contacts and speed dials live in PhoneHome — changing them in the app updates the handset without re-uploading config. After a successful one-tap setup, the sticker admin password no longer works; use the password you chose. Too many wrong logins lock the adapter web UI for a couple of minutes.</p>
-<p class="tiny">Calls use encrypted SIP (TLS) and SRTP. Keep the adapter on your home network; use the in-app flow rather than hand-editing SIP passwords.</p>`,
+<p>When you change contacts in the app, the house phone updates — you don’t need to set it up again. After a successful one-tap setup, the password printed on the sticker stops working; use the password you chose. Too many wrong logins lock the box’s web page for a couple of minutes.</p>
+<p class="tiny">Calls stay encrypted. Keep the box on your home network and use the buttons in the app — don’t type secrets by hand.</p>`,
+  },
+  {
+    id: "invite",
+    title: "Invite family with a QR or text",
+    body: `<p>To add family or a co-parent, show them a <strong>QR code</strong> across the table, or send the link in a text. They open PhoneHome, sign in (or create an account), and join. Then <strong>both of you</strong> tap Approve before kids can call.</p>
+<figure class="ata-photos ata-photos-help">
+  <img src="/assets/analog/invite-qr-table.jpg" width="1536" height="1024" alt="Two parents at the table sharing a PhoneHome invite QR code" />
+</figure>
+<ol>
+  <li><strong>Family</strong> — Parent → Contacts → invite. Scan the QR, or Share / Copy the link.</li>
+  <li><strong>Co-parent</strong> — Parent → Kids (add your kid) → Co-parents → Invite co-parent. Same idea: QR or text.</li>
+  <li><strong>Grandparent</strong> — Parent → Grandparents → create their username and password. They sign in; no invite code.</li>
+  <li>After they join, you approve them, and they approve you.</li>
+</ol>
+<p class="tiny">The QR is just a shortcut to the same link. Sitting together is easiest. A text works when they’re not in the room.</p>`,
   },
   {
     id: "quiet-pin",
     title: "Quiet Time, PIN &amp; kid lock",
-    body: `<p>Buttons at the top of Parent can start <strong>Timeout</strong> (stops all household calls) or <strong>Quiet Time</strong> immediately. <strong>Quiet Time &amp; limits</strong> sets named windows (Bedtime, School, custom) and an optional daily talk cap.</p>
-<p>Set a <strong>Parent PIN</strong> (4–6 digits) before locking a kid device. The PIN is asked when a kid device or kid account opens Parent — not on your unlocked parent phone.</p>
-<p><strong>Lock this device</strong> (Active line) puts the phone in Child mode: speed dial + Activity/Messages only. Exiting needs the PIN. Optional <strong>Lock speed dial layout</strong> stops kids from rearranging slots until the PIN unlocks layout.</p>
-<p class="tiny">A child is a line on your family network, not a separate household. You can authorize other parents as guardians for that line.</p>`,
+    body: `<p>At the top of Parent, <strong>Timeout</strong> stops all household calls right now. <strong>Quiet Time</strong> starts quiet right now for everyone. Under <strong>Quiet Time &amp; limits</strong> you set each kid’s Bedtime, School, or custom hours and an optional daily talk limit — plus <strong>Do Not Disturb</strong> for your own phone, which does not change the kids’ hours.</p>
+<p>Set a <strong>Parent PIN</strong> (4–6 digits) before you lock a kid’s phone. The PIN is asked on a kid device or kid account — not on your unlocked parent phone.</p>
+<p>Add a kid under <strong>Kids</strong> (their first name). That creates their phone without changing yours. Then <strong>Lock this device</strong> (This phone) only if you want <em>this</em> phone in Child mode: speed dial, Activity, and Messages only. Leaving needs the PIN. Optional <strong>Lock speed dial layout</strong> stops kids from moving the buttons.</p>
+<p class="tiny">A kid has their own PhoneHome line in your family — not a second family. You can invite a co-parent to help manage that same kid.</p>`,
   },
   {
     id: "privacy",
-    title: "Privacy &amp; encryption",
+    title: "Privacy",
     body: `<p>PhoneHome is built so family calls stay private.</p>
 <ul>
-  <li><strong>Softphones</strong> use encrypted WebRTC (DTLS-SRTP). The server helps set up the call; voice media is encrypted between devices.</li>
-  <li><strong>Analog adapters</strong> register with encrypted SIP (TLS) and use SRTP for media — not cleartext over the public internet.</li>
-  <li>We don’t keep your call audio. Missed-call greetings live as answering-machine messages you control.</li>
-  <li>Kids can only reach people you invite and both sides approve (allowlist-first).</li>
+  <li><strong>The app</strong> encrypts the call between phones. We help set up the call; we don’t listen in.</li>
+  <li><strong>House phones</strong> (the adapter) also use encrypted calling on your home network.</li>
+  <li>We don’t keep your conversations. Missed-call greetings are answering-machine messages you control.</li>
+  <li>Kids can only reach people you invite, and both families must approve.</li>
 </ul>
-<p class="tiny">Parents set who kids can reach — that’s safety, not selling data. Use HTTPS when you’re away from home.</p>`,
+<p class="tiny">You choose who kids can call — that’s safety, not selling data. Use the PhoneHome app (or its home-screen icon) when you’re away from home.</p>`,
   },
   {
     id: "softphone",
-    title: "Softphone mic &amp; Add to Home Screen",
-    body: `<p>Safari asks for the microphone when you place or answer a call. Allow when prompted.</p>
-<p>On iPhone/iPad, open the <strong>HTTPS</strong> PhoneHome URL in <strong>Safari</strong>, then Share → <strong>Add to Home Screen</strong> and open from that icon.</p>
-<p class="tiny">If the mic is blocked: aA → Website Settings → Microphone → Allow. Use one stable HTTPS address (not a changing trycloudflare link).</p>`,
+    title: "App microphone &amp; Add to Home Screen",
+    body: `<p>The phone asks for the microphone when you place or answer a call. Tap Allow.</p>
+<p>On iPhone/iPad in Safari: Share → <strong>Add to Home Screen</strong>, then open PhoneHome from that icon.</p>
+<p class="tiny">If the mic is blocked: tap aA in Safari → Website Settings → Microphone → Allow. Always open the same PhoneHome address.</p>`,
   },
   {
     id: "contacts",
     title: "Contacts &amp; speed dials",
-    body: `<p>Family calling is invite + mutual approve — both sides must allowlist before a call connects.</p>
+    body: `<p>Someone joins with an invite. Then <strong>both families tap Approve</strong> before a call will go through.</p>
 <ul>
-  <li><strong>Contacts &amp; speed dials</strong> — edit nicknames, invite family, and assign dial-pad slots 1–9.</li>
-  <li>Slot <strong>0</strong> is Home / the household parent line.</li>
-  <li>On an unlocked parent phone you can drag to rearrange. On kid / Child mode devices, rearranging needs the Parent PIN when layout lock is on.</li>
-  <li>Kid photo shortcuts open that child’s profile (picture, greeting) without switching your softphone line.</li>
+  <li><strong>Contacts &amp; speed dials</strong> — nicknames, invites, and buttons 1–9.</li>
+  <li>Button <strong>0</strong> is Home / this house’s parent.</li>
+  <li>On your unlocked parent phone you can drag to rearrange. On a kid phone, moving buttons needs the Parent PIN if layout lock is on.</li>
+  <li><strong>Kids</strong> — type their first name. That creates their phone. Your parent phone stays yours.</li>
+  <li>A kid’s photo opens their picture and greeting — you don’t have to switch into their account.</li>
 </ul>
-<p class="tiny">Outside lines (cell / landline / 911 via SIP) are a paid add-on later. Network-to-network family calling is free here.</p>`,
+<p class="tiny">Calling regular cell phones, 911, or outside landlines is a later add-on. Family-to-family calling here is free.</p>`,
   },
 ];
+
+function parentHelpArticles() {
+  if (!isInstalledPhoneHome()) return PARENT_HELP_ARTICLES;
+  return PARENT_HELP_ARTICLES.map((article) => {
+    if (article.id !== "softphone") return article;
+    return {
+      ...article,
+      title: "App microphone",
+      body: `<p>PhoneHome asks for the microphone when you place or answer a call. Tap Allow.</p>
+<p>On iPhone, Parent → This phone can turn on <strong>Lock-screen Answer</strong>. Off means you tap a notification and answer in the app.</p>
+<p class="tiny">If the mic is blocked: iPhone Settings → PhoneHome → Microphone → Allow.</p>`,
+    };
+  });
+}
 
 function parentHelpArticleHtml(article) {
   const open = state.parentHelpFocus === article.id ? " open" : "";
@@ -8737,21 +13635,19 @@ function parentHelpArticleHtml(article) {
 }
 const PARENT_ACC_KEY = "ph_parent_acc";
 
-/** Exclusive Parent accordion: which section stays open (default: all closed). */
+/** Exclusive Parent accordion: which section stays open (default: Kids if none, else Contacts). */
 function resolveParentAccordionId(preferred) {
-  if (preferred && PARENT_ACC_IDS.includes(preferred)) return preferred;
+  const want = canonicalParentAccId(preferred);
+  if (want && PARENT_ACC_IDS.includes(want)) return want;
   try {
     const stored = sessionStorage.getItem(PARENT_ACC_KEY);
-    // Old default was Active line; migrate so returning users don't keep it forced open.
-    if (stored === "parent-line") {
-      sessionStorage.removeItem(PARENT_ACC_KEY);
-      return "";
-    }
     if (stored && PARENT_ACC_IDS.includes(stored)) return stored;
   } catch {
     /* private mode */
   }
-  return "";
+  const hh = state.households[0];
+  if (!householdKidLines(hh).length) return "parent-kids";
+  return "parent-people";
 }
 
 function persistParentAccordionId(id) {
@@ -8774,11 +13670,12 @@ function parentSecIcon(kind) {
     case "pin":
       return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 9V7a5 5 0 0 0-10 0v2H5v12h14V9h-2zm-8 0V7a3 3 0 0 1 6 0v2H9z"/></svg>`;
     case "ata":
-      // Classic rotary desk set (MDI phone-classic / ☎ convention): curved handset on
-      // cradle + circular dial with hub and finger stop — not modern handset, keypad, or ATA.
-      return `<svg viewBox="0 0 24 24" aria-hidden="true" style="fill:none" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5.8 7.4V5.1c0-.9.7-1.6 1.6-1.6h.9c.5 0 .9.2 1.2.6L10.2 5h3.6l.7-1.1c.3-.4.7-.6 1.2-.6h.9c.9 0 1.6.7 1.6 1.6v2.3"/><rect x="4.2" y="7.4" width="15.6" height="13.2" rx="1.8"/><circle cx="12" cy="14.7" r="4.2"/><circle cx="12" cy="14.7" r="1.25"/><path d="M14.95 17.25l1.5 1.1"/></svg>`;
+      // Same rotary mark as app icon / Phone dock glyph.
+      return rotaryPhoneSvg();
     case "sounds":
       return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.2 9.2v5.6h3.6l4.6 3.6V5.6L6.8 9.2H3.2zm12.2 2.8c0-1.5-.8-2.8-2-3.5v7c1.2-.7 2-2 2-3.5zm2.6 0c0 2.4-1.3 4.5-3.3 5.6l1.1 1.7c2.7-1.5 4.5-4.2 4.5-7.3s-1.8-5.8-4.5-7.3l-1.1 1.7c2 1.1 3.3 3.2 3.3 5.6z"/></svg>`;
+    case "appearance":
+      return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.4l2.2 4.6 5 .7-3.6 3.5.9 5.2L12 14.2l-4.5 2.2.9-5.2-3.6-3.5 5-.7L12 2.4z"/><circle cx="5.2" cy="5.8" r="1.6" opacity="0.85"/><circle cx="18.8" cy="6.4" r="1.4" opacity="0.85"/><circle cx="19.2" cy="17.6" r="1.5" opacity="0.85"/><circle cx="5.6" cy="17.2" r="1.3" opacity="0.85"/></svg>`;
     case "photo":
       return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.4 5.8h3.1l1.2-1.6h6.6l1.2 1.6h3.1c1 0 1.8.8 1.8 1.8v10.6c0 1-.8 1.8-1.8 1.8H4.4c-1 0-1.8-.8-1.8-1.8V7.6c0-1 .8-1.8 1.8-1.8zM12 8.6a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4zm0 1.8a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 0 1 0-4.8z"/></svg>`;
     case "greeting":
@@ -8789,13 +13686,25 @@ function parentSecIcon(kind) {
       return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.2a9.8 9.8 0 1 0 0 19.6 9.8 9.8 0 0 0 0-19.6zm0 14.6a1.15 1.15 0 1 1 0-2.3 1.15 1.15 0 0 1 0 2.3zm1.5-4.5c-.55.35-.9.7-.9 1.35h-1.7c0-1.2.6-1.85 1.35-2.3.6-.35.95-.6.95-1.15 0-.55-.4-.95-1.1-.95-.75 0-1.2.4-1.35 1.05l-1.65-.35C9.4 8.4 10.45 7.3 12.1 7.3c1.7 0 2.9 1.05 2.9 2.55 0 .95-.5 1.6-1.5 2.25z"/></svg>`;
     case "account":
       return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M4.4 19.6v-1.8c0-2.7 3.2-4.5 7.6-4.5s7.6 1.8 7.6 4.5v1.8H4.4z"/></svg>`;
+    case "familyroom":
+    case "playroom":
+    case "treehouse":
+      return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2 3.8 10.2h2.2v9.2h4.4v-5.2h3.2v5.2h4.4v-9.2h2.2L12 3.2z"/></svg>`;
     case "line":
     default:
       return phoneSvg();
   }
 }
 
-function parentSecToggle(id, title, hint, open, icon = "line", statusChipHtml = "") {
+function betaBadgeHtml() {
+  return `<span class="badge beta">Beta</span>`;
+}
+
+function withBetaBadge(title) {
+  return `${title} ${betaBadgeHtml()}`;
+}
+
+function parentSecToggle(id, title, hint, open, icon = "line", statusChipHtml = "", { beta = false } = {}) {
   return `<button type="button" class="parent-sec-toggle" id="${id}-toggle" aria-expanded="${
     open ? "true" : "false"
   }" aria-controls="${id}-body">
@@ -8804,6 +13713,7 @@ function parentSecToggle(id, title, hint, open, icon = "line", statusChipHtml = 
         <span class="parent-sec-heading">
           <span class="parent-sec-icon" aria-hidden="true">${parentSecIcon(icon)}</span>
           <span class="parent-sec-title">${title}</span>
+          ${beta ? betaBadgeHtml() : ""}
         </span>
         ${statusChipHtml || ""}
       </span>
@@ -8818,15 +13728,16 @@ function parentSecToggle(id, title, hint, open, icon = "line", statusChipHtml = 
 }
 
 function setParentAccordionOpen(openId) {
+  const sectionId = canonicalParentAccId(openId);
   document.querySelectorAll("section.parent-section[data-acc]").forEach((sec) => {
-    const isOpen = Boolean(openId) && sec.id === openId;
+    const isOpen = Boolean(sectionId) && sec.id === sectionId;
     sec.classList.toggle("is-open", isOpen);
     const btn = sec.querySelector(":scope > .parent-sec-toggle");
     const body = sec.querySelector(":scope > .parent-sec-body");
     if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
     if (body) body.hidden = !isOpen;
   });
-  persistParentAccordionId(openId || "");
+  persistParentAccordionId(sectionId || "");
 }
 
 function bindParentAccordion() {
@@ -8839,12 +13750,567 @@ function bindParentAccordion() {
   });
 }
 
+/**
+ * Parent → Co-parents: invite/manage guardians on a kid line.
+ * Kid = child line (from Kids); co-parents = guardians. Parent phone stays parent.
+ */
+function resolveCoparentKidLine(hh) {
+  const kids = householdKidLines(hh);
+  if (!kids.length) return null;
+  const preferred = kids.find((l) => l.id === state.coparentKidLineId);
+  return preferred || kids[0];
+}
+
+/**
+ * Parent-provisioned grandparent accounts: set their login, manage options,
+ * preview their simple phone, reset password.
+ */
+function renderGrandparentsPanel(hh) {
+  const kids = householdKidLines(hh);
+  const relatives = Array.isArray(hh?.provisioned_relatives) ? hh.provisioned_relatives : [];
+  const managingId = state.managingGrandparentId || "";
+  const managing = relatives.find((r) => r.id === managingId) || null;
+  const last = state.lastGrandparentSetup || null;
+  const lastCard =
+    last && last.householdId === hh?.id
+      ? `<div class="coparent-invite-card" id="gp-login-card">
+        <p class="invite-eyebrow">Login for ${String(last.displayName || "Grandparent").replace(/</g, "")}</p>
+        <p class="tiny">Write this down or text it to them. They open PhoneHome and sign in — no invite code needed.</p>
+        <div class="code-box glow" style="font-size:1.05rem;letter-spacing:0.02em">
+          <div><span class="tiny">Username</span><br /><span class="mono">${String(last.username || "").replace(/</g, "")}</span></div>
+          <div style="margin-top:10px"><span class="tiny">Password</span><br /><span class="mono">${String(last.password || "").replace(/</g, "")}</span></div>
+        </div>
+        <div class="btn-row two" style="margin-top:12px">
+          <button type="button" class="primary" id="copy-gp-login">Copy login</button>
+          <button type="button" class="ghost" id="dismiss-gp-login">Done</button>
+        </div>
+      </div>`
+      : "";
+
+  const kidChecks = kids.length
+    ? kids
+        .map((k) => {
+          const id = String(k.id || "").replace(/"/g, "&quot;");
+          const name = String(k.child_label || k.name || "Kid").replace(/</g, "");
+          return `<label class="gp-kid-check"><input type="checkbox" name="gp-kid" value="${id}" checked /> ${name}</label>`;
+        })
+        .join("")
+    : `<p class="tiny ata-lan-warn">Add a kid under Kids first — then choose who Grandma can call.</p>`;
+
+  const manageKidChecks = managing
+    ? kids.length
+      ? kids
+          .map((k) => {
+            const id = String(k.id || "").replace(/"/g, "&quot;");
+            const name = String(k.child_label || k.name || "Kid").replace(/</g, "");
+            const on = (managing.kid_line_ids || []).includes(k.id);
+            return `<label class="gp-kid-check"><input type="checkbox" name="gp-manage-kid" value="${id}" ${
+              on ? "checked" : ""
+            } /> ${name}</label>`;
+          })
+          .join("")
+      : `<p class="tiny ata-lan-warn">Add a kid under Kids first.</p>`
+    : "";
+
+  const manageCard = managing
+    ? (() => {
+        const rid = String(managing.id || "").replace(/"/g, "&quot;");
+        const name = String(managing.display_name || "").replace(/"/g, "&quot;");
+        const label = String(managing.display_label || "").replace(/"/g, "&quot;");
+        const user = String(managing.username || "").replace(/"/g, "&quot;");
+        const showName = String(managing.display_label || managing.display_name || "Grandparent").replace(
+          /</g,
+          ""
+        );
+        return `<div class="coparent-invite-card gp-manage-card" id="gp-manage-card" data-gp-manage-id="${rid}">
+        <p class="invite-eyebrow">Manage · ${showName}</p>
+        <p class="tiny">Change their login, who they can call, or open a preview of their simple phone (like viewing a kid’s options).</p>
+        <label>Their name</label>
+        <input id="gp-manage-display-name" autocomplete="name" maxlength="64" value="${name}" />
+        <label style="margin-top:10px">Nickname on your phone</label>
+        <input id="gp-manage-label" maxlength="64" value="${label}" />
+        <label style="margin-top:10px">Username</label>
+        <input id="gp-manage-username" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32" value="${user}" />
+        <label style="margin-top:10px">New password <span class="tiny">(optional)</span></label>
+        <input id="gp-manage-password" type="password" autocomplete="new-password" placeholder="leave blank to keep" />
+        <label style="margin-top:10px">Who can they call?</label>
+        <div class="gp-kid-checks">${manageKidChecks}</div>
+        <div class="btn-row two" style="margin-top:14px">
+          <button type="button" class="primary" id="save-gp-manage">Save changes</button>
+          <button type="button" class="ghost" id="preview-gp-phone" data-gp-preview="${rid}">See their phone</button>
+        </div>
+        <div class="btn-row two" style="margin-top:8px">
+          <button type="button" class="ghost tiny-btn" data-gp-view="${rid}">Show login card</button>
+          <button type="button" class="ghost tiny-btn" data-gp-reset="${rid}">New password only</button>
+        </div>
+        <button type="button" class="linkish" id="close-gp-manage" style="margin-top:10px">Close</button>
+      </div>`;
+      })()
+    : "";
+
+  const listRows = relatives.length
+    ? relatives
+        .map((r) => {
+          const name = String(r.display_label || r.display_name || "Grandparent").replace(/</g, "");
+          const user = r.username
+            ? `<span class="mono">${String(r.username).replace(/</g, "")}</span>`
+            : "no username";
+          const kidsOn = (r.kid_line_ids || [])
+            .map((id) => {
+              const k = kids.find((x) => x.id === id);
+              return k ? String(k.child_label || k.name || "").replace(/</g, "") : "";
+            })
+            .filter(Boolean)
+            .join(", ");
+          const rid = String(r.id || "").replace(/"/g, "&quot;");
+          const open = r.id === managingId;
+          return `<li class="gp-relative-row${open ? " is-managing" : ""}" data-gp-id="${rid}">
+            <div>
+              <strong>${name}</strong>
+              <span class="tiny"> · ${user}${kidsOn ? ` · calls ${kidsOn}` : ""}</span>
+            </div>
+            <div class="btn-row two" style="margin-top:8px">
+              <button type="button" class="primary tiny-btn" data-gp-manage="${rid}">${
+                open ? "Managing…" : "Manage"
+              }</button>
+              <button type="button" class="ghost tiny-btn" data-gp-preview="${rid}">See their phone</button>
+            </div>
+          </li>`;
+        })
+        .join("")
+    : `<li class="tiny">None yet — set one up below.</li>`;
+
+  return `
+    <div class="parent-field" style="margin-top:0;padding-top:0;border-top:0">
+      <h3 class="parent-subhead">Set up Grandma or Grandpa</h3>
+      <p class="tiny">You choose their name and login. They get a simpler phone (Settings, not Parent). Open <strong>Manage</strong> anytime to change options or preview what they see.</p>
+      ${lastCard}
+      ${manageCard}
+    </div>
+
+    <div class="parent-field">
+      <h3 class="parent-subhead">Already set up</h3>
+      <ul class="guardian-list gp-relative-list">${listRows}</ul>
+    </div>
+
+    <div class="parent-field" id="gp-setup-form">
+      <h3 class="parent-subhead">New grandparent</h3>
+      <label>Their name</label>
+      <input id="gp-display-name" autocomplete="name" placeholder="Grandma Larsen" maxlength="64" />
+      <label style="margin-top:10px">Nickname on your phone</label>
+      <input id="gp-label" placeholder="Grandma" maxlength="64" />
+      <label style="margin-top:10px">Username</label>
+      <input id="gp-username" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="grandma" maxlength="32" />
+      <label style="margin-top:10px">Password</label>
+      <input id="gp-password" type="password" autocomplete="new-password" placeholder="at least 8 characters" />
+      <label style="margin-top:10px">Who can they call?</label>
+      <div class="gp-kid-checks">${kidChecks}</div>
+      <button type="button" class="primary" id="create-grandparent" style="margin-top:14px" ${
+        kids.length ? "" : "disabled"
+      }>Create login</button>
+    </div>
+  `;
+}
+
+function renderCoParentsPanel(hh) {
+  const kids = householdKidLines(hh);
+  const line = resolveCoparentKidLine(hh);
+  if (line) state.coparentKidLineId = line.id;
+  const lineId = line?.id || "";
+  const lineLabel = (line?.child_label || line?.name || "this kid").replace(/</g, "");
+  const guardians = line?.guardians || [];
+  const guardianIds = new Set(guardians.map((g) => g.user_id));
+  const members = (hh?.members || []).filter((m) => m.user_id !== state.user?.id);
+  const addableMembers = members.filter((m) => !guardianIds.has(m.user_id) && m.username);
+  const invite =
+    state.lastGuardianInvite && state.lastGuardianInvite.lineId === lineId
+      ? state.lastGuardianInvite
+      : null;
+  const codeSafe = invite ? String(invite.code || "").replace(/</g, "") : "";
+  const urlSafe = invite ? String(invite.shareUrl || "").replace(/</g, "&lt;") : "";
+
+  const kidPicker =
+    kids.length > 1
+      ? `<label for="coparent-kid">Which kid?</label>
+      <select id="coparent-kid" style="margin-bottom:12px">
+        ${kids
+          .map((k) => {
+            const id = String(k.id || "").replace(/"/g, "&quot;");
+            const name = String(k.child_label || k.name || "Kid").replace(/</g, "");
+            const sel = k.id === lineId ? " selected" : "";
+            return `<option value="${id}"${sel}>${name}</option>`;
+          })
+          .join("")}
+      </select>`
+      : "";
+
+  const guardianRows = !line
+    ? `<li class="tiny">Add a kid first — then invite the other parent.</li>`
+    : guardians
+        .map((g) => {
+          const name = String(g.display_name || "Parent").replace(/</g, "");
+          const user = g.username ? ` · <span class="mono">${String(g.username).replace(/</g, "")}</span>` : "";
+          const you = g.user_id === state.user?.id ? " · you" : "";
+          const remove =
+            g.user_id !== state.user?.id
+              ? `<button type="button" class="ghost tiny-btn" data-remove-guardian="${g.user_id}">Remove</button>`
+              : "";
+          return `<li><span>${name}${user}${you}</span>${remove}</li>`;
+        })
+        .join("") || `<li class="tiny">Only you so far — invite the other parent.</li>`;
+
+  const memberOptions = addableMembers
+    .map((m) => {
+      const label = `${String(m.display_name || "Parent").replace(/</g, "")}${
+        m.username ? ` · ${String(m.username).replace(/</g, "")}` : ""
+      }`;
+      const uname = String(m.username || "").replace(/"/g, "&quot;");
+      return `<option value="${uname}">${label}</option>`;
+    })
+    .join("");
+
+  const guardianQr = invite?.shareUrl ? inviteQrSvg(invite.shareUrl) : "";
+  let inviteCard;
+  if (!line) {
+    inviteCard = `<div class="coparent-invite-card is-empty" id="guardian-invite-box">
+        <p class="tiny">Add a kid under <strong>Kids</strong> first. Then invite another parent to help manage that kid’s contacts, Quiet Time, and settings with you — your phone stays a parent phone.</p>
+        <button type="button" class="primary" id="coparents-go-kids">Add a kid</button>
+      </div>`;
+  } else if (invite) {
+    inviteCard = `<div class="coparent-invite-card" id="guardian-invite-box">
+        <p class="invite-eyebrow">Co-parent invite · ${lineLabel}</p>
+        ${
+          guardianQr
+            ? `<div class="invite-qr" id="guardian-invite-qr" role="img" aria-label="QR code for co-parent invite">${guardianQr}</div>
+        <p class="tiny center invite-qr-hint">Scan with another phone · across the table</p>`
+            : ""
+        }
+        <div class="code-box glow coparent-code" id="guardian-invite-code">${codeSafe}</div>
+        <p class="tiny center coparent-invite-url">${urlSafe}</p>
+        <p class="tiny">Scan the QR together, or send the link in a text. They sign in (or create an account). Opening the link while signed in finishes it for them.</p>
+        <div class="btn-row two">
+          <button type="button" class="primary" id="share-guardian-invite">Share</button>
+          <button type="button" class="ghost" id="copy-guardian-invite">Copy</button>
+        </div>
+        <button type="button" class="linkish" id="invite-guardian" data-line-id="${String(lineId).replace(/"/g, "&quot;")}" style="margin-top:10px">Make a new code</button>
+      </div>`;
+  } else {
+    inviteCard = `<div class="coparent-invite-card is-empty" id="guardian-invite-box">
+        <p class="tiny">Create a code for a scannable QR (or share in a text). The other parent becomes a co-parent for <strong>${lineLabel}</strong> and can manage contacts, Quiet Time, and Child mode with you.</p>
+        <button type="button" class="primary" id="invite-guardian" data-line-id="${String(lineId).replace(/"/g, "&quot;")}">Invite co-parent</button>
+      </div>`;
+  }
+
+  return `
+    <div class="parent-field" style="margin-top:0;padding-top:0;border-top:0">
+      <h3 class="parent-subhead">Invite a co-parent</h3>
+      <p class="tiny">A co-parent helps manage the same kid — contacts, Quiet Time, and Child mode — without making a second family. You don’t lock your own phone.</p>
+      ${kidPicker}
+      ${inviteCard}
+    </div>
+
+    <div class="parent-field">
+      <h3 class="parent-subhead">${line ? `Parents for ${lineLabel}` : "Parents on this kid"}</h3>
+      <ul class="guardian-list">${guardianRows}</ul>
+    </div>
+
+    ${
+      line && addableMembers.length
+        ? `<div class="parent-field">
+      <h3 class="parent-subhead">Add from household</h3>
+      <p class="tiny">Someone already in this household? Add them without a new invite.</p>
+      <label>Household member</label>
+      <select id="guardian-member">
+        <option value="">Choose…</option>
+        ${memberOptions}
+      </select>
+      <button type="button" class="ghost" id="add-guardian-member" data-line-id="${String(lineId).replace(/"/g, "&quot;")}" style="margin-top:10px">Add as co-parent</button>
+    </div>`
+        : ""
+    }
+
+    ${
+      line
+        ? `<div class="parent-field">
+      <h3 class="parent-subhead">Add by username</h3>
+      <p class="tiny">If they already have a PhoneHome parent account on the network.</p>
+      <label>Username</label>
+      <input id="guardian-username" autocomplete="username" placeholder="existing parent username" />
+      <button type="button" class="ghost" id="add-guardian" data-line-id="${String(lineId).replace(/"/g, "&quot;")}" style="margin-top:10px">Add parent</button>
+    </div>`
+        : ""
+    }
+
+    <div class="parent-field">
+      <h3 class="parent-subhead">Accept a co-parent invite</h3>
+      <p class="tiny">Were you invited? Type the 6-digit code here, or open the invite link while you’re signed in.</p>
+      <label>Invite code</label>
+      <input id="guardian-code" class="mono" inputmode="numeric" maxlength="6" placeholder="······" value="${String(
+        state.pendingGuardianCode || ""
+      ).replace(/"/g, "&quot;")}" />
+      <button type="button" class="ghost" id="redeem-guardian" style="margin-top:8px">Join as co-parent</button>
+    </div>
+  `;
+}
+
+/**
+ * Age-friendly Settings for grandparents / invite-only relatives.
+ * Large actions, few choices: Quiet Time, family approve, house phone, account.
+ */
+function renderGrandparentSettings() {
+  const hh = state.households[0];
+  const preview = isGpPreviewMode();
+  const previewRel = gpPreviewRelative(hh);
+  const timeoutOn = Boolean(hh?.kill_switch);
+  const quietOn = Boolean(hh?.dnd);
+  const pending = preview ? [] : pendingApprovals(hh);
+  const contacts = preview
+    ? dialableAllowlist(hh)
+    : contactsInMyCircle(hh);
+  const gc = preview
+    ? dialableAllowlist(hh)[0] || null
+    : pickPrimaryGrandchildContact(hh);
+  const gcName = gc ? contactDisplayName(gc) : "";
+  const setup = parentSetupSummary(hh);
+  const focus = state.gpSettingsFocus;
+  state.gpSettingsFocus = null;
+  const titleName = preview
+    ? String(previewRel?.display_label || previewRel?.display_name || "Grandparent").replace(/</g, "")
+    : "";
+  setAppPage(`
+    <div class="gp-settings${preview ? " gp-settings-preview" : ""}">
+      ${gpPreviewBannerHtml()}
+      <h1 class="gp-settings-title">${preview ? `Settings · ${titleName}` : "Settings"}</h1>
+      <p class="lede tight">${
+        preview
+          ? "This is the simple Settings screen they see. Use Exit preview, then Manage, to change their login or who they can call."
+          : "Everything here is optional. To call someone, use the Phone button at the bottom."
+      }</p>
+      ${preview ? "" : liveCallBannerHtml(hh)}
+
+      ${
+        !preview && !setup.allRequiredDone
+          ? `<section class="sheet control-card is-open gp-settings-card gp-setup-nudge${
+              focus === "family" ? " gp-focus" : ""
+            }">
+        <h2 class="gp-card-title">A few steps to get started</h2>
+        <p class="tiny">${
+          setup.openRequired[0]
+            ? String(setup.openRequired[0].detail || setup.openRequired[0].label).replace(/</g, "")
+            : "A few things left."
+        }</p>
+        <button type="button" class="primary btn-block" id="gp-open-setup">Show me what to do</button>
+      </section>`
+          : ""
+      }
+
+      <div class="parent-now-bar${focus === "quiet" ? " gp-focus" : ""}" id="parent-now">
+        <div class="parent-pill-row" aria-live="polite">
+          <span class="parent-pill ${timeoutOn && !preview ? "is-off" : "is-on"}">
+            <span class="dot" aria-hidden="true"></span>${
+              preview ? "Calls work" : timeoutOn ? "Calls are paused" : "Calls work"
+            }
+          </span>
+          <span class="parent-pill ${quietOn && !preview ? "is-quiet" : "is-on"}">
+            <span class="dot" aria-hidden="true"></span>${
+              preview ? "Phone can ring" : quietOn ? "Phone is silent" : "Phone can ring"
+            }
+          </span>
+        </div>
+        <div class="parent-now-actions" role="group" aria-label="Phone quiet controls">
+          <button type="button" class="parent-action ${timeoutOn && !preview ? "is-active danger-tone" : ""}" id="toggle-kill" ${
+            preview ? "disabled" : ""
+          }>
+            <strong>${timeoutOn && !preview ? "Allow calls again" : "Pause all calls"}</strong>
+            <span>${
+              preview
+                ? "Preview only — not your household controls."
+                : timeoutOn
+                  ? "Your phone can call and be called again."
+                  : "Stops every call until you turn this off."
+            }</span>
+          </button>
+          <button type="button" class="parent-action ${quietOn && !preview ? "is-active danger-tone" : ""}" id="toggle-dnd" ${
+            preview ? "disabled" : ""
+          }>
+            <strong>${quietOn && !preview ? "Let the phone ring again" : "Silence the phone"}</strong>
+            <span>${
+              preview
+                ? "Preview only — exit to change their options."
+                : quietOn
+                  ? "People can ring you again."
+                  : "Your phone will not ring until you turn this off."
+            }</span>
+          </button>
+        </div>
+      </div>
+
+      <section class="sheet control-card is-open gp-settings-card${
+        focus === "family" || focus === "account" ? " gp-focus" : ""
+      }">
+        <h2 class="gp-card-title">Your family</h2>
+        <p class="tiny">${
+          gcName
+            ? `<strong>${gcName.replace(/</g, "")}</strong> is on button <strong>1</strong>. Open Phone at the bottom, then tap button 1 once to call.`
+            : pending.length
+              ? "Someone wants to be on your phone. Tap the button below."
+              : "When your family shows up here, tap Yes, add them. They will appear on button 1."
+        }</p>
+        ${
+          preview
+            ? `<p class="tiny">${contacts.length === 1 ? "1 person on their phone" : `${contacts.length} people on their phone`} (from Manage → who they can call).</p>
+        <button type="button" class="ghost btn-block" id="exit-gp-preview-settings">Exit preview &amp; manage</button>`
+            : `<button type="button" class="primary btn-block" id="gp-open-family">${
+                pending.length ? `Add family (${pending.length})` : "See who’s on my phone"
+              }</button>
+        <p class="tiny" style="margin-top:10px">${contacts.length === 1 ? "1 person on your phone" : `${contacts.length} people on your phone`}</p>`
+        }
+      </section>
+
+      <section class="sheet control-card is-open gp-settings-card">
+        <h2 class="gp-card-title">How do I make a call?</h2>
+        <ol class="gp-howto-list">
+          <li>At the bottom of the screen, tap <strong>Phone</strong>.</li>
+          <li>Find the big round button marked <strong>1</strong>${
+            gcName ? ` — that is <strong>${gcName.replace(/</g, "")}</strong>` : ""
+          }.</li>
+          <li>Tap that button <strong>once</strong>. You will hear ringing.</li>
+          <li>When you are done, tap the red <strong>End</strong> button.</li>
+        </ol>
+        <p class="tiny">Other relatives may be on buttons <strong>2</strong> through <strong>9</strong>. Under each name it says <em>Tap once to call</em>.</p>
+        <button type="button" class="primary btn-block" id="gp-goto-phone">${
+          preview ? "Show their Phone screen" : "Take me to Phone"
+        }</button>
+      </section>
+
+      ${preview ? "" : uiThemeSelectorHtml({ grandparent: true })}
+
+      ${
+        preview
+          ? ""
+          : `<section class="sheet control-card is-open gp-settings-card">
+        <h2 class="gp-card-title">Regular house phone</h2>
+        <p class="tiny">Only if someone hooked up a wall phone for you. Most people can skip this.</p>
+        <button type="button" class="ghost btn-block" id="gp-open-analog">House phone setup</button>
+      </section>
+
+      <section class="sheet control-card is-open gp-settings-card${focus === "account" ? " gp-focus" : ""}">
+        <h2 class="gp-card-title">This phone</h2>
+        <p class="tiny">Your picture, ringtone, and how you sign in${
+          state.user?.username
+            ? ` · signed in as <span class="mono">${String(state.user.username).replace(/</g, "")}</span>`
+            : ""
+        }.</p>
+        <button type="button" class="ghost btn-block" id="gp-open-profile">Picture &amp; ringtone</button>
+        <button type="button" class="ghost btn-block" id="gp-open-account" style="margin-top:8px">Change how I sign in</button>
+      </section>
+
+      <section class="sheet control-card is-open gp-settings-card">
+        <h2 class="gp-card-title">Show me</h2>
+        <div class="ringer-grid" style="margin-bottom:10px">
+          <button type="button" class="ringer-opt ${String(state.user?.profile_role || "") === "grandparent" || (!state.user?.profile_role && isGrandparentExperience()) ? "on" : ""}" data-profile-role="grandparent">Simple version (recommended)</button>
+          <button type="button" class="ringer-opt ${state.user?.profile_role === "parent" ? "on" : ""}" data-profile-role="parent">Full parent version</button>
+        </div>
+        <button type="button" class="primary" id="gp-save-role">Save</button>
+      </section>`
+      }
+    </div>
+  `);
+
+  bindGpPreviewChrome();
+  document.getElementById("exit-gp-preview-settings")?.addEventListener("click", () => exitGpPreview());
+
+  if (!preview) {
+    document.getElementById("toggle-kill").onclick = async () => {
+      try {
+        await api(`/api/households/${hh.id}/rules`, {
+          method: "PATCH",
+          body: JSON.stringify({ kill_switch: !hh.kill_switch }),
+        });
+        await refresh();
+      } catch (e) {
+        setFlash(e.message || "Could not update", "error");
+      }
+    };
+    document.getElementById("toggle-dnd").onclick = async () => {
+      try {
+        await api(`/api/households/${hh.id}/rules`, {
+          method: "PATCH",
+          body: JSON.stringify({ dnd: !hh.dnd }),
+        });
+        await refresh();
+      } catch (e) {
+        setFlash(e.message || "Could not update", "error");
+      }
+    };
+    document.getElementById("gp-open-family").onclick = () => {
+      state.screen = "manage-contacts";
+      render();
+    };
+    document.getElementById("gp-open-setup")?.addEventListener("click", () => {
+      reopenSetupChecklist();
+    });
+    document.getElementById("gp-open-analog").onclick = () => {
+      state._forceFullParentSettings = true;
+      state.parentScrollTo = "parent-ata";
+      render();
+    };
+    document.getElementById("gp-open-profile").onclick = () => {
+      void openProfilePanel();
+    };
+    document.getElementById("gp-open-account").onclick = () => {
+      state._forceFullParentSettings = true;
+      state.parentScrollTo = "parent-account";
+      render();
+    };
+    document.querySelectorAll("[data-profile-role]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-profile-role]").forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+      });
+    });
+    document.getElementById("gp-save-role").onclick = async () => {
+      const picked =
+        document.querySelector("[data-profile-role].on")?.getAttribute("data-profile-role") ||
+        "grandparent";
+      try {
+        const data = await api("/api/user/profile", {
+          method: "PATCH",
+          body: JSON.stringify({ profile_role: picked }),
+        });
+        state.user = data.user || state.user;
+        setFlash(picked === "parent" ? "Now showing the full parent screens" : "Back to the simple screens", "ok");
+        render();
+      } catch (e) {
+        setFlash(e.message || "Could not save", "error");
+      }
+    };
+    bindUiThemeSelector(document.querySelector(".gp-settings") || document);
+  }
+
+  document.getElementById("gp-goto-phone")?.addEventListener("click", () => {
+    state.screen = "home";
+    state.nav = "phone";
+    localStorage.setItem("kl_nav", "phone");
+    render();
+  });
+  const focusEl = document.querySelector(".gp-settings .gp-focus");
+  if (focusEl) {
+    requestAnimationFrame(() => {
+      focusEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+}
+
 function renderControls() {
+  if (isGrandparentExperience() && !state._forceFullParentSettings) {
+    renderGrandparentSettings();
+    return;
+  }
+  state._forceFullParentSettings = false;
+  const keepScroll = state.parentScrollTo ? 0 : pageScrollTop();
   captureAtaFormDraftFromDom();
   const hh = state.households[0];
-  const preset = hh.schedule_preset || "open";
-  const cap = hh.daily_cap_minutes;
-  const used = hh.usage_today_minutes || 0;
   const lines = hh?.lines || [];
   const line = activeLine();
   const ataLine = resolveAtaTargetLine(hh);
@@ -8854,17 +14320,18 @@ function renderControls() {
   const needsCreds = !state.user?.username || !state.user?.has_password;
   const ringVol = hh.ring_volume ?? 70;
   const contacts = externalAllowlist(hh);
-  const kidLines = ataKids;
+  const kidLines = householdKidLines(hh);
   const timeoutOn = Boolean(hh.kill_switch);
   const quietOn = Boolean(hh.dnd);
-  const capPct =
-    cap != null ? Math.min(100, Math.round((used / Math.max(cap, 1)) * 100)) : 0;
   const accOpen = resolveParentAccordionId(state.parentScrollTo || undefined);
+  const uiThemeLabelText = uiThemeLabel();
   const searchVal = String(state.parentSearch || "").replace(/"/g, "&quot;");
+  const kidsChip = kidLines.length
+    ? `<span class="parent-summary-chip"><strong>${kidLines.length}</strong><span>kid${kidLines.length === 1 ? "" : "s"}</span></span>`
+    : `<span class="parent-summary-chip parent-summary-chip-warn"><strong>0</strong><span>kids yet</span></span>`;
   setAppPage(`
-      <p class="lede tight">Search settings below. Timeout and Quiet Time stay up top — then Contacts, hours, and PIN.</p>
+      <p class="lede tight">Timeout and Quiet Time stay up top. Then kids, people, rooms, household rules, and this phone.</p>
       ${liveCallBannerHtml(hh)}
-      ${flashHtml()}
 
       <div class="parent-search">
         <label class="visually-hidden" for="parent-search">Search Parent settings</label>
@@ -8905,121 +14372,64 @@ function renderControls() {
       </div>
 
       <nav class="parent-jump" aria-label="Parent sections">
-        <a href="#parent-line">Line</a>
+        <a href="#parent-kids">Kids</a>
         <a href="#parent-people">Contacts</a>
-        <a href="#parent-hours">Quiet Time</a>
-        <a href="#parent-pin">PIN</a>
+        <a href="#parent-coparents">Co-parents</a>
+        <a href="#parent-grandparents">Grandparents</a>
         <a href="#parent-ata">Analog</a>
-        <a href="#parent-sounds">Sounds</a>
+        <a href="#parent-themes">Themes ${betaBadgeHtml()}</a>
+        <a href="#parent-treehouse">Rooms</a>
+        <a href="#parent-hours">Schedule</a>
+        <a href="#parent-pin">PIN</a>
+        <a href="#parent-line">This phone</a>
         <a href="#parent-help">Help</a>
         <a href="#parent-account">Account</a>
       </nav>
 
-      <section class="sheet control-card parent-section${accOpen === "parent-line" ? " is-open" : ""}" id="parent-line" data-acc>
-        ${parentSecToggle("parent-line", "Active line", "Which line this phone uses for calls and profile.", accOpen === "parent-line", "line")}
-        <div class="parent-sec-body" id="parent-line-body" role="region" aria-labelledby="parent-line-toggle"${accOpen === "parent-line" ? "" : " hidden"}>
-        <label>Active line</label>
-        <select id="line">${lines
-          .map(
-            (l) =>
-              `<option value="${l.id}" ${l.id === state.activeLineId ? "selected" : ""}>${l.child_label || l.name}${l.mode === "child" ? " · child" : ""}</option>`
-          )
-          .join("")}</select>
-        <p class="tiny">Outgoing calls and the profile picture follow this line. Analog Phone has its own line picker for the adapter.</p>
-
-        <div class="parent-field">
-          <h3 class="parent-subhead">Profile picture</h3>
-          <p class="tiny">Shown on speed dial and during calls for <strong>${lineLabel}</strong>.</p>
-          <div class="avatar-edit-row">
-            ${avatarHtml(lineLabel, line?.id, "lg")}
-            <div class="avatar-edit-actions">
-              <button type="button" class="primary" id="avatar-change">${line?.has_avatar ? "Change photo" : "Add photo"}</button>
-              <button type="button" class="ghost" id="avatar-remove" ${line?.has_avatar ? "" : "disabled"}>Remove</button>
-              <input type="file" id="avatar-file" accept="image/*" hidden />
-              <p class="tiny" id="avatar-status"></p>
-            </div>
-          </div>
-        </div>
-
-        <div class="parent-field">
-          <h3 class="parent-subhead">Lock this device</h3>
-          <p class="tiny">Locks <strong>this device</strong> to speed dial (Child mode). Exit needs the parent PIN. A child is a line — not a separate household.</p>
+      ${parentGroupLabel("people", "People")}
+      <section class="sheet control-card parent-section${accOpen === "parent-kids" ? " is-open" : ""}" id="parent-kids" data-acc data-parent-group="people">
+        ${parentSecToggle(
+          "parent-kids",
+          "Kids",
+          kidLines.length
+            ? "Their phones, photos, and greetings."
+            : "Add your kid here — first step for house phone and Quiet Time.",
+          accOpen === "parent-kids",
+          "people",
+          kidsChip
+        )}
+        <div class="parent-sec-body" id="parent-kids-body" role="region" aria-labelledby="parent-kids-toggle"${accOpen === "parent-kids" ? "" : " hidden"}>
+        ${
+          kidLines.length
+            ? `<ul class="guardian-list">
+            ${kidLines
+              .map(
+                (l) =>
+                  `<li><span>${String(l.child_label || l.name || "Kid").replace(/</g, "")}</span><span class="guardian-actions"><button type="button" class="ghost tiny-btn" data-edit-child-profile="${l.id}">Photo &amp; greeting</button><button type="button" class="ghost tiny-btn danger" data-delete-child-line="${l.id}">Delete</button></span></li>`
+              )
+              .join("")}
+          </ul>
           ${
-            line?.mode === "child"
-              ? `<p class="parent-mode-chip"><span class="dot" aria-hidden="true"></span>Child mode is on for this line</p>`
+            state.kidJustAdded
+              ? `<div class="add-kid-next" id="add-kid-next">
+            <p class="add-kid-next-lead"><strong>${String(state.kidJustAdded).replace(/</g, "")}</strong> is on your dial <strong>1</strong>. Next:</p>
+            <div class="btn-row three">
+              <button type="button" class="primary" id="kid-next-pin">Set PIN</button>
+              <button type="button" class="ghost" id="kid-next-analog">House phone</button>
+              <button type="button" class="ghost" id="kid-next-invite">Invite</button>
+            </div>
+          </div>`
               : ""
           }
-          <label>Kid label (optional)</label>
-          <input id="child-label" placeholder="e.g. Maya’s phone" value="${(line?.child_label || "").replace(/"/g, "&quot;")}" />
-          <div class="btn-row two" style="margin-top:10px">
-            <button class="primary" id="enable-child">${line?.mode === "child" ? "Lock this device" : "Lock Child mode"}</button>
-            <button class="ghost" id="save-child-label">Save label</button>
-          </div>
-        </div>
-
-        ${
-          line?.mode === "child"
-            ? `<details class="parent-advanced">
-          <summary>Authorized parents &amp; child login</summary>
-          <div class="parent-field" style="margin-top:12px;padding-top:0;border-top:0">
-            <h3 class="parent-subhead">Authorized parents</h3>
-            <p class="tiny">Guardians can manage this child line (contacts, rules, Child mode, live calls${line.child_user ? ", password" : ""}).</p>
-            <ul class="guardian-list">
-              ${(line.guardians || [])
-                .map(
-                  (g) =>
-                    `<li><span>${g.display_name}${g.username ? ` · <span class="mono">${g.username}</span>` : ""}${g.user_id === state.user?.id ? " · you" : ""}</span>${
-                      g.user_id !== state.user?.id
-                        ? `<button type="button" class="ghost tiny-btn" data-remove-guardian="${g.user_id}">Remove</button>`
-                        : ""
-                    }</li>`
-                )
-                .join("") || "<li class='tiny'>No guardians yet — Lock Child mode adds you.</li>"}
-            </ul>
-            <label style="margin-top:12px">Add by username</label>
-            <input id="guardian-username" autocomplete="username" placeholder="existing parent username" />
-            <div class="btn-row two" style="margin-top:10px">
-              <button class="primary" id="add-guardian">Add parent</button>
-              <button class="ghost" id="invite-guardian">Invite code</button>
-            </div>
-            <div id="guardian-invite-box" class="tiny" style="margin-top:8px"></div>
-            <label style="margin-top:14px">Accept a guardian invite</label>
-            <input id="guardian-code" class="mono" inputmode="numeric" maxlength="6" placeholder="······" />
-            <button class="ghost" id="redeem-guardian" style="margin-top:8px">Join as guardian</button>
-          </div>
-          <div class="parent-field">
-            <h3 class="parent-subhead">Child login</h3>
-            <p class="tiny">${
-              line.child_user
-                ? `Optional login <strong>${line.child_user.username}</strong> — guardians can reset the password.`
-                : "Optional. Child mode works with the parent session + PIN; add a username if the kid needs their own sign-in later."
-            }</p>
-            <label>Username</label>
-            <input id="child-username" autocomplete="username" placeholder="maya.phone" value="${(line.child_user?.username || "").replace(/"/g, "&quot;")}" />
-            <label style="margin-top:8px">${line.child_user ? "New password" : "Password"} (8+ characters)</label>
-            <input id="child-password" type="password" autocomplete="new-password" placeholder="••••••••" />
-            <div class="btn-row two" style="margin-top:10px">
-              <button class="primary" id="save-child-login">${line.child_user ? "Update login" : "Create child login"}</button>
-              ${
-                line.child_user
-                  ? `<button class="ghost" id="reset-child-pass">Reset password only</button>`
-                  : ""
-              }
-            </div>
-          </div>
-        </details>
-        <div class="parent-field parent-danger-zone">
-          <h3 class="parent-subhead">Delete this kid line</h3>
-          <p class="tiny">Permanently removes <strong>${(line.child_label || line.name || "this kid").replace(/</g, "")}</strong> — login, adapter binding, greetings, call history for this line, and their entry on everyone else’s contacts. Other kids in this household stay.</p>
-          <button type="button" class="danger" id="delete-active-child-line">Delete kid line…</button>
-        </div>`
-            : ""
+          ${addKidCardHtml()}`
+            : addKidCardHtml({ prominent: true })
         }
+        <p class="tiny" style="margin-top:12px">After you add a kid, they show on your speed dial <strong>1</strong>. Optional house phone: <button type="button" class="linkish" id="kids-go-analog">Analog Phone</button>.</p>
         </div>
       </section>
 
-      <section class="sheet control-card parent-section${accOpen === "parent-people" ? " is-open" : ""}" id="parent-people" data-acc>
-        ${parentSecToggle("parent-people", "Contacts &amp; speed dials", "Who can call, nicknames, and dial-pad slots.", accOpen === "parent-people", "people")}
+      <section class="sheet control-card parent-section${accOpen === "parent-people" ? " is-open" : ""}" id="parent-people" data-acc data-parent-group="people">
+        ${parentSecToggle("parent-people", "Contacts &amp; speed dials", "Your people, invites, and which lists kids can call.", accOpen === "parent-people", "people")}
         <div class="parent-sec-body" id="parent-people-body" role="region" aria-labelledby="parent-people-toggle"${accOpen === "parent-people" ? "" : " hidden"}>
         <div class="parent-summary-row">
           <div class="parent-summary-chip">
@@ -9028,84 +14438,106 @@ function renderControls() {
           </div>
           <div class="parent-summary-chip">
             <strong>${kidLines.length}</strong>
-            <span>kid line${kidLines.length === 1 ? "" : "s"}</span>
+            <span>kid${kidLines.length === 1 ? "" : "s"}</span>
           </div>
         </div>
-        <p class="tiny">Edit nicknames, dial slots, and VIP (VIP still rings during Quiet Time). On Home, hold a contact to rearrange when unlocked.</p>
+        ${canInviteFamily() ? renderParentCirclesBlock(hh, kidLines) : ""}
+        <p class="tiny">Edit nicknames, dial slots, and VIP (VIP still rings during Quiet Time). On Home, hold a contact to rearrange when unlocked. Add people by <strong>invite</strong> — there is no global search of other kids’ friends.</p>
         <div class="btn-row ${canInviteFamily() ? "two" : ""}">
           <button type="button" class="primary" id="go-manage-contacts">Edit contacts</button>
           ${
             canInviteFamily()
-              ? `<button type="button" class="ghost" id="go-invite">Invite family</button>`
+              ? `<button type="button" class="ghost" id="go-invite">Invite into my circle</button>`
               : ""
           }
         </div>
         ${
           kidLines.length
-            ? `<div class="parent-field">
-          <h3 class="parent-subhead">Kid profiles</h3>
-          <p class="tiny">Change a child’s picture or greeting without signing in as them.</p>
-          <ul class="guardian-list">
-            ${kidLines
-              .map(
-                (l) =>
-                  `<li><span>${l.child_label || l.name}</span><span class="guardian-actions"><button type="button" class="ghost tiny-btn" data-edit-child-profile="${l.id}">Photo &amp; greeting</button><button type="button" class="ghost tiny-btn danger" data-delete-child-line="${l.id}">Delete</button></span></li>`
-              )
-              .join("")}
-          </ul>
-        </div>`
-            : ""
+            ? ""
+            : `<p class="tiny ata-lan-warn" style="margin-top:12px">No kids yet — add one under <button type="button" class="linkish" id="people-go-kids">Kids</button> first.</p>`
         }
         </div>
       </section>
 
-      <section class="sheet control-card parent-section${accOpen === "parent-hours" ? " is-open" : ""}" id="parent-hours" data-acc>
-        ${parentSecToggle("parent-hours", "Quiet Time &amp; limits", "Named windows (Bedtime, School) and daily talk limits.", accOpen === "parent-hours", "hours")}
-        <div class="parent-sec-body" id="parent-hours-body" role="region" aria-labelledby="parent-hours-toggle"${accOpen === "parent-hours" ? "" : " hidden"}>
-        <div class="parent-field" style="margin-top:0;padding-top:0;border-top:0">
-          <h3 class="parent-subhead">Schedule</h3>
-          <p class="tiny">Quiet Time windows in your timezone.</p>
-          <div class="preset-grid">
-            ${["open", "bedtime", "school"]
-              .map(
-                (p) =>
-                  `<button type="button" class="preset ${preset === p ? "on" : ""}" data-preset="${p}">${p === "open" ? "Open" : p === "bedtime" ? "Bedtime" : "School"}</button>`
-              )
-              .join("")}
-          </div>
-          <button class="ghost" id="custom-quiet" style="margin-top:10px">Custom Quiet Time…</button>
-          <p class="tiny parent-inline-meta">${quietSummary(hh)}${hh?.quiet_tz ? ` · ${hh.quiet_tz}` : ""}</p>
-          ${
-            preset === "school"
-              ? `<div class="school-schedule-note" style="margin-top:12px">
-            <p class="tiny"><strong>School</strong> runs Mon–Fri ${formatQuietClock(hh.quiet_start || "08:00")}–${formatQuietClock(hh.quiet_end || "15:30")}.</p>
-            <label class="check-row">
-              <input type="checkbox" id="skip-holidays" ${hh.skip_holidays ? "checked" : ""} />
-              <span>Skip US federal holidays</span>
-            </label>
-            <p class="tiny">Observed New Year’s, MLK, Presidents’, Memorial, Juneteenth, July 4, Labor, Columbus/Indigenous Peoples’, Veterans, Thanksgiving, Christmas. Not a full school calendar.</p>
-          </div>`
-              : ""
-          }
-        </div>
-        <div class="parent-field">
-          <h3 class="parent-subhead">Daily talk limit</h3>
-          ${
-            cap != null
-              ? `<div class="usage-bar ${capPct >= 90 ? "hot" : ""}">
-            <div class="usage-meta"><span>Used today</span><strong>${used} / ${cap} min</strong></div>
-            <div class="usage-track"><i style="width:${capPct}%"></i></div>
-          </div>`
-              : `<p class="tiny">Used today: <strong>${used} min</strong> · unlimited</p>`
-          }
-          <label>Minutes per day (blank = unlimited)</label>
-          <input id="cap" type="number" min="0" step="5" placeholder="e.g. 60" value="${cap ?? ""}" />
-          <button class="primary" id="save-cap" style="margin-top:10px">Save limit</button>
-        </div>
+<section class="sheet control-card parent-section${accOpen === "parent-coparents" ? " is-open" : ""}" id="parent-coparents" data-acc data-parent-group="people">
+        ${parentSecToggle(
+          "parent-coparents",
+          "Co-parents",
+          "Invite a second parent to manage a kid with you.",
+          accOpen === "parent-coparents",
+          "people"
+        )}
+        <div class="parent-sec-body" id="parent-coparents-body" role="region" aria-labelledby="parent-coparents-toggle"${
+          accOpen === "parent-coparents" ? "" : " hidden"
+        }>
+        ${renderCoParentsPanel(hh)}
         </div>
       </section>
 
-      <section class="sheet control-card parent-section${accOpen === "parent-pin" ? " is-open" : ""}" id="parent-pin" data-acc>
+<section class="sheet control-card parent-section${accOpen === "parent-grandparents" ? " is-open" : ""}" id="parent-grandparents" data-acc data-parent-group="people">
+        ${parentSecToggle(
+          "parent-grandparents",
+          "Grandparents",
+          "Set a login for Grandma or Grandpa and choose which kids they can call.",
+          accOpen === "parent-grandparents",
+          "people"
+        )}
+        <div class="parent-sec-body" id="parent-grandparents-body" role="region" aria-labelledby="parent-grandparents-toggle"${
+          accOpen === "parent-grandparents" ? "" : " hidden"
+        }>
+        ${renderGrandparentsPanel(hh)}
+        </div>
+      </section>
+
+      ${parentGroupLabel("rooms", "Rooms")}
+<section class="sheet control-card parent-section${accOpen === "parent-treehouse" ? " is-open" : ""}" id="parent-treehouse" data-acc data-parent-group="rooms">
+        ${parentSecToggle(
+          "parent-treehouse",
+          "TreeHouse",
+          "Kids hang out on the house button (0). You choose who they hear. Parents listen only.",
+          accOpen === "parent-treehouse",
+          "familyroom"
+        )}
+        <div class="parent-sec-body" id="parent-treehouse-body" role="region" aria-labelledby="parent-treehouse-toggle"${
+          accOpen === "parent-treehouse" ? "" : " hidden"
+        }>
+        ${renderTreeHouseParentBlock(hh)}
+        </div>
+      </section>
+
+<section class="sheet control-card parent-section${accOpen === "parent-adult-familyroom" ? " is-open" : ""}" id="parent-adult-familyroom" data-acc data-parent-group="rooms">
+        ${parentSecToggle(
+          "parent-adult-familyroom",
+          "FamilyRoom",
+          "Family talk on the # button. Press #, then 1 for this house or 2 for the other parent.",
+          accOpen === "parent-adult-familyroom",
+          "familyroom",
+          "",
+          { beta: true }
+        )}
+        <div class="parent-sec-body" id="parent-adult-familyroom-body" role="region" aria-labelledby="parent-adult-familyroom-toggle"${
+          accOpen === "parent-adult-familyroom" ? "" : " hidden"
+        }>
+        ${renderAdultFamilyRoomParentBlock(hh)}
+        </div>
+      </section>
+
+      ${parentGroupLabel("rules", "Household rules")}
+<section class="sheet control-card parent-section${accOpen === "parent-hours" ? " is-open" : ""}" id="parent-hours" data-acc data-parent-group="rules">
+        ${parentSecToggle(
+          "parent-hours",
+          "Quiet Time &amp; limits",
+          "See each kid’s hours and talk time. Set Do Not Disturb for your phone separately.",
+          accOpen === "parent-hours",
+          "hours",
+          parentHoursChipHtml(hh, kidLines)
+        )}
+        <div class="parent-sec-body" id="parent-hours-body" role="region" aria-labelledby="parent-hours-toggle"${accOpen === "parent-hours" ? "" : " hidden"}>
+        ${renderParentHoursBody(hh, kidLines)}
+        </div>
+      </section>
+
+<section class="sheet control-card parent-section${accOpen === "parent-pin" ? " is-open" : ""}" id="parent-pin" data-acc data-parent-group="rules">
         ${parentSecToggle(
           "parent-pin",
           "Parent PIN",
@@ -9137,11 +14569,153 @@ function renderControls() {
         </div>
       </section>
 
-      <section class="sheet control-card parent-section${accOpen === "parent-ata" ? " is-open" : ""}" id="parent-ata" data-acc>
+      ${parentGroupLabel("device", "This phone")}
+<section class="sheet control-card parent-section${accOpen === "parent-line" ? " is-open" : ""}" id="parent-line" data-acc data-parent-group="device">
+        ${parentSecToggle(
+          "parent-line",
+          "This phone",
+          "Line, how it rings, and lock-screen Answer — on this device only.",
+          accOpen === "parent-line",
+          "line"
+        )}
+        <div class="parent-sec-body" id="parent-line-body" role="region" aria-labelledby="parent-line-toggle"${accOpen === "parent-line" ? "" : " hidden"}>
+        <label>Active line</label>
+        <select id="line">${lines
+          .map(
+            (l) =>
+              `<option value="${l.id}" ${l.id === state.activeLineId ? "selected" : ""}>${l.child_label || l.name}${l.mode === "child" ? " · child" : ""}</option>`
+          )
+          .join("")}</select>
+        <p class="tiny">Outgoing calls and the profile picture follow this line. Analog Phone has its own line picker for the adapter. Set a <strong>Parent PIN</strong> before locking Child mode.</p>
+
+        <div class="parent-field">
+          <h3 class="parent-subhead">Profile picture</h3>
+          <p class="tiny">Shown on speed dial and during calls for <strong>${lineLabel}</strong>.</p>
+          <div class="avatar-edit-row">
+            ${avatarHtml(lineLabel, line?.id, "lg")}
+            <div class="avatar-edit-actions">
+              <button type="button" class="primary" id="avatar-change">${line?.has_avatar ? "Change photo" : "Add photo"}</button>
+              <button type="button" class="ghost" id="avatar-remove" ${line?.has_avatar ? "" : "disabled"}>Remove</button>
+              <input type="file" id="avatar-file" accept="image/*" hidden />
+              <p class="tiny" id="avatar-status"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="parent-field">
+          <h3 class="parent-subhead">This phone is for a kid</h3>
+          <p class="tiny">Only if <strong>this</strong> handset should be a kid phone (Child mode). To create a kid while keeping your parent phone, use <button type="button" class="linkish" id="line-go-add-kid">Kids → Add a kid</button>.</p>
+          ${
+            line?.mode === "child"
+              ? `<p class="parent-mode-chip"><span class="dot" aria-hidden="true"></span>Child mode is on for this line</p>
+          <label style="margin-top:10px">Kid label (optional)</label>
+          <input id="child-label" placeholder="e.g. Maya’s phone" value="${(line?.child_label || "").replace(/"/g, "&quot;")}" />
+          <button class="ghost" id="save-child-label" style="margin-top:10px">Save label</button>`
+              : `<details class="parent-advanced">
+            <summary>Lock this device (advanced)</summary>
+            <p class="tiny" style="margin-top:10px">Requires a Parent PIN. Exit Child mode needs that PIN.</p>
+            <label>Kid label (optional)</label>
+            <input id="child-label" placeholder="e.g. Maya’s phone" value="${(line?.child_label || "").replace(/"/g, "&quot;")}" />
+            <div class="btn-row two" style="margin-top:10px">
+              <button class="ghost" id="enable-child">Lock as kid phone</button>
+              <button class="ghost" id="save-child-label">Save label</button>
+            </div>
+          </details>`
+          }
+        </div>
+
+        ${
+          line?.mode === "child"
+            ? `<details class="parent-advanced">
+          <summary>Child login (optional)</summary>
+          <div class="parent-field" style="margin-top:12px;padding-top:0;border-top:0">
+            <h3 class="parent-subhead">Child login</h3>
+            <p class="tiny">${
+              line.child_user
+                ? `Optional login <strong>${line.child_user.username}</strong> — co-parents can reset the password.`
+                : "Optional. Child mode works with the parent session + PIN; add a username if the kid needs their own sign-in later."
+            }</p>
+            <label>Username</label>
+            <input id="child-username" autocomplete="username" placeholder="maya.phone" value="${(line.child_user?.username || "").replace(/"/g, "&quot;")}" />
+            <label style="margin-top:8px">${line.child_user ? "New password" : "Password"} (8+ characters)</label>
+            <input id="child-password" type="password" autocomplete="new-password" placeholder="••••••••" />
+            <div class="btn-row two" style="margin-top:10px">
+              <button class="primary" id="save-child-login">${line.child_user ? "Update login" : "Create child login"}</button>
+              ${
+                line.child_user
+                  ? `<button class="ghost" id="reset-child-pass">Reset password only</button>`
+                  : ""
+              }
+            </div>
+          </div>
+        </details>
+        <p class="tiny" style="margin-top:12px">To permanently remove this kid line, use <strong>Contacts → Kid profiles → Delete</strong>.</p>`
+            : ""
+        }
+
+        <div class="parent-field" id="parent-sounds">
+          <h3 class="parent-subhead">Ringer</h3>
+          <p class="tiny">Volume and ring sound when <strong>this phone</strong> rings — not what the caller hears.</p>
+          <label id="ring-volume-label">Volume (${ringVol})</label>
+          <input id="ring-volume" type="range" min="0" max="100" step="5" value="${ringVol}" />
+          <label style="margin-top:10px">Ring sound</label>
+          <div class="ringer-grid">
+            ${[
+              ["classic", "90s bell"],
+              ["chirp", "Chirp"],
+              ["modern", "Modern"],
+              ["chime", "Soft chime"],
+              ["urgent", "Urgent pulse"],
+            ]
+              .map(
+                ([id, label]) =>
+                  `<button type="button" class="ringer-opt ${(hh.ringer_style || "classic") === id ? "on" : ""}" data-ringer="${id}">${label}</button>`
+              )
+              .join("")}
+          </div>
+          <div class="btn-row two" style="margin-top:10px">
+            <button class="primary" id="save-ringer">Save ringer</button>
+            <button class="ghost" id="preview-ringer">Play sample</button>
+          </div>
+        </div>
+        ${iosCallKitToggleHtml("ios-callkit")}
+        <div class="parent-field">
+          <h3 class="parent-subhead">Answering machine greeting</h3>
+          <p class="tiny">${line?.has_greeting ? "Custom greeting is on." : "Default: “Please leave a message after the beep.”"}</p>
+          <audio id="greet-preview" controls style="display:block;width:100%;margin:8px 0" src="${
+            line?.has_greeting
+              ? `/api/lines/${line.id}/greeting?sid=${encodeURIComponent(state.sessionId)}`
+              : "/default-greeting.wav"
+          }"></audio>
+          <div class="btn-row two">
+            <button class="primary" id="greet-record">${line?.has_greeting ? "Re-record" : "Record greeting"}</button>
+            <button class="ghost" id="greet-default">${
+              line?.has_greeting
+                ? "Use default greeting"
+                : line?.greeting_confirmed
+                  ? "Default greeting confirmed"
+                  : "Use default greeting"
+            }</button>
+          </div>
+          <p class="vm-rec-status tiny" id="greet-status" style="margin-top:8px"></p>
+        </div>
+        <div class="parent-field">
+          <h3 class="parent-subhead parent-subhead-with-badge">${withBetaBadge("Speaker (call screening)")}</h3>
+          <p class="tiny">Optional — off by default. Hear the message while it’s left, like a 90s answering machine.</p>
+          <label class="check-row">
+            <input type="checkbox" id="answering-machine" ${line?.answering_machine ? "checked" : ""} />
+            Play messages out loud as they’re left
+          </label>
+        </div>
+        </div>
+      </section>
+
+      ${parentGroupLabel("house", "House phone")}
+<section class="sheet control-card parent-section${accOpen === "parent-ata" ? " is-open" : ""}" id="parent-ata" data-acc data-parent-group="house">
         ${parentSecToggle(
           "parent-ata",
           "Analog Phone",
-          "House phone (corded or cordless) via the adapter.",
+          "A regular house phone through the small adapter box.",
           accOpen === "parent-ata",
           "ata",
           analogPhoneHeaderChipHtml(ataLine)
@@ -9164,11 +14738,14 @@ function renderControls() {
                 })
                 .join("")}
             </select>`
-                : `<p class="tiny ata-lan-warn">No kid lines you can manage yet. Add or lock a child line under Active line first.</p>`
+                : `<p class="tiny ata-lan-warn">Add a kid first — then you can hook up their house phone.</p>
+            <button type="button" class="primary" id="ata-go-add-kid">Add a kid</button>`
             }
           </div>
 
           ${analogPhoneStatusBannerHtml(ataLine)}
+
+          ${analogPhotosHtml()}
 
           ${analogPhoneIntroHtml(ataLine)}
 
@@ -9190,7 +14767,7 @@ function renderControls() {
 
             const modelRadios = `
           <div class="ata-model-row" role="radiogroup" aria-label="Analog adapter model">
-            <label class="check-row"><input type="radio" name="ata-model" value="ht801" ${isFanvil ? "" : "checked"} /> Grandstream HT801</label>
+            <label class="check-row"><input type="radio" name="ata-model" value="ht801" ${isFanvil ? "" : "checked"} /> Grandstream HT801 v2</label>
             <label class="check-row"><input type="radio" name="ata-model" value="g100s" ${isFanvil ? "checked" : ""} /> Fanvil G100S</label>
           </div>`;
 
@@ -9200,17 +14777,22 @@ function renderControls() {
             <h3 class="parent-subhead">Download config</h3>
             <p class="tiny">${
               lanPushKnownOff
-                ? "Home hub isn’t on the adapter’s Wi‑Fi. Download, then upload on the adapter’s local web page."
-                : "When the home hub can’t reach the adapter, download and upload on the adapter’s page."
+                ? "Home hub isn’t on the adapter’s Wi‑Fi. Download the file, then upload it in the box’s admin page."
+                : "When the home hub can’t reach the adapter, download the file and upload it in the box’s admin page."
             }</p>
             <button type="button" class="${lanPushKnownOff ? "primary" : "ghost"}" id="ata-download" ${canPush ? "" : "disabled"}>Download config</button>
             ${
               canPush
-                ? `<p class="tiny ata-actions-hint">${
-                    lanPushKnownOff
-                      ? "Then: https://&lt;adapter-IP&gt; → Backup / Import → upload → reboot."
-                      : "Fallback when one-tap isn’t available."
-                  }</p>`
+                ? isFanvil
+                  ? `<div class="ata-admin-guide">
+              <h4 class="ata-adv-sub">Where to upload on the Fanvil</h4>
+              ${analogFanvilAdminStepsHtml()}
+            </div>`
+                  : `<div class="ata-admin-guide">
+              <h4 class="ata-adv-sub">Where to upload on the Grandstream</h4>
+              <p class="tiny">Open the HT801 v2 admin page, then: <strong>Maintenance → Upgrade → Upload Configuration</strong>.</p>
+              ${analogHt801AdminStepsHtml({ purpose: "upload" })}
+            </div>`
                 : `<p class="tiny ata-actions-hint">Save connection first.</p>`
             }
           </div>`;
@@ -9246,23 +14828,18 @@ function renderControls() {
             const setupCards = lanPushKnownOff ? remoteCard + lanCard : lanCard + remoteCard;
 
             const helpDetails = `
-          <details class="ata-help">
-            <summary>Setup tips</summary>
-            <ol class="ata-steps">
-              ${
-                isFanvil
-                  ? `<li>Power + <strong>WAN</strong> Ethernet on the G100S.</li>
-              <li>Find its IP (sticker or router list).</li>
-              <li>Save connection here, then Download config.</li>
-              <li>On the adapter: System → Backup/Flash → Import the <span class="mono">.txt</span>.</li>
-              <li>Plug in a landline phone; dial <strong>0</strong> (parent) or <strong>1–9</strong>.</li>`
-                  : `<li>Power + Ethernet on the HT801.</li>
-              <li>Find its IP (sticker, router, or phone <span class="mono">***</span> → 02).</li>
-              <li>Save connection, then Set up adapter (same Wi‑Fi as home hub) or Download config.</li>
-              <li>Wait about a minute; dial <strong>0</strong> or <strong>1–9</strong>.</li>`
-              }
-            </ol>
-            <p class="tiny">Speed dials stay in the app — no re-upload when contacts change. Calls use SIP TLS + SRTP.</p>
+          <details class="ata-help"${hasAta ? "" : " open"}>
+            <summary>${isFanvil ? "How to finish on the Fanvil" : "How to finish on the Grandstream"}</summary>
+            <p class="tiny">${
+              hasAta
+                ? "Use Set up adapter or Download config above. Full admin clicks are under Download config."
+                : "After you Save connection, this screen shows <strong>Set up adapter</strong> and <strong>Download config</strong>. For Download: find the box IP with <span class=\"mono\">***</span> then <span class=\"mono\">02</span> on the handset → open <span class=\"mono\">https://</span> that IP → <strong>Maintenance → Upgrade → Upload Configuration</strong>."
+            }</p>
+            ${
+              hasAta
+                ? ""
+                : `<p class="tiny">Power + Ethernet on the box first (NET jack). House phone goes in the <strong>green</strong> jack after config.</p>`
+            }
           </details>`;
 
             if (!ataKids.length || status.kind === "no-line") {
@@ -9273,11 +14850,11 @@ function renderControls() {
               return `
           <div class="ata-primary">
             <h3 class="parent-subhead">Set up this line</h3>
-            <p class="tiny">Choose the adapter, save, then push or download config for <strong>${labelSafe}</strong>.</p>
+            <p class="tiny"><strong>Step 1:</strong> choose the adapter and tap <strong>Save connection</strong>. <strong>Step 2:</strong> you’ll get <strong>Set up adapter</strong> (same-house Wi‑Fi) or <strong>Download config</strong> to upload on the box.</p>
             ${modelRadios}
             <div class="ata-save-cta">
               <button type="button" class="primary" id="ata-save" ${ataLine ? "" : "disabled"}>Save connection</button>
-              <p class="tiny ata-actions-hint">Assigns a unique extension. Password stays hidden.</p>
+              <p class="tiny ata-actions-hint">Assigns a unique extension. Password stays hidden. Download / one-tap appear after Save.</p>
             </div>
           </div>
           ${helpDetails}`;
@@ -9306,11 +14883,15 @@ function renderControls() {
                 ? "Reconnect"
                 : "Finish setup";
             const primaryHint =
-              status.kind === "offline" || (status.kind === "online" && keepFormOpen)
-                ? "Push or download config again so the adapter re-registers."
-                : isFanvil
-                  ? "Download config and import it on the adapter."
-                  : "Set up via home hub, or download and upload on the adapter.";
+              status.kind === "offline"
+                ? lanPushKnownOff || isFanvil
+                  ? "Download config again and upload it on the adapter, then reboot the box. Status turns live when it registers."
+                  : "Prefer Set up adapter if the home hub shares Wi‑Fi with the box. Otherwise Download config → upload → reboot."
+                : status.kind === "online" && keepFormOpen
+                  ? "Push or download config again so the adapter re-registers."
+                  : isFanvil
+                    ? "Download config and import it on the adapter."
+                    : "Set up via home hub, or download and upload on the adapter.";
 
             return `
           <div class="ata-primary">
@@ -9323,18 +14904,8 @@ function renderControls() {
 
           <details class="ata-advanced"${state.ataFormDraft?.advancedOpen ? " open" : ""}>
             <summary>Advanced</summary>
-            <p class="tiny">Server, MAC, caller ID, config path, disconnect. SIP passwords stay hidden.</p>
+            <p class="tiny">Server, MAC, caller ID, config path, disconnect. SIP passwords stay hidden. Adapter model is chosen above.</p>
             ${ataLine?.ata ? analogNeedAdapterLinkHtml() : ""}
-            ${
-              ataLine?.ata
-                ? `
-            <h4 class="ata-adv-sub">Adapter model</h4>
-            <div class="ata-model-row" role="radiogroup" aria-label="Analog adapter model">
-              <label class="check-row"><input type="radio" name="ata-model" value="ht801" ${(state.ataModelDraft || ataLine?.ata?.model) === "g100s" ? "" : "checked"} /> Grandstream HT801</label>
-              <label class="check-row"><input type="radio" name="ata-model" value="g100s" ${(state.ataModelDraft || ataLine?.ata?.model) === "g100s" ? "checked" : ""} /> Fanvil G100S</label>
-            </div>`
-                : ""
-            }
             <label style="margin-top:8px">Server address</label>
             <input id="ata-server" class="mono" placeholder="y5876647.eero.online" value="${escAttr(
               state.ataFormDraft?.server || ataLine?.ata?.sip_server || "y5876647.eero.online"
@@ -9360,9 +14931,14 @@ function renderControls() {
               <p class="mono tiny ata-cfg-path" id="ata-cfg-path" hidden></p>
               <p class="tiny">${
                 (state.ataModelDraft || ataLine?.ata?.model) === "g100s"
-                  ? "Adapter: System → Auto Provision → paste HTTPS URL → Apply → reboot."
-                  : "Adapter: Maintenance → Upgrade Via HTTPS → Config Server Path (leave Firmware blank) → Apply → reboot."
+                  ? "On the Fanvil: <strong>System → Auto Provision</strong> → paste the HTTPS URL → Apply → reboot."
+                  : "On the HT801 v2: left menu <strong>Maintenance → Upgrade</strong> → <strong>Config Upgrade via: HTTPS</strong> → paste into <strong>Config Server Path</strong> → leave Firmware Server Path empty → Save / Apply → reboot."
               }</p>
+              ${
+                (state.ataModelDraft || ataLine?.ata?.model) === "g100s"
+                  ? ""
+                  : analogHt801AdminStepsHtml({ purpose: "config-path" })
+              }
               <div class="btn-row two" style="margin-top:10px">
                 <button type="button" class="ghost" id="ata-rotate-token">Make a new link</button>
                 <button type="button" class="ghost" id="ata-unlink">Disconnect adapter</button>
@@ -9375,66 +14951,27 @@ function renderControls() {
         </div>
       </section>
 
-      <section class="sheet control-card parent-section${accOpen === "parent-sounds" ? " is-open" : ""}" id="parent-sounds" data-acc>
-        ${parentSecToggle("parent-sounds", "Sounds", "Incoming ring volume, style, and greeting.", accOpen === "parent-sounds", "sounds")}
-        <div class="parent-sec-body" id="parent-sounds-body" role="region" aria-labelledby="parent-sounds-toggle"${accOpen === "parent-sounds" ? "" : " hidden"}>
-        <div class="parent-field" style="margin-top:0;padding-top:0;border-top:0">
-          <h3 class="parent-subhead">Ringer</h3>
-          <p class="tiny">Volume and style when <strong>this phone</strong> rings — not what the caller hears.</p>
-          <label id="ring-volume-label">Volume (${ringVol})</label>
-          <input id="ring-volume" type="range" min="0" max="100" step="5" value="${ringVol}" />
-          <label style="margin-top:10px">Style</label>
-          <div class="ringer-grid">
-            ${[
-              ["classic", "90s bell"],
-              ["chirp", "Chirp"],
-              ["modern", "Modern"],
-              ["chime", "Soft chime"],
-              ["urgent", "Urgent pulse"],
-            ]
-              .map(
-                ([id, label]) =>
-                  `<button type="button" class="ringer-opt ${(hh.ringer_style || "classic") === id ? "on" : ""}" data-ringer="${id}">${label}</button>`
-              )
-              .join("")}
-          </div>
-          <div class="btn-row two" style="margin-top:10px">
-            <button class="primary" id="save-ringer">Save ringer</button>
-            <button class="ghost" id="preview-ringer">Play sample</button>
-          </div>
-        </div>
-        <div class="parent-field">
-          <h3 class="parent-subhead">Answering machine greeting</h3>
-          <p class="tiny">${line?.has_greeting ? "Custom greeting is on." : "Default: “Please leave a message after the beep.”"}</p>
-          <audio id="greet-preview" controls style="display:block;width:100%;margin:8px 0" src="${
-            line?.has_greeting
-              ? `/api/lines/${line.id}/greeting?sid=${encodeURIComponent(state.sessionId)}`
-              : "/default-greeting.wav"
-          }"></audio>
-          <div class="btn-row two">
-            <button class="primary" id="greet-record">${line?.has_greeting ? "Re-record" : "Record greeting"}</button>
-            <button class="ghost" id="greet-default">${
-              line?.has_greeting
-                ? "Use default greeting"
-                : line?.greeting_confirmed
-                  ? "Default greeting confirmed"
-                  : "Use default greeting"
-            }</button>
-          </div>
-          <p class="vm-rec-status tiny" id="greet-status" style="margin-top:8px"></p>
-        </div>
-        <div class="parent-field">
-          <h3 class="parent-subhead">Speaker (call screening)</h3>
-          <p class="tiny">Optional — off by default. Hear the message while it’s left, like a 90s answering machine.</p>
-          <label class="check-row">
-            <input type="checkbox" id="answering-machine" ${line?.answering_machine ? "checked" : ""} />
-            Play messages out loud as they’re left
-          </label>
-        </div>
+      </section>
+
+      ${parentGroupLabel("look", "Look")}
+      <section class="sheet control-card parent-section${accOpen === "parent-themes" ? " is-open" : ""}" id="parent-themes" data-acc data-parent-group="look">
+        ${parentSecToggle(
+          "parent-themes",
+          "Themes",
+          "How PhoneHome looks on this device.",
+          accOpen === "parent-themes",
+          "appearance",
+          `<span class="parent-summary-chip" id="parent-themes-chip"><strong>${uiThemeLabelText}</strong></span>`,
+          { beta: true }
+        )}
+        <div class="parent-sec-body" id="parent-themes-body" role="region" aria-labelledby="parent-themes-toggle"${accOpen === "parent-themes" ? "" : " hidden"}>
+          <p class="tiny" style="margin-top:0">Saved on this device only — swap looks anytime.</p>
+          ${uiThemeSelectorHtml({ bare: true })}
         </div>
       </section>
 
-      <section class="sheet control-card parent-section${accOpen === "parent-help" ? " is-open" : ""}" id="parent-help" data-acc>
+      ${parentGroupLabel("more", "Help &amp; account")}
+<section class="sheet control-card parent-section${accOpen === "parent-help" ? " is-open" : ""}" id="parent-help" data-acc data-parent-group="more">
         ${parentSecToggle(
           "parent-help",
           "Help",
@@ -9458,20 +14995,20 @@ function renderControls() {
         }
         <div class="parent-field"${isKidExperience() ? ` style="margin-top:0;padding-top:0;border-top:0"` : ""}>
           <h3 class="parent-subhead">Tutorial</h3>
-          <p class="tiny">A short walkthrough of how PhoneHome works — lines, Quiet Time, invites, and calling.</p>
+          <p class="tiny">A short walkthrough of how PhoneHome works — calling, invites, themes, Quiet Time, and parent tools.</p>
           <button class="ghost" id="tutorial">Show tutorial</button>
         </div>
         <div class="parent-field">
           <h3 class="parent-subhead">Guides</h3>
           <p class="tiny">Quick answers for common parent tasks. Expand a topic to read more.</p>
           <div class="help-articles">
-            ${PARENT_HELP_ARTICLES.map(parentHelpArticleHtml).join("")}
+            ${parentHelpArticles().map(parentHelpArticleHtml).join("")}
           </div>
         </div>
         </div>
       </section>
 
-      <section class="sheet control-card parent-section${accOpen === "parent-account" ? " is-open" : ""}" id="parent-account" data-acc>
+<section class="sheet control-card parent-section${accOpen === "parent-account" ? " is-open" : ""}" id="parent-account" data-acc data-parent-group="more">
         ${parentSecToggle(
           "parent-account",
           "Account",
@@ -9492,10 +15029,32 @@ function renderControls() {
           <button class="ghost" id="set-pass">${needsCreds ? "Create username & password" : "Change password"}</button>
           <button class="ghost" id="logout" style="margin-top:8px">Sign out</button>
         </div>
+        ${
+          isNativeIosShell() || nativePlugin()
+            ? `<div class="parent-field" id="parent-faceid">
+          <h3 class="parent-subhead">Face ID sign-in</h3>
+          <p class="tiny" id="faceid-account-status">Checking this iPhone…</p>
+          <div id="faceid-enable-wrap" hidden>
+            <p class="tiny">Type your PhoneHome password once. It’s stored in the iPhone Keychain (this device only) so Face ID can sign you in later.</p>
+            <label for="faceid-enable-pass">Password</label>
+            <input id="faceid-enable-pass" type="password" autocomplete="current-password" placeholder="••••••••" />
+            <button type="button" class="primary" id="faceid-enable" style="margin-top:10px">Save for Face ID</button>
+          </div>
+          <button type="button" class="ghost" id="faceid-forget" hidden style="margin-top:10px">Forget Face ID on this iPhone</button>
+        </div>`
+            : ""
+        }
+        <div class="parent-field">
+          <h3 class="parent-subhead">Mom or Dad</h3>
+          <p class="tiny">How kids’ phones should name you — on speed dial and in the house. Optional; otherwise they see your name.</p>
+          ${parentTitlePickerHtml()}
+        </div>
         <div class="parent-field parent-danger-zone">
           <h3 class="parent-subhead">Delete account</h3>
           <p class="tiny">Permanently erases your parent account. If you’re the only parent on this household, the whole household is wiped (all kid lines, contacts, voicemails, greetings). If another household member remains, ownership transfers to them and your account leaves. Other families who had your kids on speed dial lose those contacts. This cannot be undone.</p>
-          <button type="button" class="danger" id="delete-parent-account">Delete my account…</button>
+          <label class="tiny" for="delete-account-confirm">Type <strong>delete</strong> to confirm</label>
+          <input id="delete-account-confirm" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="delete" />
+          <button type="button" class="danger" id="delete-parent-account" disabled>Delete my account</button>
         </div>
         <p class="tiny parent-footnote">Outside lines (cell / landline / 911 via SIP) are a paid add-on later. Network-to-network family calling is free here.</p>
         </div>
@@ -9513,19 +15072,49 @@ function renderControls() {
 
   bindParentAccordion();
   bindParentSearch();
+  bindParentTitlePicker();
+  void bindFaceIdAccountSettings();
+  bindUiThemeSelector(document.getElementById("parent-themes") || document);
   bindAtaFormDraftPersistence();
+  document.getElementById("ata-intro-dismiss")?.addEventListener("click", () => {
+    dismissAtaIntro();
+    render();
+  });
+  document.getElementById("ata-intro-help")?.addEventListener("click", () => {
+    state.parentHelpFocus = "analog";
+    state.parentScrollTo = "parent-help";
+    render();
+  });
   void ensureKidPhoneStatuses(hh).then((changed) => {
     if (changed && state.nav === "controls") patchAnalogPhoneStatus(hh);
   });
   if (state.parentScrollTo) {
     const jumpId = state.parentScrollTo;
     state.parentScrollTo = "";
-    setParentAccordionOpen(jumpId);
+    const accId = canonicalParentAccId(jumpId);
+    setParentAccordionOpen(accId);
     requestAnimationFrame(() => {
-      document.getElementById(jumpId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      let targetId = accId || jumpId;
+      if (jumpId === "add-kid" || jumpId === "parent-kids") targetId = "add-kid";
+      else if (jumpId === "parent-sounds") targetId = "parent-sounds";
+      const el = document.getElementById(targetId) || document.getElementById(accId || jumpId);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (jumpId === "add-kid" || jumpId === "parent-kids") {
+        document.getElementById("add-kid-name")?.focus();
+      }
     });
   } else {
     persistParentAccordionId(accOpen);
+    if (keepScroll > 2) {
+      const y = keepScroll;
+      const restore = () => {
+        window.scrollTo(0, y);
+        if (document.documentElement) document.documentElement.scrollTop = y;
+        if (document.body) document.body.scrollTop = y;
+      };
+      restore();
+      requestAnimationFrame(restore);
+    }
   }
   document.querySelectorAll(".parent-jump a").forEach((a) => {
     a.addEventListener("click", (e) => {
@@ -9541,9 +15130,194 @@ function renderControls() {
     state.screen = "manage-contacts";
     render();
   });
+  const goAddKid = () => {
+    state.parentScrollTo = "parent-kids";
+    render();
+  };
+  document.getElementById("ata-go-add-kid")?.addEventListener("click", goAddKid);
+  document.getElementById("line-go-add-kid")?.addEventListener("click", goAddKid);
+  document.getElementById("people-go-kids")?.addEventListener("click", goAddKid);
+  document.getElementById("coparents-go-kids")?.addEventListener("click", goAddKid);
+  document.getElementById("kids-go-analog")?.addEventListener("click", () => {
+    state.kidJustAdded = "";
+    state.parentScrollTo = "parent-ata";
+    render();
+  });
+  document.getElementById("kid-next-pin")?.addEventListener("click", () => {
+    state.kidJustAdded = "";
+    state.parentScrollTo = "parent-pin";
+    render();
+  });
+  document.getElementById("kid-next-analog")?.addEventListener("click", () => {
+    state.kidJustAdded = "";
+    state.parentScrollTo = "parent-ata";
+    render();
+  });
+  document.getElementById("kid-next-invite")?.addEventListener("click", () => {
+    state.kidJustAdded = "";
+    state.screen = "invite";
+    render();
+  });
+  document.getElementById("add-kid-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!hh) return;
+    const input = document.getElementById("add-kid-name");
+    const raw = input?.value.trim();
+    if (!raw) {
+      setFlash("Type your kid’s first name", "warn");
+      input?.focus();
+      return;
+    }
+    try {
+      await api(`/api/households/${hh.id}/lines`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: raw,
+          type: "softphone",
+          mode: "child",
+          child_label: raw,
+        }),
+      });
+      state.kidJustAdded = raw;
+      setFlash(`${raw} added — on dial 1. Set a PIN, or hook up a house phone.`, "ok");
+      state.parentScrollTo = "parent-kids";
+      await refresh();
+    } catch (err) {
+      setFlash(err.message || "Could not add kid", "error");
+      render();
+    }
+  });
+  document.querySelectorAll("[data-familyroom-toggle]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const lineId = btn.getAttribute("data-familyroom-toggle");
+      const on = btn.getAttribute("data-approved") === "1";
+      if (!lineId || !hh) return;
+      try {
+        if (on) {
+          await api(`/api/households/${hh.id}/tree-house/members/${encodeURIComponent(lineId)}`, {
+            method: "DELETE",
+          });
+          setFlash("Removed from TreeHouse", "ok");
+        } else {
+          await api(`/api/households/${hh.id}/tree-house/members`, {
+            method: "POST",
+            body: JSON.stringify({ lineId }),
+          });
+          setFlash("Approved for TreeHouse", "ok");
+        }
+        await refresh();
+        state.parentScrollTo = "parent-treehouse";
+        render();
+      } catch (e) {
+        setFlash(e.message || "Could not update TreeHouse", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-adult-familyroom-toggle]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const lineId = btn.getAttribute("data-adult-familyroom-toggle");
+      const on = btn.getAttribute("data-approved") === "1";
+      if (!lineId || !hh) return;
+      try {
+        if (on) {
+          await api(`/api/households/${hh.id}/adult-family-room/members/${encodeURIComponent(lineId)}`, {
+            method: "DELETE",
+          });
+          setFlash("Removed from FamilyRoom", "ok");
+        } else {
+          await api(`/api/households/${hh.id}/adult-family-room/members`, {
+            method: "POST",
+            body: JSON.stringify({ lineId }),
+          });
+          setFlash("Approved for FamilyRoom", "ok");
+        }
+        await refresh();
+        state.parentScrollTo = "parent-adult-familyroom";
+        render();
+      } catch (e) {
+        setFlash(e.message || "Could not update FamilyRoom", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-playroom-talk]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const lineA = btn.getAttribute("data-playroom-talk");
+      const lineB = btn.getAttribute("data-playroom-talk-b");
+      const on = btn.getAttribute("data-on") === "1";
+      if (!lineA || !lineB || !hh) return;
+      try {
+        if (on) {
+          await api(
+            `/api/households/${hh.id}/tree-house/talk-pairs/${encodeURIComponent(lineA)}/${encodeURIComponent(lineB)}`,
+            { method: "DELETE" }
+          );
+          setFlash("Talk unlinked", "ok");
+        } else {
+          await api(`/api/households/${hh.id}/tree-house/talk-pairs`, {
+            method: "POST",
+            body: JSON.stringify({ lineA, lineB }),
+          });
+          setFlash("They can hear each other now", "ok");
+        }
+        await refresh();
+        state.parentScrollTo = "parent-treehouse";
+        render();
+      } catch (e) {
+        setFlash(e.message || "Could not update talk pair", "error");
+      }
+    });
+  });
+  document.querySelectorAll("[data-playroom-listen]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const childId = btn.getAttribute("data-playroom-listen");
+      const on = btn.getAttribute("data-on") === "1";
+      if (!childId) return;
+      if (on) stopTreeHouseListen(false);
+      else startTreeHouseListen(childId);
+      state.parentScrollTo = "parent-treehouse";
+    });
+  });
   document.getElementById("go-invite")?.addEventListener("click", () => {
     state.screen = "invite";
     render();
+  });
+  document.getElementById("save-sphere-name")?.addEventListener("click", async () => {
+    const name = document.getElementById("sphere-name")?.value?.trim();
+    if (!name) {
+      setFlash("Circle name required", "error");
+      return;
+    }
+    try {
+      await api(`/api/households/${hh.id}/spheres/mine`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+      setFlash("Circle name saved", "ok");
+      await refresh();
+    } catch (e) {
+      setFlash(e.message || "Could not save circle name", "error");
+      render();
+    }
+  });
+  document.querySelectorAll("[data-save-kid-spheres]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const lineId = btn.getAttribute("data-save-kid-spheres");
+      if (!lineId) return;
+      const sphereIds = [
+        ...document.querySelectorAll(`input[data-kid-sphere="${lineId}"]:checked`),
+      ].map((el) => el.getAttribute("data-sphere-id")).filter(Boolean);
+      try {
+        await api(`/api/households/${hh.id}/lines/${lineId}/sphere-access`, {
+          method: "PUT",
+          body: JSON.stringify({ sphereIds }),
+        });
+        setFlash("Kid speed-dial circles updated", "ok");
+        await refresh();
+      } catch (e) {
+        setFlash(e.message || "Could not save circles", "error");
+        render();
+      }
+    });
   });
   document.querySelectorAll("[data-edit-child-profile]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -9551,7 +15325,7 @@ function renderControls() {
       if (!id) return;
       // Open Profile for this kid without stealing their softphone registration.
       state.editLineId = id;
-      const ok = await openProfileSurface();
+      const ok = await openProfilePanel();
       if (!ok) state.editLineId = "";
     });
   });
@@ -9562,11 +15336,7 @@ function renderControls() {
       await confirmAndDeleteChildLine(hh, id);
     });
   });
-  document.getElementById("delete-active-child-line")?.addEventListener("click", async () => {
-    const line = activeLine();
-    if (!line || line.mode !== "child") return;
-    await confirmAndDeleteChildLine(hh, line.id);
-  });
+  bindDeleteAccountConfirm();
   document.getElementById("delete-parent-account")?.addEventListener("click", async () => {
     await confirmAndDeleteParentAccount();
   });
@@ -9586,15 +15356,45 @@ function renderControls() {
     setFlash(hh.dnd ? "Quiet Time ended" : "Quiet Time on", "ok");
     await refresh();
   };
+  document.getElementById("hours-go-line")?.addEventListener("click", () => {
+    state.parentScrollTo = "parent-kids";
+    render();
+  });
   document.querySelectorAll("[data-preset]").forEach((btn) => {
     btn.onclick = async () => {
+      state.parentHoursKidsCustom = false;
       const body = {
         schedule_preset: btn.getAttribute("data-preset"),
         quiet_tz: hh.quiet_tz || browserTimeZone(),
       };
       await api(`/api/households/${hh.id}/rules`, { method: "PATCH", body: JSON.stringify(body) });
-      setFlash("Schedule updated", "ok");
+      setFlash("Kids’ hours updated", "ok");
       await refresh();
+    };
+  });
+  document.querySelectorAll("[data-parent-preset]").forEach((btn) => {
+    btn.onclick = async () => {
+      const p = btn.getAttribute("data-parent-preset");
+      if (p === "custom") {
+        state.parentHoursYouCustom = true;
+        render();
+        return;
+      }
+      state.parentHoursYouCustom = false;
+      try {
+        await api(`/api/households/${hh.id}/rules`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            parent_schedule_preset: p,
+            parent_quiet_tz: hh.parent_quiet_tz || hh.quiet_tz || browserTimeZone(),
+          }),
+        });
+        setFlash(p === "open" ? "Your phone rings anytime" : "Evening Do Not Disturb saved", "ok");
+        await refresh();
+      } catch (err) {
+        setFlash(err.message || "Could not update your hours", "error");
+        render();
+      }
     };
   });
   document.getElementById("skip-holidays")?.addEventListener("change", async (e) => {
@@ -9610,11 +15410,47 @@ function renderControls() {
       render();
     }
   });
-  document.getElementById("custom-quiet").onclick = () => {
-    state.screen = "quiet";
+  document.getElementById("custom-quiet")?.addEventListener("click", () => {
+    state.parentHoursKidsCustom = true;
     render();
-  };
-  document.getElementById("save-cap").onclick = async () => {
+  });
+  document.getElementById("save-kids-custom")?.addEventListener("click", async () => {
+    try {
+      await api(`/api/households/${hh.id}/rules`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          quiet_start: document.getElementById("kids-q-start").value,
+          quiet_end: document.getElementById("kids-q-end").value,
+          quiet_tz: document.getElementById("kids-q-tz").value,
+          schedule_preset: "custom",
+        }),
+      });
+      state.parentHoursKidsCustom = false;
+      setFlash("Custom hours saved", "ok");
+      await refresh();
+    } catch (err) {
+      setFlash(err.message || "Could not save hours", "error");
+    }
+  });
+  document.getElementById("save-you-custom")?.addEventListener("click", async () => {
+    try {
+      await api(`/api/households/${hh.id}/rules`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          parent_quiet_start: document.getElementById("you-q-start").value,
+          parent_quiet_end: document.getElementById("you-q-end").value,
+          parent_quiet_tz: document.getElementById("you-q-tz").value,
+          parent_schedule_preset: "custom",
+        }),
+      });
+      state.parentHoursYouCustom = false;
+      setFlash("Your Do Not Disturb saved", "ok");
+      await refresh();
+    } catch (err) {
+      setFlash(err.message || "Could not save your hours", "error");
+    }
+  });
+  document.getElementById("save-cap")?.addEventListener("click", async () => {
     try {
       const raw = document.getElementById("cap").value.trim();
       const daily_cap_minutes = raw === "" ? null : Number(raw);
@@ -9628,7 +15464,7 @@ function renderControls() {
       setFlash(e.message || "Could not save limit", "error");
       render();
     }
-  };
+  });
   document.getElementById("save-pin").onclick = async () => {
     try {
       const parent_pin = document.getElementById("pin").value.trim();
@@ -9773,6 +15609,7 @@ function renderControls() {
       setFlash(err.message || "Could not update answering machine", "error");
     }
   });
+  bindIosCallKitToggle("ios-callkit");
   document.getElementById("line").onchange = () => {
     const next = document.getElementById("line").value;
     if (!selectActiveLine(next)) {
@@ -9843,10 +15680,25 @@ function renderControls() {
       });
       delete state.ataStatusByLine[ataLine.id];
       const ext = data?.ata?.sip_extension;
-      setFlash(
-        ext ? `Connection saved — extension ${ext}. Tap Set up adapter or Download config.` : "Connection saved — tap Set up adapter",
-        "ok"
-      );
+      if (data?.freepbx_ready === false) {
+        setFlash(
+          ext
+            ? `Saved ext ${ext}, but the phone system isn’t ready yet — wait a minute, then try Download config again.`
+            : "Saved, but the phone system isn’t ready yet — wait a minute and try again.",
+          "warn"
+        );
+      } else {
+        const remoteFirst = state.ataLanPush === false;
+        const created = data?.freepbx_created === true;
+        setFlash(
+          ext
+            ? remoteFirst
+              ? `Connection saved — extension ${ext}${created ? " is ready" : ""}. Tap Download config, upload on the Grandstream, then reboot.`
+              : `Connection saved — extension ${ext}${created ? " is ready" : ""}. Tap Set up adapter (same house) or Download config.`
+            : "Connection saved — continue setup below",
+          "ok"
+        );
+      }
       await refresh();
       void ensureKidPhoneStatuses(state.households[0], { force: true }).then(() => {
         if (state.nav === "controls") patchAnalogPhoneStatus(state.households[0]);
@@ -9966,7 +15818,7 @@ function renderControls() {
       render();
     }
   });
-  document.getElementById("save-child-label").onclick = async () => {
+  document.getElementById("save-child-label")?.addEventListener("click", async () => {
     try {
       const child_label = document.getElementById("child-label").value.trim() || null;
       await api(`/api/households/${hh.id}/lines/${state.activeLineId}`, {
@@ -9979,47 +15831,150 @@ function renderControls() {
       setFlash(e.message || "Could not save label", "error");
       render();
     }
-  };
-  document.getElementById("enable-child").onclick = () => enableChildModeOnDevice();
+  });
+  document.getElementById("enable-child")?.addEventListener("click", () => enableChildModeOnDevice());
+  document.getElementById("coparent-kid")?.addEventListener("change", (e) => {
+    state.coparentKidLineId = e.target.value || "";
+    state.lastGuardianInvite = null;
+    state.parentScrollTo = "parent-coparents";
+    render();
+  });
   document.getElementById("add-guardian")?.addEventListener("click", async () => {
     try {
+      const lineId =
+        document.getElementById("add-guardian")?.getAttribute("data-line-id") ||
+        state.coparentKidLineId ||
+        resolveCoparentKidLine(hh)?.id;
       const username = document.getElementById("guardian-username").value.trim();
+      if (!lineId) {
+        setFlash("Add a kid under Kids first", "warn");
+        render();
+        return;
+      }
       if (!username) {
         setFlash("Enter a parent username", "warn");
         render();
         return;
       }
-      await api(`/api/lines/${state.activeLineId}/guardians`, {
+      await api(`/api/lines/${lineId}/guardians`, {
         method: "POST",
         body: JSON.stringify({ username }),
       });
-      setFlash(`Added ${username} as guardian`, "ok");
+      setFlash(`Added ${username} as co-parent`, "ok");
       await refresh();
     } catch (e) {
-      setFlash(e.message || "Could not add guardian", "error");
+      setFlash(e.message || "Could not add co-parent", "error");
       render();
     }
   });
+  document.getElementById("add-guardian-member")?.addEventListener("click", async () => {
+    try {
+      const lineId =
+        document.getElementById("add-guardian-member")?.getAttribute("data-line-id") ||
+        state.coparentKidLineId ||
+        resolveCoparentKidLine(hh)?.id;
+      const username = document.getElementById("guardian-member")?.value?.trim();
+      if (!lineId) {
+        setFlash("Add a kid under Kids first", "warn");
+        render();
+        return;
+      }
+      if (!username) {
+        setFlash("Choose a household member", "warn");
+        render();
+        return;
+      }
+      await api(`/api/lines/${lineId}/guardians`, {
+        method: "POST",
+        body: JSON.stringify({ username }),
+      });
+      setFlash("Added as co-parent", "ok");
+      await refresh();
+    } catch (e) {
+      setFlash(e.message || "Could not add co-parent", "error");
+      render();
+    }
+  });
+  async function createGuardianInviteAndShow({ preferShare = false, lineId } = {}) {
+    const targetLineId =
+      lineId || state.coparentKidLineId || resolveCoparentKidLine(hh)?.id || "";
+    if (!targetLineId) throw new Error("Add a kid under Kids first");
+    const data = await api(`/api/lines/${targetLineId}/guardian-invites`, {
+      method: "POST",
+      body: "{}",
+    });
+    state.coparentKidLineId = targetLineId;
+    state.lastGuardianInvite = {
+      lineId: targetLineId,
+      code: data.invite.code,
+      shareUrl: data.shareUrl,
+      shareText: data.shareText,
+      expiresAt: data.invite.expires_at,
+    };
+    setFlash(`Co-parent code ${data.invite.code} — share it with the other parent`, "ok");
+    if (preferShare && navigator.share && data.shareText) {
+      try {
+        await navigator.share({
+          title: "PhoneHome co-parent",
+          text: data.shareText,
+          url: data.shareUrl,
+        });
+      } catch {
+        /* cancelled */
+      }
+    }
+    state.parentScrollTo = "parent-coparents";
+    render();
+  }
   document.getElementById("invite-guardian")?.addEventListener("click", async () => {
     try {
-      const data = await api(`/api/lines/${state.activeLineId}/guardian-invites`, {
-        method: "POST",
-        body: "{}",
+      const lineId = document.getElementById("invite-guardian")?.getAttribute("data-line-id") || "";
+      await createGuardianInviteAndShow({
+        preferShare: !state.lastGuardianInvite,
+        lineId,
       });
-      setFlash(`Guardian invite code ${data.invite.code} — share it with the other parent`, "ok");
-      if (navigator.share && data.shareText) {
-        try {
-          await navigator.share({ title: "PhoneHome guardian", text: data.shareText, url: data.shareUrl });
-        } catch {
-          /* cancelled */
-        }
-      } else if (navigator.clipboard && data.shareText) {
-        await navigator.clipboard.writeText(data.shareText);
-        setFlash(state.flash + " (copied)", "ok");
-      }
-      render();
     } catch (e) {
       setFlash(e.message || "Could not create invite", "error");
+      render();
+    }
+  });
+  document.getElementById("copy-guardian-invite")?.addEventListener("click", async () => {
+    const inv = state.lastGuardianInvite;
+    if (!inv?.shareText) return;
+    const text = `${inv.shareText}\n${inv.shareUrl || ""}`.trim();
+    try {
+      await navigator.clipboard.writeText(text);
+      setFlash("Co-parent invite copied", "ok");
+      render();
+    } catch (e) {
+      setFlash(e.message || "Could not copy", "error");
+      render();
+    }
+  });
+  document.getElementById("share-guardian-invite")?.addEventListener("click", async () => {
+    const inv = state.lastGuardianInvite;
+    if (!inv?.shareText) return;
+    const text = `${inv.shareText}\n${inv.shareUrl || ""}`.trim();
+    try {
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "PhoneHome co-parent",
+            text: inv.shareText,
+            url: inv.shareUrl,
+          });
+          setFlash("Invite shared", "ok");
+          render();
+          return;
+        } catch {
+          /* cancelled or unavailable — fall through to copy */
+        }
+      }
+      await navigator.clipboard.writeText(text);
+      setFlash("Co-parent invite copied — paste it in a text", "ok");
+      render();
+    } catch (e) {
+      setFlash(e.message || "Could not share", "error");
       render();
     }
   });
@@ -10030,22 +15985,212 @@ function renderControls() {
         method: "POST",
         body: JSON.stringify({ code }),
       });
-      setFlash("You’re now a guardian of that child line", "ok");
+      state.pendingGuardianCode = "";
+      setFlash("You’re now a co-parent on that kid line", "ok");
       await refresh();
     } catch (e) {
       setFlash(e.message || "Could not accept invite", "error");
       render();
     }
   });
+  document.getElementById("create-grandparent")?.addEventListener("click", async () => {
+    const hh = state.households[0];
+    if (!hh) return;
+    try {
+      const displayName = document.getElementById("gp-display-name")?.value?.trim() || "";
+      const label = document.getElementById("gp-label")?.value?.trim() || "";
+      const username = document.getElementById("gp-username")?.value?.trim() || "";
+      const password = document.getElementById("gp-password")?.value || "";
+      const kidLineIds = [...document.querySelectorAll('input[name="gp-kid"]:checked')].map(
+        (el) => el.value
+      );
+      if (!displayName || !username || !password) {
+        setFlash("Enter their name, username, and password", "warn");
+        render();
+        return;
+      }
+      if (!kidLineIds.length) {
+        setFlash("Pick at least one kid they can call", "warn");
+        render();
+        return;
+      }
+      const data = await api(`/api/households/${hh.id}/grandparents`, {
+        method: "POST",
+        body: JSON.stringify({
+          displayName,
+          username,
+          password,
+          label: label || undefined,
+          kidLineIds,
+        }),
+      });
+      state.lastGrandparentSetup = {
+        householdId: hh.id,
+        relativeId: data.relative?.id,
+        displayName: data.relative?.display_name || displayName,
+        username: data.username,
+        password: data.password,
+      };
+      state.parentAccOpen = "parent-grandparents";
+      setFlash(data.flash || "Grandparent login ready", "ok");
+      await refresh();
+    } catch (e) {
+      setFlash(e.message || "Could not create login", "error");
+      render();
+    }
+  });
+  document.getElementById("copy-gp-login")?.addEventListener("click", async () => {
+    const last = state.lastGrandparentSetup;
+    if (!last?.username) return;
+    const text = `PhoneHome login\nUsername: ${last.username}\nPassword: ${last.password || ""}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setFlash("Login copied", "ok");
+      render();
+    } catch (e) {
+      setFlash(e.message || "Could not copy", "error");
+      render();
+    }
+  });
+  document.getElementById("dismiss-gp-login")?.addEventListener("click", () => {
+    state.lastGrandparentSetup = null;
+    render();
+  });
+  document.getElementById("close-gp-manage")?.addEventListener("click", () => {
+    state.managingGrandparentId = "";
+    render();
+  });
+  document.querySelectorAll("[data-gp-manage]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-gp-manage");
+      state.managingGrandparentId = state.managingGrandparentId === id ? "" : id || "";
+      state.parentAccOpen = "parent-grandparents";
+      state.parentScrollTo = "parent-grandparents";
+      render();
+    });
+  });
+  document.querySelectorAll("[data-gp-preview]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-gp-preview");
+      if (id) startGpPreview(id);
+    });
+  });
+  document.getElementById("save-gp-manage")?.addEventListener("click", async () => {
+    const hh = state.households[0];
+    const id = state.managingGrandparentId;
+    if (!hh || !id) return;
+    try {
+      const displayName = document.getElementById("gp-manage-display-name")?.value?.trim() || "";
+      const label = document.getElementById("gp-manage-label")?.value?.trim() || "";
+      const username = document.getElementById("gp-manage-username")?.value?.trim() || "";
+      const password = document.getElementById("gp-manage-password")?.value || "";
+      const kidLineIds = [...document.querySelectorAll('input[name="gp-manage-kid"]:checked')].map(
+        (el) => el.value
+      );
+      if (!displayName || !username) {
+        setFlash("Enter their name and username", "warn");
+        render();
+        return;
+      }
+      if (!kidLineIds.length) {
+        setFlash("Pick at least one kid they can call", "warn");
+        render();
+        return;
+      }
+      const body = {
+        displayName,
+        username,
+        label,
+        kidLineIds,
+      };
+      if (password) body.password = password;
+      const data = await api(`/api/households/${hh.id}/grandparents/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      if (data.password) {
+        state.lastGrandparentSetup = {
+          householdId: hh.id,
+          relativeId: id,
+          displayName: data.relative?.display_label || data.relative?.display_name || displayName,
+          username: data.relative?.username || username,
+          password: data.password,
+        };
+      }
+      state.parentAccOpen = "parent-grandparents";
+      state.parentScrollTo = "parent-grandparents";
+      setFlash("Grandparent options saved", "ok");
+      await refresh();
+    } catch (e) {
+      setFlash(e.message || "Could not save", "error");
+      render();
+    }
+  });
+  document.querySelectorAll("[data-gp-view]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const hh = state.households[0];
+      const id = btn.getAttribute("data-gp-view");
+      const rel = (hh?.provisioned_relatives || []).find((r) => r.id === id);
+      if (!rel) return;
+      state.lastGrandparentSetup = {
+        householdId: hh.id,
+        relativeId: rel.id,
+        displayName: rel.display_label || rel.display_name,
+        username: rel.username,
+        password: "(use New password to set one)",
+      };
+      state.parentAccOpen = "parent-grandparents";
+      setFlash("Password isn’t stored here — tap New password to set one they can use.", "warn");
+      render();
+    });
+  });
+  document.querySelectorAll("[data-gp-reset]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const hh = state.households[0];
+      const id = btn.getAttribute("data-gp-reset");
+      const rel = (hh?.provisioned_relatives || []).find((r) => r.id === id);
+      if (!hh || !id || !rel) return;
+      const password = window.prompt(
+        `New password for ${rel.username || rel.display_name} (at least 8 characters):`,
+        ""
+      );
+      if (password == null) return;
+      try {
+        const data = await api(`/api/households/${hh.id}/grandparents/${id}/reset-password`, {
+          method: "POST",
+          body: JSON.stringify({ password }),
+        });
+        state.lastGrandparentSetup = {
+          householdId: hh.id,
+          relativeId: id,
+          displayName: rel.display_label || rel.display_name,
+          username: rel.username,
+          password: data.password || password,
+        };
+        state.parentAccOpen = "parent-grandparents";
+        setFlash(data.flash || "Password updated", "ok");
+        await refresh();
+      } catch (e) {
+        setFlash(e.message || "Could not reset password", "error");
+        render();
+      }
+    });
+  });
   document.querySelectorAll("[data-remove-guardian]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
         const userId = btn.getAttribute("data-remove-guardian");
-        await api(`/api/lines/${state.activeLineId}/guardians/${userId}`, { method: "DELETE" });
-        setFlash("Guardian removed", "ok");
+        const lineId = state.coparentKidLineId || resolveCoparentKidLine(hh)?.id || "";
+        if (!lineId) {
+          setFlash("Add a kid under Kids first", "warn");
+          render();
+          return;
+        }
+        await api(`/api/lines/${lineId}/guardians/${userId}`, { method: "DELETE" });
+        setFlash("Co-parent removed", "ok");
         await refresh();
       } catch (e) {
-        setFlash(e.message || "Could not remove guardian", "error");
+        setFlash(e.message || "Could not remove co-parent", "error");
         render();
       }
     });
@@ -10104,10 +16249,11 @@ function renderControls() {
     state.user = null;
     state.households = [];
     state.childMode = false;
-    localStorage.removeItem("kl_session");
+    await clearPersistedAuth({ keepLogin: true });
     localStorage.removeItem("kl_line");
     localStorage.removeItem("kl_child_mode");
     localStorage.removeItem("kl_child_line");
+    faceIdAutoTried = false;
     state.screen = "welcome";
     render();
   };
@@ -10207,7 +16353,7 @@ function isQuietHoursActiveClient(hh, date = new Date()) {
 }
 
 function quietSummary(hh) {
-  if (!hh?.quiet_start || !hh?.quiet_end) return "Open";
+  if (!hh?.quiet_start || !hh?.quiet_end) return "Open — they can call anytime";
   const name = quietWindowName(hh);
   const tz = (hh.quiet_tz || "").split("/").pop()?.replace(/_/g, " ") || "local";
   const preset = hh.schedule_preset || "";
@@ -10217,6 +16363,197 @@ function quietSummary(hh) {
       : "";
   const hol = hh.skip_holidays ? " · skip holidays" : "";
   return `${name} · ${days}${formatQuietClock(hh.quiet_start)}–${formatQuietClock(hh.quiet_end)} · ${tz}${hol}`;
+}
+
+function parentWindowName(hh) {
+  const preset = String(hh?.parent_schedule_preset || "");
+  if (preset === "evenings") return "Evenings";
+  if (hh?.parent_quiet_start && hh?.parent_quiet_end) return "Do Not Disturb";
+  return "Ring anytime";
+}
+
+function parentQuietSummary(hh) {
+  if (!hh?.parent_quiet_start || !hh?.parent_quiet_end) return "Rings anytime";
+  const tz = (hh.parent_quiet_tz || hh.quiet_tz || "").split("/").pop()?.replace(/_/g, " ") || "local";
+  return `${parentWindowName(hh)} · ${formatQuietClock(hh.parent_quiet_start)}–${formatQuietClock(hh.parent_quiet_end)} · ${tz}`;
+}
+
+function isParentDndActiveClient(hh, date = new Date()) {
+  return isQuietHoursActiveClient(
+    {
+      quiet_start: hh?.parent_quiet_start,
+      quiet_end: hh?.parent_quiet_end,
+      quiet_tz: hh?.parent_quiet_tz || hh?.quiet_tz,
+      quiet_days: hh?.parent_quiet_days,
+      skip_holidays: 0,
+      schedule_preset: hh?.parent_schedule_preset || "open",
+    },
+    date
+  );
+}
+
+function kidHoursStatusLine(hh) {
+  if (hh?.dnd) return "Quiet Time is on now — VIP still rings";
+  if (isQuietHoursActiveClient(hh)) return `${quietWindowName(hh)} is on now`;
+  return quietSummary(hh);
+}
+
+function parentHoursChipHtml(hh, kidLines) {
+  const kid = kidLines[0];
+  const kidBit = kid
+    ? `${(kid.child_label || kid.name || "Kids").replace(/</g, "&lt;")} · ${
+        hh?.schedule_preset === "bedtime"
+          ? "Bedtime"
+          : hh?.schedule_preset === "school"
+            ? "School"
+            : hh?.quiet_start
+              ? "Custom"
+              : "Open"
+      }`
+    : "No kid yet";
+  const youBit = !hh?.parent_quiet_start ? "You · rings" : `You · ${parentWindowName(hh)}`;
+  return `<span class="parent-summary-chip" id="parent-hours-chip"><strong>${kidBit}</strong><span>${youBit}</span></span>`;
+}
+
+function schedUsageHtml(used, cap) {
+  if (cap == null) {
+    return `<p class="tiny sched-talk">Talk today <strong>${used} min</strong> · no daily limit</p>`;
+  }
+  const pct = Math.min(100, Math.round((used / Math.max(cap, 1)) * 100));
+  return `<div class="usage-bar ${pct >= 90 ? "hot" : ""}">
+    <div class="usage-meta"><span>Talk today</span><strong>${used} / ${cap} min</strong></div>
+    <div class="usage-track"><i style="width:${pct}%"></i></div>
+  </div>`;
+}
+
+function renderParentHoursBody(hh, kidLines) {
+  const preset = hh?.schedule_preset || "open";
+  const cap = hh?.daily_cap_minutes;
+  const parentPreset = hh?.parent_schedule_preset || "open";
+  const showKidsCustom = Boolean(state.parentHoursKidsCustom) || preset === "custom";
+  const showYouCustom = Boolean(state.parentHoursYouCustom) || parentPreset === "custom";
+  const kidNames = kidLines.map((l) => l.child_label || l.name || "this kid");
+  const kidList =
+    kidNames.length === 0
+      ? ""
+      : kidNames.length === 1
+        ? kidNames[0]
+        : kidNames.length === 2
+          ? `${kidNames[0]} and ${kidNames[1]}`
+          : `${kidNames.slice(0, -1).join(", ")}, and ${kidNames[kidNames.length - 1]}`;
+  const kidCards = kidLines.length
+    ? kidLines
+        .map((l) => {
+          const name = (l.child_label || l.name || "Kid").replace(/</g, "&lt;");
+          const used = l.usage_today_minutes || 0;
+          return `<article class="sched-person">
+            <div class="sched-person-head">
+              ${avatarHtml(l.child_label || l.name, l.id, "md")}
+              <div class="sched-person-copy">
+                <strong>${name}</strong>
+                <p class="tiny">${kidHoursStatusLine(hh).replace(/</g, "&lt;")}</p>
+              </div>
+            </div>
+            ${schedUsageHtml(used, cap)}
+          </article>`;
+        })
+        .join("")
+    : `<p class="tiny sched-empty">Add a kid in <button type="button" class="linkish" id="hours-go-line">Kids</button>, then set their hours here.</p>`;
+
+  const tz = hh?.quiet_tz || browserTimeZone();
+  const parentTz = hh?.parent_quiet_tz || tz;
+  return `
+        <div class="sched-block">
+          <h3 class="parent-subhead">Kids</h3>
+          <p class="tiny">${
+            kidLines.length
+              ? `Hours and a daily talk limit for <strong>${kidList.replace(/</g, "&lt;")}</strong>. VIP contacts still ring.`
+              : "These limits apply to each kid line you manage."
+          }</p>
+          ${kidCards}
+          ${
+            kidLines.length
+              ? `<div class="parent-field sched-editor">
+          <h3 class="parent-subhead">Their hours</h3>
+          <div class="preset-grid">
+            ${["open", "bedtime", "school"]
+              .map(
+                (p) =>
+                  `<button type="button" class="preset ${preset === p ? "on" : ""}" data-preset="${p}">${
+                    p === "open" ? "Open" : p === "bedtime" ? "Bedtime" : "School"
+                  }</button>`
+              )
+              .join("")}
+          </div>
+          <button class="ghost" id="custom-quiet" type="button">Custom hours…</button>
+          <p class="tiny parent-inline-meta">${quietSummary(hh)}${hh?.quiet_tz ? ` · ${hh.quiet_tz}` : ""}</p>
+          ${
+            showKidsCustom
+              ? `<div class="sched-custom" id="kids-custom-fields">
+            <label>Starts</label>
+            <input type="time" id="kids-q-start" value="${hh?.quiet_start || "20:00"}" />
+            <label>Ends</label>
+            <input type="time" id="kids-q-end" value="${hh?.quiet_end || "07:00"}" />
+            <label>Timezone</label>
+            <select id="kids-q-tz">${timezoneOptions(tz)}</select>
+            <button class="primary" type="button" id="save-kids-custom">Save custom hours</button>
+          </div>`
+              : ""
+          }
+          ${
+            preset === "school"
+              ? `<div class="school-schedule-note">
+            <p class="tiny"><strong>School</strong> is Mon–Fri ${formatQuietClock(hh.quiet_start || "08:00")}–${formatQuietClock(hh.quiet_end || "15:30")}.</p>
+            <label class="check-row">
+              <input type="checkbox" id="skip-holidays" ${hh.skip_holidays ? "checked" : ""} />
+              <span>Skip US federal holidays</span>
+            </label>
+            <p class="tiny">Observed New Year’s, MLK, Presidents’, Memorial, Juneteenth, July 4, Labor, Columbus/Indigenous Peoples’, Veterans, Thanksgiving, Christmas. Not a full school calendar.</p>
+          </div>`
+              : ""
+          }
+        </div>
+        <div class="parent-field">
+          <h3 class="parent-subhead">Daily talk limit</h3>
+          <p class="tiny">Each kid gets this many minutes. Blank = unlimited.</p>
+          <label>Minutes per day</label>
+          <input id="cap" type="number" min="0" step="5" placeholder="e.g. 60" value="${cap ?? ""}" />
+          <button class="primary" id="save-cap" type="button">Save limit</button>
+        </div>`
+              : ""
+          }
+        </div>
+        <div class="sched-block sched-block-you">
+          <h3 class="parent-subhead">Your phone</h3>
+          <p class="tiny">${
+            isParentDndActiveClient(hh)
+              ? "Do Not Disturb is on now — VIP still rings."
+              : "Your own Do Not Disturb. Does not change the kids’ hours."
+          }</p>
+          <p class="sched-you-status">${parentQuietSummary(hh).replace(/</g, "&lt;")}</p>
+          <div class="preset-grid sched-you-presets">
+            ${["open", "evenings", "custom"]
+              .map((p) => {
+                const label = p === "open" ? "Ring anytime" : p === "evenings" ? "Evenings" : "Custom";
+                const on = parentPreset === p || (p === "custom" && showYouCustom && parentPreset === "custom");
+                return `<button type="button" class="preset ${on ? "on" : ""}" data-parent-preset="${p}">${label}</button>`;
+              })
+              .join("")}
+          </div>
+          ${
+            showYouCustom
+              ? `<div class="sched-custom" id="you-custom-fields">
+            <label>Starts</label>
+            <input type="time" id="you-q-start" value="${hh?.parent_quiet_start || "21:00"}" />
+            <label>Ends</label>
+            <input type="time" id="you-q-end" value="${hh?.parent_quiet_end || "07:00"}" />
+            <label>Timezone</label>
+            <select id="you-q-tz">${timezoneOptions(parentTz)}</select>
+            <button class="primary" type="button" id="save-you-custom">Save my hours</button>
+          </div>`
+              : `<p class="tiny parent-inline-meta">Evenings are 9pm–7am. VIP contacts still ring your phone.</p>`
+          }
+        </div>`;
 }
 
 function timezoneOptions(selected) {
@@ -10325,10 +16662,12 @@ async function renderInvite() {
     <div class="invite-hero sheet">
       <p class="invite-eyebrow">Step 1 of 3</p>
       <h2>Invite someone you trust</h2>
-      <p>They join your private network with this code. After that, <strong>both of you</strong> still need to approve each other before kids can call.</p>
+      <p>They join with this code or by scanning the QR. After that, <strong>both of you</strong> still need to approve each other before kids can call.</p>
+      <div class="invite-qr" id="invite-qr" role="img" aria-label="QR code for invite link" hidden></div>
+      <p class="tiny center invite-qr-hint" id="invite-qr-hint" hidden>Scan with the other phone, across the table</p>
       <div class="code-box glow" id="code">······</div>
       <p class="tiny center" id="url"></p>
-      <p class="flash-banner warn hidden" id="share-warn">This link is plain HTTP (LAN). iPads need the HTTPS tunnel URL — open PhoneHome via trycloudflare.com first, then share again.</p>
+      <p class="flash-banner warn hidden" id="share-warn">This link only works on your home Wi‑Fi. Share from the PhoneHome app when you’re on the internet instead.</p>
       <div class="btn-row">
         <button class="primary" id="share">Share invite</button>
         <button class="ghost" id="copy">Copy link</button>
@@ -10338,9 +16677,9 @@ async function renderInvite() {
     <div class="sheet tip-sheet">
       <h2>What happens next</h2>
       <ol class="how-list">
-        <li>They open the link → <em>I was invited</em> → enter this code</li>
-        <li>You tap <em>Approve callers</em> and add their name</li>
-        <li>They do the same for you → both phones show <em>Ready to call</em></li>
+        <li>They scan the QR or open the link and join with this code</li>
+        <li>You approve them in Contacts</li>
+        <li>They approve you — then kids can call</li>
       </ol>
     </div>
   `;
@@ -10365,10 +16704,13 @@ async function renderInvite() {
     sharePayload = {
       ...data,
       shareUrl: `${base}/?invite=${code}`,
-      shareText: `Join our PhoneHome (private family phone). Open the link, tap “I was invited,” enter code ${code}. Then we each approve the other so kids can call.`,
+      shareText: `Join our PhoneHome family phone. Open the link (or scan the QR), then enter code ${code}. After that we each approve the other so the kids can call.`,
     };
     document.getElementById("code").textContent = code;
     document.getElementById("url").textContent = sharePayload.shareUrl;
+    paintInviteQr("invite-qr", sharePayload.shareUrl);
+    const hint = document.getElementById("invite-qr-hint");
+    if (hint) hint.toggleAttribute("hidden", !document.getElementById("invite-qr")?.innerHTML);
     const warn = document.getElementById("share-warn");
     if (warn) {
       const insecure = /^http:/i.test(sharePayload.shareUrl);
@@ -10411,18 +16753,35 @@ async function renderInvite() {
 
 function renderAddContact() {
   const hh = state.households[0];
+  if (isKidExperience()) {
+    setFlash("Only parents can approve contacts", "error");
+    state.screen = "home";
+    state.nav = "phone";
+    render();
+    return;
+  }
   const already = new Set((hh?.allowlist || []).map((a) => a.target_line_id));
-  const others = state.directory.filter((d) => d.household_id !== hh.id && !already.has(d.id));
-  app.innerHTML = `
-    <div class="topbar">
-      <button class="icon-btn" id="back">←</button>
-      <div class="mark">Approve caller</div>
-      <span style="width:40px"></span>
-    </div>
-    <div class="sheet">
-      <p class="invite-eyebrow">Step 2 of 3</p>
-      <h2>Approve who your kids can call</h2>
-      <p>This only covers <strong>your</strong> phone. They still need to approve you on theirs before calls work both ways.</p>
+  // Directory is server-scoped to the viewer’s own circle — never co-members of a host circle.
+  const mySphere = (hh?.spheres || []).find((s) => s.is_mine || s.id === hh?.my_sphere_id);
+  const inMyCircle = new Set(mySphere?.member_line_ids || []);
+  const others = state.directory.filter((d) => {
+    if (d.household_id === hh.id || already.has(d.id)) return false;
+    // Defense in depth: if sphere membership is available, require it.
+    if (inMyCircle.size && !inMyCircle.has(d.id)) return false;
+    return true;
+  });
+  const gp = isGrandparentExperience();
+  setAppPage(`
+    <div class="sheet gp-contacts-page">
+      <div class="gp-contacts-head">
+        <h2>${gp ? "Add someone" : "Approve into circle"}</h2>
+        <button type="button" class="primary gp-done-btn" id="back">Done</button>
+      </div>
+      <p>${
+        gp
+          ? "These are people your family already connected. Tap a name, then tap Add to my phone."
+          : "Only people already linked by <strong>invite</strong> show here."
+      }</p>
       ${
         others.length
           ? `
@@ -10437,30 +16796,38 @@ function renderAddContact() {
             )
             .join("")}
         </div>
-        <label>Name kids will see</label>
-        <input id="label" placeholder="e.g. Maya" value="${others[0] ? friendlyPersonName(others[0].name) : ""}" />
-        <label class="check-row"><input type="checkbox" id="vip" /> VIP — can still ring during Quiet Time</label>
-        <button class="primary" id="save">Approve on this phone</button>`
+        <label>Name on your phone</label>
+        <input id="label" placeholder="e.g. Gemma" value="${others[0] ? friendlyPersonName(others[0].name).replace(/"/g, "&quot;") : ""}" />
+        ${
+          gp
+            ? ""
+            : `<label class="check-row"><input type="checkbox" id="vip" /> VIP — can still ring during Quiet Time</label>`
+        }
+        <button class="primary" id="save" style="margin-top:12px;width:100%">${gp ? "Add to my phone" : "Add to my phone"}</button>`
           : `<div class="empty hero-empty">
-              <strong>Nobody left to approve</strong>
+              <strong>${gp ? "No one else to add" : "Nobody left to approve"}</strong>
               <p>${
                 already.size
-                  ? "Everyone who’s joined is already on your list. Ask them to approve you if you still see Needs their OK."
+                  ? gp
+                    ? "Everyone from your family is already on your phone."
+                    : "Everyone who’s joined is already on your list."
                   : canInviteFamily()
-                    ? "Send an invite first. When they join, they’ll show up here for your approval."
-                    : "Ask a parent to invite family. When they join and get approved, they’ll show up on your phone."
+                    ? "Send an invite first. When they join, they’ll show up here."
+                    : gp
+                      ? "Ask your son or daughter to add you first."
+                      : "Ask a parent to invite family first."
               }</p>
               ${
                 already.size
-                  ? `<button class="primary" id="to-invite">Back to contacts</button>`
+                  ? `<button class="primary" id="to-invite">${gp ? "Back to my family" : "Back to contacts"}</button>`
                   : canInviteFamily()
                     ? `<button class="primary" id="to-invite">Invite someone</button>`
-                    : `<button class="primary" id="to-invite">Back home</button>`
+                    : `<button class="primary" id="to-invite">${gp ? "Back to Phone" : "Back home"}</button>`
               }
             </div>`
       }
     </div>
-  `;
+  `);
   let selectedId = others[0]?.id || "";
   document.getElementById("back").onclick = () => {
     state.screen = "manage-contacts";
@@ -10494,7 +16861,12 @@ function renderAddContact() {
         alwaysAllow: Boolean(document.getElementById("vip")?.checked),
       }),
     });
-    setFlash(`Approved ${document.getElementById("label").value.trim() || "them"} — ask them to approve you too`, "ok");
+    setFlash(
+      gp
+        ? `Added ${document.getElementById("label").value.trim() || "them"}. If you cannot call yet, ask them to add you too.`
+        : `Approved ${document.getElementById("label").value.trim() || "them"} — ask them to approve you too`,
+      "ok"
+    );
     state.screen = "manage-contacts";
     await refresh();
   });
@@ -10502,26 +16874,37 @@ function renderAddContact() {
 
 function renderManageContacts() {
   const hh = state.households[0];
-  // Approve UI is for external contacts only — household siblings are always dialable.
-  const contacts = externalAllowlist(hh);
+  if (isKidExperience()) {
+    setFlash("Only parents can manage contacts", "error");
+    state.screen = "home";
+    state.nav = "phone";
+    render();
+    return;
+  }
+  // Prefer this parent’s circle; fail-open to full list if membership isn’t tagged yet.
+  const contacts = contactsInMyCircle(hh);
   const pending = pendingApprovals(hh);
   const editing = contacts.find((c) => c.id === state.editContactId);
-  app.innerHTML = `
-    <div class="topbar">
-      <button class="icon-btn" id="back">←</button>
-      <div class="mark">Approve callers</div>
-      <span style="width:40px"></span>
-    </div>
-    <div class="sheet tip-sheet">
-      <h2>Two yeses to call</h2>
-      <p><strong>You approve them</strong> → your kids can dial their name.<br/>
-      <strong>They approve you</strong> → status becomes <em>Ready to call</em>.</p>
+  const sph = mySphere(hh);
+  const circleLabel = (sph?.name || "your circle").replace(/</g, "");
+  const gp = isGrandparentExperience();
+  setAppPage(`
+    <div class="sheet gp-contacts-page">
+      <div class="gp-contacts-head">
+        <h2>${gp ? "Your family" : "Your circle"}</h2>
+        <button type="button" class="primary gp-done-btn" id="back">Done</button>
+      </div>
+      ${
+        gp
+          ? `<p>Add people so you can call them. When you are finished, tap <strong>Done</strong> to go back to your phone.</p>`
+          : `<p>People join <strong>${circleLabel}</strong> by invite. You approve them → they can appear on kid pads. They approve you → <em>Ready to call</em>.</p>`
+      }
     </div>
     ${
       pending.length
         ? `<div class="sheet">
-        <h2>Needs your approval</h2>
-        <p>These families joined — tap Approve to put them on your kids’ phone.</p>
+        <h2>${gp ? "Waiting for your answer" : "Needs your approval"}</h2>
+        <p>${gp ? "Tap <strong>Yes, add them</strong> so they show up on button 1." : "These people are already linked by invite — tap Approve to put them on the phone."}</p>
         <div class="manage-list">${pending
           .map(
             (d, idx) => `
@@ -10532,8 +16915,8 @@ function renderManageContacts() {
               <small>${d.household_name}</small>
             </div>
             <div class="btn-row tight approve-row">
-              <button type="button" class="primary compact" data-approve="${d.id}" data-name="${friendlyPersonName(d.name).replace(/"/g, "&quot;")}">Approve</button>
-              <button type="button" class="ghost compact" data-decline="${d.id}" data-name="${friendlyPersonName(d.name).replace(/"/g, "&quot;")}">Decline</button>
+              <button type="button" class="primary" data-approve="${d.id}" data-name="${friendlyPersonName(d.name).replace(/"/g, "&quot;")}">${gp ? "Yes, add them" : "Approve"}</button>
+              <button type="button" class="ghost" data-decline="${d.id}" data-name="${friendlyPersonName(d.name).replace(/"/g, "&quot;")}">${gp ? "No" : "No thanks"}</button>
             </div>
           </div>`
           )
@@ -10542,9 +16925,9 @@ function renderManageContacts() {
         : ""
     }
     <div class="sheet" style="margin-top:12px">
-      <h2>On your phone</h2>
-      <p>Rename, assign speed dial 1–9, VIP, or remove. (No Move buttons on the pad — hold to drag, or set the slot here.)</p>
-      <button class="ghost" id="add-new" style="margin-bottom:14px;width:100%">Approve someone else…</button>
+      <h2>${gp ? "On your phone" : `In ${circleLabel}`}</h2>
+      ${gp ? `<p class="tiny">Tap a name to change how it appears, or remove someone.</p>` : `<p>Rename, speed dial 2–9, VIP, or remove from your circle.</p>`}
+      <button class="ghost" id="add-new" style="margin-bottom:14px;width:100%">${gp ? "Add someone else from my family…" : "Approve someone already invited…"}</button>
       ${
         contacts.length
           ? `<div class="manage-list">${contacts
@@ -10555,18 +16938,26 @@ function renderManageContacts() {
               ${avatarHtml(contactDisplayName(c), c.target_line_id, "md")}
               <div>
                 <strong>${contactDisplayName(c)}</strong>
-                <small>${c.speed_dial ? `Dial ${c.speed_dial} · ` : ""}${st.label}${c.always_allow ? " · VIP" : ""}</small>
+                <small>${
+                  gp
+                    ? `${c.speed_dial ? `Button ${c.speed_dial} · ` : ""}${st.label}`
+                    : `${c.speed_dial ? `Dial ${c.speed_dial} · ` : ""}${st.label}${c.always_allow ? " · VIP" : ""}`
+                }</small>
               </div>
-              <button type="button" class="ghost compact" data-edit="${c.id}">Edit</button>
+              <button type="button" class="ghost" data-edit="${c.id}">${gp ? "Change" : "Edit"}</button>
             </div>`;
               })
               .join("")}</div>`
           : `<div class="empty">${
               pending.length
-                ? "Approve someone above to put them on speed dial."
+                ? gp
+                  ? "Tap Yes, add them above to put them on your phone."
+                  : "Approve someone above to put them on your phone."
                 : canInviteFamily()
-                  ? "Invite a family first, then approve them here."
-                  : "Ask a parent to add family contacts."
+                  ? "Invite someone first. When they join, approve them here."
+                  : gp
+                    ? "Ask your son or daughter to connect you, then come back here."
+                    : "Ask a parent to invite you, then approve them here."
             }</div>`
       }
     </div>
@@ -10574,23 +16965,27 @@ function renderManageContacts() {
       editing
         ? `<div class="sheet-modal" id="edit-contact-modal">
         <div class="sheet-modal-card" role="dialog" aria-labelledby="edit-contact-title">
-          <h2 id="edit-contact-title">Edit ${contactDisplayName(editing)}</h2>
-          <label>Name kids see</label>
+          <h2 id="edit-contact-title">${gp ? "Change" : "Edit"} ${contactDisplayName(editing)}</h2>
+          <label>${gp ? "Name on your phone" : "Name on the phone"}</label>
           <input id="edit-label" value="${contactDisplayName(editing).replace(/"/g, "&quot;")}" />
-          <label>Speed dial (1–9, blank = none)</label>
-          <input id="edit-dial" type="number" min="1" max="9" inputmode="numeric" value="${editing.speed_dial ?? ""}" aria-describedby="edit-dial-hint" />
-          <p class="tiny" id="edit-dial-hint">Accessible rearrange: set the slot number here. On the home pad, hold then drag.</p>
-          <label class="check-row"><input type="checkbox" id="edit-vip" ${editing.always_allow ? "checked" : ""} /> VIP — rings through Quiet Time</label>
+          ${
+            gp
+              ? ""
+              : `<label>Speed dial (2–9, blank = none)</label>
+          <input id="edit-dial" type="number" min="2" max="9" inputmode="numeric" value="${editing.speed_dial ?? ""}" />
+          <label class="check-row"><input type="checkbox" id="edit-vip" ${editing.always_allow ? "checked" : ""} /> VIP — rings through Quiet Time</label>`
+          }
           <div class="btn-row two">
             <button class="primary btn-block" id="save-edit">Save</button>
             <button class="ghost btn-block" id="cancel-edit">Cancel</button>
           </div>
-          <button class="danger btn-block" id="remove-contact" style="margin-top:10px">Remove</button>
+          <button class="ghost btn-block" id="remove-from-circle" style="margin-top:10px">${gp ? "Remove from my list" : "Remove from my list"}</button>
+          <button class="danger btn-block" id="remove-contact" style="margin-top:8px">${gp ? "Remove from this phone" : "Remove from this phone"}</button>
         </div>
       </div>`
         : ""
     }
-  `;
+  `);
   document.getElementById("back").onclick = () => {
     state.editContactId = null;
     state.screen = "home";
@@ -10610,7 +17005,12 @@ function renderManageContacts() {
         method: "POST",
         body: JSON.stringify({ targetLineId, label }),
       });
-      setFlash(`Approved ${label} — ask them to approve you too`, "ok");
+      setFlash(
+        gp
+          ? `Added ${label}. If you cannot call yet, ask them to add you too.`
+          : `Approved ${label} — ask them to approve you too`,
+        "ok"
+      );
       await refresh();
     };
   });
@@ -10623,7 +17023,10 @@ function renderManageContacts() {
           method: "POST",
           body: JSON.stringify({ targetLineId }),
         });
-        setFlash(`Declined ${label} — they won’t show under Needs approval`, "ok");
+        setFlash(
+          gp ? `${label} was not added` : `Declined ${label} — they won’t show under Needs approval`,
+          "ok"
+        );
         await refresh();
       } catch (e) {
         setFlash(e.message || "Could not decline", "error");
@@ -10648,23 +17051,58 @@ function renderManageContacts() {
     }
   });
   document.getElementById("save-edit")?.addEventListener("click", async () => {
-    const dialRaw = document.getElementById("edit-dial").value.trim();
-    const speed_dial = dialRaw === "" ? null : Number(dialRaw);
+    const dialEl = document.getElementById("edit-dial");
+    const vipEl = document.getElementById("edit-vip");
+    const body = {
+      label: document.getElementById("edit-label").value.trim(),
+    };
+    if (dialEl) {
+      const dialRaw = dialEl.value.trim();
+      body.speed_dial = dialRaw === "" ? null : Number(dialRaw);
+    }
+    if (vipEl) body.always_allow = Boolean(vipEl.checked);
     await api(`/api/households/${hh.id}/allowlist/${editing.id}`, {
       method: "PATCH",
-      body: JSON.stringify({
-        label: document.getElementById("edit-label").value.trim(),
-        speed_dial,
-        always_allow: Boolean(document.getElementById("edit-vip").checked),
-      }),
+      body: JSON.stringify(body),
     });
-    setFlash("Contact updated", "ok");
+    setFlash(gp ? "Saved" : "Contact updated", "ok");
     state.editContactId = null;
     await refresh();
   });
+  document.getElementById("remove-from-circle")?.addEventListener("click", async () => {
+    if (!editing?.target_line_id) return;
+    if (
+      !confirm(
+        gp
+          ? `Remove ${contactDisplayName(editing)} from your list?`
+          : `Remove ${contactDisplayName(editing)} from ${circleLabel}? They stay in other parents’ circles.`
+      )
+    )
+      return;
+    try {
+      await api(`/api/households/${hh.id}/spheres/mine/members/${editing.target_line_id}`, {
+        method: "DELETE",
+      });
+      setFlash(gp ? "Removed" : "Removed from your circle", "ok");
+      state.editContactId = null;
+      await refresh();
+    } catch (e) {
+      setFlash(e.message || "Could not remove from circle", "error");
+      render();
+    }
+  });
   document.getElementById("remove-contact")?.addEventListener("click", async () => {
-    if (!confirm(`Remove ${contactDisplayName(editing)}? Kids won’t be able to call them.`)) return;
+    if (!confirm(`Remove ${contactDisplayName(editing)} from this household’s contacts? Kids won’t dial them from this phone.`)) return;
     await api(`/api/households/${hh.id}/allowlist/${editing.id}`, { method: "DELETE" });
+    if (editing.target_line_id) {
+      try {
+        await api(`/api/households/${hh.id}/spheres/mine/members/${editing.target_line_id}`, {
+          method: "DELETE",
+        });
+      } catch {
+        /* circle unlink best-effort */
+      }
+    }
     setFlash("Removed — they can no longer be dialed from this phone", "ok");
     state.editContactId = null;
     await refresh();
@@ -10720,6 +17158,9 @@ function renderLeaveMessage() {
     } catch {}
     recorder = null;
     state.leaveFor = null;
+    state.leaveVmMountedKey = null;
+    state.nav = "phone";
+    localStorage.setItem("kl_nav", "phone");
     state.screen = "home";
     render();
   };
@@ -10838,6 +17279,9 @@ function renderLeaveMessage() {
 
   document.getElementById("back").onclick = () => void finish({ save: true });
   document.getElementById("vm-hangup").onclick = () => void finish({ save: true });
+  document.querySelector(".leave-vm-screen .home-brand-lockup")?.addEventListener("click", () => {
+    void finish({ save: true });
+  });
 
   // Auto: greeting → beep → record (Web Audio unlock from prior call gesture).
   // Custom and default both get the same post-OGM beep; hang up mid-greeting skips beep/record.
@@ -10867,11 +17311,43 @@ function renderSettings() {
 }
 
 
+/** Splash / tutorial / auth — no dock; drop the 96px dock pad so compositions aren't stretched. */
+const GATE_SCREENS = new Set([
+  "splash",
+  "tutorial",
+  "welcome",
+  "returning",
+  "register",
+  "set-password",
+  "host",
+  "join",
+]);
+
+function syncGateChrome() {
+  const gate = GATE_SCREENS.has(state.screen) || !state.user;
+  app.classList.toggle("gate-screen", gate);
+}
+
 function render() {
+  // Freeze home chrome while the softphone ring sheet is up — remounting #app
+  // behind a translucent overlay read as the incoming sheet flickering.
+  if (
+    !callKitOwnsUi() &&
+    (state.call?.status === "incoming" || state.group?.status === "incoming") &&
+    document.getElementById("call-layer")
+  ) {
+    syncPhoneRoleChrome();
+    syncGateChrome();
+    syncPhoneHomeLock();
+    paintToast();
+    paintCallLayer();
+    return;
+  }
   syncPhoneRoleChrome();
   if (state.nav === "controls") captureAtaFormDraftFromDom();
   if (!(state.screen === "home" && (!state.nav || state.nav === "phone"))) {
     state.speedDialEditing = false;
+    closeFamilyRoomPickerSheet();
   }
   if (state.screen === "splash") renderSplash();
   else if (state.screen === "tutorial") renderTutorial();
@@ -10886,11 +17362,19 @@ function render() {
   else if (state.screen === "invite") renderInvite();
   else if (state.screen === "add-contact") renderAddContact();
   else if (state.screen === "manage-contacts") renderManageContacts();
-  else if (state.screen === "leave-message") renderLeaveMessage();
+  else if (state.screen === "leave-message") {
+    const key = String(state.leaveFor?.toLineId || "");
+    // Idempotent: presence/refresh remounts used to restart “Please leave a message…”.
+    if (!(state.leaveVmMountedKey === key && document.querySelector(".leave-vm-screen"))) {
+      state.leaveVmMountedKey = key;
+      renderLeaveMessage();
+    }
+  }
   else if (state.screen === "quiet") renderQuietHours();
   else if (state.screen === "profile") renderProfile();
   else if (state.screen === "settings") renderSettings();
   else renderHome();
+  syncGateChrome();
   syncPhoneHomeLock();
   paintToast();
   paintCallLayer();
@@ -10898,81 +17382,939 @@ function render() {
 
 /** Capacitor + CallKit (iOS). No-op in Safari/PWA. */
 function nativeCallKit() {
-  try {
-    return window.Capacitor?.Plugins?.PhoneHomeCallKit || null;
-  } catch {
-    return null;
-  }
+  return nativePlugin();
 }
 
 function isNativeIosShell() {
   try {
-    return Boolean(window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === "ios");
+    if (window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === "ios") {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    return (
+      document.documentElement.classList.contains("capacitor-native") &&
+      document.documentElement.dataset.nativePlatform === "ios"
+    );
   } catch {
     return false;
   }
 }
 
+/** Show Lock-screen Answer when the iOS app (not Safari) is driving the UI. */
+function showIosCallKitSettings() {
+  if (isNativeIosShell()) return true;
+  try {
+    const plugins = window.Capacitor?.Plugins;
+    return Boolean(plugins?.PhoneHomeCallKit);
+  } catch {
+    return false;
+  }
+}
+
+function iosCallKitToggleHtml(inputId) {
+  if (!showIosCallKitSettings()) return "";
+  return `<div class="parent-field" id="ios-callkit-field">
+          <h3 class="parent-subhead parent-subhead-with-badge">${withBetaBadge("Lock-screen Answer")}</h3>
+          <p class="tiny">Use the iPhone Answer button (CallKit). Off = tap a notification and answer in the app.</p>
+          <label class="check-row">
+            <input type="checkbox" id="${inputId}" ${callKitEnabled() ? "checked" : ""} />
+            Answer from the lock screen
+          </label>
+        </div>`;
+}
+
+function bindIosCallKitToggle(inputId) {
+  document.getElementById(inputId)?.addEventListener("change", async (e) => {
+    const on = Boolean(e.target.checked);
+    try {
+      await applyCallKitPreference(on);
+      setFlash(
+        on
+          ? "Lock-screen Answer on. Incoming calls use the iPhone Answer button."
+          : "Lock-screen Answer off. Calls ring as a notification.",
+        "ok"
+      );
+    } catch (err) {
+      e.target.checked = !on;
+      setFlash(err.message || "Could not update Lock-screen Answer", "error");
+    }
+  });
+}
+
+/** Push unread VM + unseen missed onto the iOS home-screen icon badge. */
+async function syncIosAppBadge() {
+  if (!isNativeIosShell()) return;
+  const kit = nativeCallKit();
+  if (!kit?.setBadge) return;
+  const count = iosAppBadgeCount();
+  try {
+    await kit.setBadge({ count });
+  } catch (e) {
+    console.warn("[ios] setBadge failed", e);
+  }
+}
+
+let iosBadgeLifecycleArmed = false;
+function armIosAppBadgeLifecycle() {
+  if (iosBadgeLifecycleArmed || !isNativeIosShell()) return;
+  iosBadgeLifecycleArmed = true;
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void syncIosAppBadge();
+  });
+  try {
+    const CapApp = window.Capacitor?.Plugins?.App;
+    CapApp?.addListener?.("appStateChange", (ev) => {
+      if (ev?.isActive) void syncIosAppBadge();
+    });
+  } catch {
+    /* App plugin optional */
+  }
+}
+
+/**
+ * Cap iOS only: release WKWebView mic when idle / background so CallKit+TCC
+ * does not leave a zombie capture that requires Settings toggle.
+ * Safari PWA keeps page-lifetime park between calls.
+ */
+let iosMicLifecycleArmed = false;
+/** True while a live Cap call owns media — never hard-release mid-handoff. */
+function callKitHoldsMic() {
+  if (callKitGate.answered || callKitGate.accepting || acceptCallInFlight) return true;
+  if (state.group) {
+    const gs = state.group.status;
+    if (gs === "calling" || gs === "incoming" || gs === "connecting" || gs === "active") return true;
+  }
+  if (!state.call) return false;
+  const st = state.call.status;
+  return (
+    st === "calling" ||
+    st === "ringing" ||
+    st === "connecting" ||
+    st === "active" ||
+    st === "incoming"
+  );
+}
+
+function releaseIdleMicIfSafe(reason) {
+  if (!isNativeIosShell()) return;
+  if (callKitHoldsMic()) return;
+  if (!state.localStream) return;
+  console.warn("[ios] hard-release mic —", reason);
+  hardReleaseMicStream();
+}
+
+function armIosMicLifecycle() {
+  if (iosMicLifecycleArmed || !isNativeIosShell()) return;
+  iosMicLifecycleArmed = true;
+
+  const onBackground = () => releaseIdleMicIfSafe("background");
+  const onForeground = () => {
+    if (state.localStream && !micStreamUsable(state.localStream)) {
+      console.warn("[ios] clearing zombie mic on foreground");
+      hardReleaseMicStream();
+    }
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) onBackground();
+    else onForeground();
+  });
+  window.addEventListener("pagehide", onBackground);
+  try {
+    const CapApp = window.Capacitor?.Plugins?.App;
+    CapApp?.addListener?.("appStateChange", (ev) => {
+      if (ev?.isActive === false) onBackground();
+      else if (ev?.isActive) onForeground();
+    });
+  } catch {
+    /* App plugin optional */
+  }
+}
+
 let iosCallKitReady = false;
+/**
+ * CallKit ↔ softphone UI gate.
+ * - ringing (incoming, not answered): system CallKit Answer/Decline owns chrome
+ * - answered + app foreground: in-app overlay (mute/hold/end) — iOS drops full system UI
+ * - locked / background: system green bar / Dynamic Island still applies
+ * answered/audioActive also defer WebRTC until AVAudioSession is active.
+ */
+let callKitGate = {
+  answered: false,
+  audioActive: false,
+  /** True when JS forced audioActive before native didActivate (risk of silent gum). */
+  forcedAudio: false,
+  accepting: false,
+  /** System CallKit incoming UI already shown (PushKit and/or reportIncoming). */
+  systemRinging: false,
+  /** SDP answer was sent for the current CallKit call. */
+  answerSent: false,
+  /** call.accepted signaled — stops ATA ringback before SDP. */
+  acceptedSignaled: false,
+  acceptRetryTimer: null,
+  pollTimer: null,
+};
+
+/** Deduped late force — never force gum before ~2.5s (early setActive silence). */
+let callKitForceAudioTimer = null;
+
+/**
+ * Feature flag: system CallKit Answer / PushKit VoIP UI ownership.
+ * Default OFF — in-app softphone + alert APNs.
+ * Parent → This phone “Lock-screen Answer” writes localStorage + native UserDefaults.
+ * Apple requires CallKit report on every VoIP push; without CallKit we must not use PushKit.
+ */
+function callKitEnabled() {
+  try {
+    const v = String(localStorage.getItem("kl_callkit") || "").trim().toLowerCase();
+    if (v === "1" || v === "true" || v === "yes") return true;
+    if (v === "0" || v === "false" || v === "no") return false;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+function persistCallKitFlag(enabled) {
+  try {
+    localStorage.setItem("kl_callkit", enabled ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+/** If WKWebView wiped localStorage, keep CallKit on when native UserDefaults says so. */
+async function syncCallKitFlagFromNative() {
+  const kit = nativeCallKit();
+  if (!kit?.isCallKitEnabled) return;
+  try {
+    const nativeOn = Boolean((await kit.isCallKitEnabled())?.enabled);
+    let stored = "";
+    try {
+      stored = String(localStorage.getItem("kl_callkit") || "");
+    } catch {
+      stored = "";
+    }
+    if (!stored && nativeOn) persistCallKitFlag(true);
+  } catch {
+    /* older plugin */
+  }
+}
+
+async function clearRegisteredVoipTokens() {
+  if (!state.activeLineId || !state.sessionId) return;
+  try {
+    await api("/api/devices/voip-token", {
+      method: "DELETE",
+      body: JSON.stringify({ lineId: state.activeLineId }),
+    });
+  } catch (e) {
+    console.warn("[ios] voip token clear failed", e);
+  }
+}
+
+/** Turn CallKit on/off without a reload. Listeners stay registered; only PushKit changes. */
+async function applyCallKitPreference(enabled) {
+  persistCallKitFlag(enabled);
+  const kit = nativeCallKit();
+  try {
+    await kit?.setCallKitEnabled?.({ enabled });
+  } catch (e) {
+    console.warn("[ios] setCallKitEnabled", e);
+  }
+  if (enabled) {
+    try {
+      await kit?.registerVoIP?.();
+    } catch (e) {
+      console.warn("[ios] registerVoIP", e);
+    }
+    void syncCallKitStateFromNative("enable");
+    armCallKitStatePoll();
+  } else {
+    await clearRegisteredVoipTokens();
+    try {
+      await kit?.registerAlertPush?.();
+    } catch (e) {
+      console.warn("[ios] registerAlertPush", e);
+    }
+  }
+}
+
+/** True when native iOS CallKit plugin may own chrome (flag on + plugin present). */
+function callKitOwnsUi() {
+  return callKitEnabled() && isNativeIosShell() && Boolean(nativeCallKit());
+}
+
+function resetCallKitGate() {
+  callKitGate.answered = false;
+  callKitGate.audioActive = false;
+  callKitGate.forcedAudio = false;
+  callKitGate.accepting = false;
+  callKitGate.systemRinging = false;
+  callKitGate.answerSent = false;
+  callKitGate.acceptedSignaled = false;
+  acceptCallInFlight = false;
+  if (callKitForceAudioTimer) {
+    clearTimeout(callKitForceAudioTimer);
+    callKitForceAudioTimer = null;
+  }
+  if (callKitGate.acceptRetryTimer) {
+    clearInterval(callKitGate.acceptRetryTimer);
+    callKitGate.acceptRetryTimer = null;
+  }
+  if (callKitGate.pollTimer) {
+    clearInterval(callKitGate.pollTimer);
+    callKitGate.pollTimer = null;
+  }
+  state.pendingNativeCallId = "";
+  state.pendingNativeFromLineId = "";
+  state.pendingNativeToLineId = "";
+}
+
+/** While CallKit shows an incoming/active call, poll native state (cold WebView / missed events). */
+function armCallKitStatePoll() {
+  if (callKitGate.pollTimer || !isNativeIosShell()) return;
+  let n = 0;
+  callKitGate.pollTimer = setInterval(() => {
+    n += 1;
+    if (callKitGate.answerSent || n >= 40) {
+      clearInterval(callKitGate.pollTimer);
+      callKitGate.pollTimer = null;
+      return;
+    }
+    if (!callKitGate.systemRinging && !callKitGate.answered) {
+      clearInterval(callKitGate.pollTimer);
+      callKitGate.pollTimer = null;
+      return;
+    }
+    void syncCallKitStateFromNative("poll");
+  }, 500);
+}
+
+function armCallKitAcceptRetries() {
+  if (callKitGate.acceptRetryTimer) return;
+  let n = 0;
+  callKitGate.acceptRetryTimer = setInterval(() => {
+    n += 1;
+    // Native answered but didActivate lagged — only force after ~4.8s so we don't
+    // start getUserMedia before CallKit owns AVAudioSession (silent audio).
+    if (callKitGate.answered && !callKitGate.audioActive && n >= 12) {
+      console.warn("[ios] CallKit accept retry forcing audioActive", n);
+      callKitGate.audioActive = true;
+      callKitGate.forcedAudio = true;
+    }
+    if (!callKitGate.answered || callKitGate.answerSent) {
+      if (callKitGate.answerSent || !callKitGate.answered || n >= 40) {
+        clearInterval(callKitGate.acceptRetryTimer);
+        callKitGate.acceptRetryTimer = null;
+      }
+      return;
+    }
+    // Answered but no SDP yet — keep polling pending (do NOT bail on !state.call).
+    // Skip inbound accept retries while we are the outbound caller.
+    if (
+      state.call?.fromLineId === state.activeLineId &&
+      state.call?.status !== "incoming"
+    ) {
+      if (n >= 5) {
+        clearInterval(callKitGate.acceptRetryTimer);
+        callKitGate.acceptRetryTimer = null;
+      }
+      return;
+    }
+    console.info("[ios] CallKit accept retry", n, {
+      hasCall: Boolean(state.call),
+      hasSdp: Boolean(state.call?.sdp),
+    });
+    signalCallKitAccepted(`retry-${n}`);
+    void acceptCallFromCallKit();
+    if (n >= 40) {
+      clearInterval(callKitGate.acceptRetryTimer);
+      callKitGate.acceptRetryTimer = null;
+    }
+  }, 400);
+}
+
+/** Deduped late force — never force gum before ~4s (early setActive silence). */
+function scheduleForceCallKitAudio(reason = "timeout", delayMs = 4000) {
+  if (!callKitGate.answered || callKitGate.answerSent || callKitGate.audioActive) return;
+  if (callKitForceAudioTimer) return;
+  callKitForceAudioTimer = setTimeout(() => {
+    callKitForceAudioTimer = null;
+    forceCallKitAudioAndAccept(reason);
+  }, delayMs);
+}
+
+function forceCallKitAudioAndAccept(reason = "timeout") {
+  if (!callKitGate.answered || callKitGate.answerSent) return;
+  if (!callKitGate.audioActive) {
+    console.warn("[ios] forcing audioActive —", reason);
+    callKitGate.audioActive = true;
+    callKitGate.forcedAudio = true;
+  }
+  armCallKitAcceptRetries();
+  void acceptCallFromCallKit();
+}
+
+async function syncCallKitStateFromNative(reason = "poll") {
+  const kit = nativeCallKit();
+  if (!kit?.getCallState || !isNativeIosShell()) return false;
+  try {
+    const st = await kit.getCallState();
+    console.info("[ios] CallKit state sync", reason, {
+      answered: !!st?.answered,
+      audioActive: !!st?.audioActive,
+      ringing: !!st?.ringing,
+      systemHasCall: !!st?.systemHasCall,
+      callId: st?.callId || null,
+    });
+    if (st?.callId) state.pendingNativeCallId = String(st.callId);
+    if (st?.systemHasCall || st?.ringing || st?.answered) {
+      callKitGate.systemRinging = true;
+      armCallKitStatePoll();
+    }
+    if (st?.answered) {
+      callKitGate.answered = true;
+      callKitGate.systemRinging = true;
+    }
+    if (st?.audioActive) {
+      callKitGate.audioActive = true;
+      callKitGate.forcedAudio = false;
+    }
+    // Do NOT force audioActive after 400ms — that races didActivate and silences WKWebView.
+    // Arm a ~4s safety valve; prefer real audioActivated.
+    if (st?.answered && !callKitGate.audioActive) {
+      scheduleForceCallKitAudio(`sync:${reason}`, 4000);
+      armCallKitAcceptRetries();
+    }
+    if (callKitGate.answered) {
+      armCallKitAcceptRetries();
+      if (callKitGate.audioActive) void acceptCallFromCallKit();
+    }
+    return Boolean(st?.answered);
+  } catch (e) {
+    console.warn("[ios] getCallState failed", e);
+    return false;
+  }
+}
+
+function kickRemoteAudio() {
+  const audio = typeof remoteAudio === "function" ? remoteAudio() : document.getElementById("remote-audio");
+  if (!audio) return;
+  try {
+    audio.autoplay = true;
+    audio.setAttribute("playsinline", "");
+    audio.setAttribute("webkit-playsinline", "true");
+    audio.playsInline = true;
+    audio.muted = false;
+    audio.volume = 1;
+    const p = audio.play();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch {}
+}
+
+/** After CallKit didActivate: remount remote tracks onto <audio> and play (lock-screen). */
+function remountRemoteAudioFromPc(reason = "remount") {
+  const pc = state.pc;
+  const audio = typeof remoteAudio === "function" ? remoteAudio() : document.getElementById("remote-audio");
+  if (!pc || !audio) return false;
+  try {
+    const tracks = (pc.getReceivers?.() || [])
+      .map((r) => r.track)
+      .filter((t) => t && t.kind === "audio" && t.readyState === "live");
+    if (!tracks.length) {
+      kickRemoteAudio();
+      return false;
+    }
+    for (const t of tracks) {
+      try {
+        t.enabled = true;
+      } catch {}
+    }
+    audio.srcObject = new MediaStream(tracks);
+    audio.muted = false;
+    audio.volume = 1;
+    audio.autoplay = true;
+    audio.setAttribute("playsinline", "");
+    audio.setAttribute("webkit-playsinline", "true");
+    kickRemoteAudio();
+    reportMediaStat(pc, reason);
+    return true;
+  } catch (e) {
+    console.warn("[ios] remountRemoteAudio failed", e);
+    kickRemoteAudio();
+    return false;
+  }
+}
+
+/** Safe media path breadcrumbs → hub journal (no SDP / candidates / keys). */
+function reportMediaStat(pc, reason) {
+  if (!pc || !state.ws || state.ws.readyState !== 1) return;
+  try {
+    const senders = pc.getSenders?.() || [];
+    const receivers = pc.getReceivers?.() || [];
+    const liveSend = senders.filter((s) => s.track && s.track.readyState === "live" && s.track.enabled).length;
+    const mutedSend = senders.filter((s) => s.track?.kind === "audio" && s.track.muted).length;
+    const liveRecv = receivers.filter((r) => r.track && r.track.readyState === "live").length;
+    const remoteEl = remoteAudio();
+    const remoteTracks = remoteEl?.srcObject?.getAudioTracks?.()?.length || 0;
+    const dirs = (pc.getTransceivers?.() || [])
+      .map((t) => `${t.mid || "?"}:${t.direction || "?"}`)
+      .join(",");
+    const why = `${String(reason || "").slice(0, 28)}${mutedSend ? `|mut=${mutedSend}` : ""}`.slice(0, 40);
+    state.ws.send(
+      JSON.stringify({
+        type: "call.media",
+        callId: state.call?.callId || state.pendingNativeCallId || null,
+        ice: pc.iceConnectionState || "",
+        conn: pc.connectionState || "",
+        senders: liveSend,
+        receivers: liveRecv,
+        remoteTracks,
+        dirs,
+        reason: why,
+      })
+    );
+  } catch {}
+}
+
+/** Serialize pending-offer fetch so concurrent CallKit retries don't race. */
+let pendingOfferFetch = null;
+
+/**
+ * Tell the bridge CallKit answered — stops FXS ringback before WebRTC SDP is ready.
+ * Safe to call repeatedly; only one WS send per call.
+ */
+function signalCallKitAccepted(reason = "accept") {
+  if (!callKitGate.answered || callKitGate.acceptedSignaled) return false;
+  const callId = state.call?.callId || state.pendingNativeCallId;
+  const fromLineId =
+    state.call?.fromLineId || state.pendingNativeFromLineId || "";
+  const toLineId =
+    state.call?.toLineId || state.pendingNativeToLineId || state.activeLineId;
+  if (!callId || !fromLineId || !toLineId) return false;
+  if (!state.ws || state.ws.readyState !== 1 || state.wsReplaced) {
+    // Reclaim socket so accepted / answer can leave.
+    if (state.wsReplaced) reconnectWs();
+    else ensureWs();
+    return false;
+  }
+  callKitGate.acceptedSignaled = true;
+  try {
+    state.ws.send(
+      JSON.stringify({
+        type: "call.accepted",
+        callId: String(callId),
+        fromLineId: String(fromLineId),
+        toLineId: String(toLineId),
+      })
+    );
+    console.info("[ios] call.accepted → stop ATA ringback", callId, reason);
+    return true;
+  } catch (e) {
+    callKitGate.acceptedSignaled = false;
+    console.warn("[ios] call.accepted send failed", e);
+    return false;
+  }
+}
+
+async function ensureIncomingOfferForCallKit() {
+  if (state.call?.sdp) return true;
+  if (!state.activeLineId) return false;
+  if (pendingOfferFetch) return pendingOfferFetch;
+  pendingOfferFetch = (async () => {
+    try {
+      if (state.call?.sdp) return true;
+      const body = await api(`/api/calls/pending?lineId=${encodeURIComponent(state.activeLineId)}`);
+      if (body?.offer?.sdp) {
+        console.info("[ios] pending offer fetched", body.offer.callId);
+        await onIncomingOffer({
+          type: "call.offer",
+          callId: body.offer.callId,
+          fromLineId: body.offer.fromLineId,
+          toLineId: body.offer.toLineId,
+          sdp: body.offer.sdp,
+        });
+        return Boolean(state.call?.sdp);
+      }
+    } catch (e) {
+      console.warn("[ios] pending offer fetch failed", e);
+    }
+    return false;
+  })();
+  try {
+    return await pendingOfferFetch;
+  } finally {
+    pendingOfferFetch = null;
+  }
+}
+
+async function acceptCallFromCallKit() {
+  if (callKitGate.accepting || acceptCallInFlight) return;
+  if (!callKitGate.answered) {
+    console.info("[ios] accept gated", {
+      answered: callKitGate.answered,
+      audioActive: callKitGate.audioActive,
+      answerSent: callKitGate.answerSent,
+    });
+    return;
+  }
+  // Outbound CallKit (we placed the call) — never run the inbound accept path.
+  if (
+    state.call?.fromLineId === state.activeLineId &&
+    state.call?.status !== "incoming"
+  ) {
+    kickRemoteAudio();
+    return;
+  }
+  // Prefer CallKit audio session, but do not block forever if didActivate never arrives.
+  if (!callKitGate.audioActive) {
+    console.info("[ios] accept waiting for audio session", {
+      answerSent: callKitGate.answerSent,
+    });
+    armCallKitAcceptRetries();
+    // Still stop ATA ringback as soon as we have SDP ids — don't wait for didActivate.
+    signalCallKitAccepted("pre-audio");
+    return;
+  }
+  if (callKitGate.answerSent && isPcAlive()) {
+    try {
+      armMicForCall();
+    } catch {}
+    try {
+      if (!pcHasSendingMic(state.pc) || !micStreamSendingOk(state.localStream) || callKitGate.forcedAudio) {
+        await refreshCallKitUplinkMic("accept-already-sent");
+      } else {
+        await attachLocalMicToPc(state.pc, { force: true });
+      }
+    } catch {}
+    remountRemoteAudioFromPc("accept-already-sent");
+    return;
+  }
+  callKitGate.accepting = true;
+  const watchdog = setTimeout(() => {
+    if (callKitGate.accepting || acceptCallInFlight) {
+      console.warn("[ios] accept watchdog — clearing stuck accept flags");
+      callKitGate.accepting = false;
+      acceptCallInFlight = false;
+      try {
+        closeCurrentPc();
+      } catch {}
+      armCallKitAcceptRetries();
+    }
+  }, 12000);
+  try {
+    if (state.wsReplaced) reconnectWs();
+    else ensureWs();
+    if (!(await ensureIncomingOfferForCallKit())) {
+      console.warn("[ios] CallKit answer but no SDP yet — will retry");
+      armCallKitAcceptRetries();
+      return;
+    }
+    signalCallKitAccepted("have-offer");
+    // PC exists but answer never left — finish the answer path (do not early-return).
+    if (isPcAlive() && callKitGate.answerSent) {
+      try {
+        armMicForCall();
+      } catch {}
+      try {
+        if (!pcHasSendingMic(state.pc) || !micStreamSendingOk(state.localStream)) {
+          await refreshCallKitUplinkMic("accept-pc-reuse");
+        } else {
+          await attachLocalMicToPc(state.pc, { force: true });
+        }
+      } catch {}
+      remountRemoteAudioFromPc("accept-pc-reuse");
+      return;
+    }
+    if (state.call?.status !== "incoming" && state.call?.status !== "connecting") {
+      state.call = { ...state.call, status: "incoming" };
+    }
+    console.info("[ios] CallKit → acceptCall", state.call?.callId);
+    await acceptCall();
+    remountRemoteAudioFromPc("accept-done");
+    kickRemoteAudio();
+  } catch (e) {
+    if (!isInvalidStateError(e)) console.warn("[ios] CallKit accept failed", e);
+    // Keep CallKit up and retry — do not tear down on a single getUserMedia blip.
+    armCallKitAcceptRetries();
+  } finally {
+    clearTimeout(watchdog);
+    callKitGate.accepting = false;
+  }
+}
+
+let lastIosApnsToken = "";
+let lastIosVoipToken = "";
+
+/** Lines this install should wake: active line plus any the signed-in user owns. */
+function iosAlertPushLineIds() {
+  const ids = new Set();
+  if (state.activeLineId) ids.add(state.activeLineId);
+  const uid = state.user?.id;
+  const hh = state.households?.[0];
+  for (const l of hh?.lines || []) {
+    if (!uid) break;
+    if (l.owner_user_id === uid || l.child_user_id === uid) ids.add(l.id);
+  }
+  return [...ids];
+}
+
+async function registerIosApnsToken(token) {
+  const t = String(token || lastIosApnsToken || "").trim();
+  if (!t || !state.sessionId) return;
+  lastIosApnsToken = t;
+  const lineIds = iosAlertPushLineIds();
+  if (!lineIds.length) return;
+  await Promise.all(
+    lineIds.map(async (lineId) => {
+      try {
+        await api("/api/devices/apns-token", {
+          method: "POST",
+          body: JSON.stringify({ lineId, apnsToken: t, platform: "ios" }),
+        });
+      } catch (e) {
+        console.warn("[ios] APNs token register failed", lineId, e);
+      }
+    })
+  );
+  console.info("[ios] APNs alert token registered", lineIds.length);
+}
+
+async function registerIosVoipToken(token) {
+  const t = String(token || lastIosVoipToken || "").trim();
+  if (!t || !state.activeLineId || !state.sessionId) return;
+  lastIosVoipToken = t;
+  try {
+    await api("/api/devices/voip-token", {
+      method: "POST",
+      body: JSON.stringify({ lineId: state.activeLineId, voipToken: t, platform: "ios" }),
+    });
+    console.info("[ios] VoIP token registered");
+  } catch (e) {
+    console.warn("[ios] VoIP token register failed", e);
+  }
+}
+
+/** Sticky ids from alert/VoIP push so pending offer fetch + softphone UI can bind. */
+function applyNativeIncomingHint(ev) {
+  const pushId = ev?.callId ? String(ev.callId) : "";
+  if (ev?.callId) state.pendingNativeCallId = pushId;
+  if (ev?.fromLineId) state.pendingNativeFromLineId = String(ev.fromLineId);
+  if (ev?.toLineId) state.pendingNativeToLineId = String(ev.toLineId);
+  else if (state.activeLineId) state.pendingNativeToLineId = String(state.activeLineId);
+}
+
+/**
+ * Alert APNs / notification tap: open softphone ring card (no CallKit).
+ * Pull pending SDP if WS offer has not arrived yet.
+ */
+async function handleIncomingAlertPush(ev) {
+  applyNativeIncomingHint(ev);
+  state.wsReplaced = false;
+  ensureWs();
+  console.info("[ios] incomingAlert", ev?.source || "", ev?.callId || "");
+  try {
+    await ensureIncomingOfferForCallKit();
+  } catch (e) {
+    console.warn("[ios] pending offer on alert failed", e);
+  }
+  paintCallLayer();
+}
 
 async function bootIosCallKit() {
   const kit = nativeCallKit();
   if (!kit || !isNativeIosShell() || iosCallKitReady) return;
   iosCallKitReady = true;
   try {
-    await kit.addListener("voipToken", async (ev) => {
-      const token = String(ev?.token || "");
-      if (!token || !state.activeLineId || !state.sessionId) return;
+    await syncCallKitFlagFromNative();
+    const useCallKit = callKitEnabled();
+    // Persist JS flag → native UserDefaults so the *next* killed-app launch
+    // starts PushKit in attach() before any VoIP push arrives.
+    try {
+      await kit.setCallKitEnabled?.({ enabled: useCallKit });
+    } catch (e) {
+      console.warn("[ios] setCallKitEnabled", e);
+    }
+
+    // Always register both listener families. Toggling CallKit later only
+    // starts/stops PushKit — adding listeners twice would duplicate events.
+    await kit.addListener("apnsToken", async (ev) => {
+      await registerIosApnsToken(String(ev?.token || ""));
+    });
+    await kit.addListener("incomingAlert", async (ev) => {
+      if (callKitEnabled()) return;
+      await handleIncomingAlertPush(ev);
+    });
+    // Register answer/audio BEFORE incomingPush so retained CallKit answer is not
+    // wiped by a later incomingPush handler (retain queue is per-event, FIFO per addListener).
+    await kit.addListener("callAnswered", async (ev) => {
+      if (!callKitEnabled()) return;
+      callKitGate.answered = true;
+      callKitGate.systemRinging = true;
+      if (ev?.callId) state.pendingNativeCallId = String(ev.callId);
+      // Lock-screen Answer must reclaim signaling even if a prior tab marked replaced.
+      if (state.wsReplaced) reconnectWs();
+      else ensureWs();
+      paintCallLayer();
+      console.info("[ios] callAnswered", ev?.replay ? "(replay)" : "", ev?.callId || "");
+      // Await SDP before accept — fire-and-forget raced accept with empty state.call.
       try {
-        await api("/api/devices/voip-token", {
-          method: "POST",
-          body: JSON.stringify({ lineId: state.activeLineId, voipToken: token, platform: "ios" }),
-        });
-        console.info("[ios] VoIP token registered");
+        await ensureIncomingOfferForCallKit();
       } catch (e) {
-        console.warn("[ios] VoIP token register failed", e);
+        console.warn("[ios] pending offer on answer failed", e);
       }
+      signalCallKitAccepted("callAnswered");
+      armCallKitAcceptRetries();
+      armCallKitStatePoll();
+      void acceptCallFromCallKit();
+      // Prefer real didActivate — force only after ~4s (silent if we gum too early).
+      scheduleForceCallKitAudio("callAnswered-timeout", 4000);
     });
-    await kit.addListener("incomingPush", async (ev) => {
-      // CallKit UI already shown by native; ensure WS is up for SDP.
-      state.wsReplaced = false;
-      ensureWs();
-      if (ev?.callId && ev?.callerName) {
-        // Offer may arrive via welcome pending; keep callId for answer path.
-        state.pendingNativeCallId = String(ev.callId);
+    await kit.addListener("audioActivated", async () => {
+      if (!callKitEnabled()) return;
+      const wasForced = callKitGate.forcedAudio;
+      callKitGate.audioActive = true;
+      callKitGate.forcedAudio = false;
+      if (callKitForceAudioTimer) {
+        clearTimeout(callKitForceAudioTimer);
+        callKitForceAudioTimer = null;
       }
-    });
-    await kit.addListener("callAnswered", async () => {
-      ensureWs();
-      if (state.call?.status === "incoming") {
-        await acceptCall();
-      } else if (state.activeLineId) {
-        // Race: push before WS offer — pull pending SDP.
+      console.info("[ios] CallKit audio session active", wasForced ? "(after forced)" : "");
+      // Real didActivate: Cap uplink is often silent if we gum'd early or used track.clone().
+      // Always refresh master→mid-0 sender after a real session activate when a PC exists.
+      try {
+        armMicForCall();
+      } catch {}
+      if (isPcAlive()) {
+        const needRefresh =
+          wasForced ||
+          callKitGate.answerSent ||
+          !micStreamSendingOk(state.localStream) ||
+          !pcHasSendingMic(state.pc);
         try {
-          const body = await api(`/api/calls/pending?lineId=${encodeURIComponent(state.activeLineId)}`);
-          if (body?.offer?.sdp) {
-            await onIncomingOffer({
-              type: "call.offer",
-              callId: body.offer.callId,
-              fromLineId: body.offer.fromLineId,
-              toLineId: body.offer.toLineId,
-              sdp: body.offer.sdp,
-            });
-            await acceptCall();
+          if (needRefresh) {
+            await refreshCallKitUplinkMic(wasForced ? "didActivate-after-forced" : "didActivate");
+          } else {
+            await attachLocalMicToPc(state.pc, { force: true });
+            reportMediaStat(state.pc, "audioActivated-mic");
           }
         } catch (e) {
-          console.warn("[ios] pending offer after answer failed", e);
+          console.warn("[ios] audioActivated mic refresh", e);
         }
       }
       try {
-        await kit.setConnected({ callId: state.call?.callId || state.pendingNativeCallId });
+        for (const r of state.pc?.getReceivers?.() || []) {
+          if (r.track) r.track.enabled = true;
+        }
       } catch {}
+      // Do NOT call setSpeaker here — fighting the session mid-handoff silences WebRTC.
+      remountRemoteAudioFromPc("audioActivated");
+      [150, 400, 900, 1800].forEach((ms) =>
+        setTimeout(() => remountRemoteAudioFromPc("audioActivated-kick"), ms)
+      );
+      setTimeout(() => applyPreferredCallAudio(), 900);
+      armCallKitAcceptRetries();
+      await acceptCallFromCallKit();
+    });
+    await kit.addListener("audioDeactivated", () => {
+      // Ignore brief deactivations while a CallKit call is still answered —
+      // clearing audioActive mid-call blocked remount / play kicks.
+      if (callKitGate.answered || callKitHoldsMic()) return;
+      callKitGate.audioActive = false;
+      // Cap iOS: release capture when CallKit drops the session (prefer hard release over park).
+      hardReleaseMicStream();
+    });
+    await kit.addListener("callStarted", (ev) => {
+      if (!callKitEnabled()) return;
+      // Outbound CXStartCallAction — system owns the call; keep mic.
+      callKitGate.answered = true;
+      callKitGate.systemRinging = true;
+      if (ev?.callId) state.pendingNativeCallId = String(ev.callId);
+      console.info("[ios] callStarted (outbound CallKit)", ev?.callId || "");
+    });
+    await kit.addListener("voipToken", async (ev) => {
+      if (!callKitEnabled()) return;
+      await registerIosVoipToken(String(ev?.token || ""));
+    });
+    await kit.addListener("voipTokenInvalid", async () => {
+      lastIosVoipToken = "";
+      await clearRegisteredVoipTokens();
+    });
+    await kit.addListener("incomingPush", async (ev) => {
+      if (!callKitEnabled()) return;
+      // Do NOT resetCallKitGate here — retained incomingPush can arrive after
+      // callAnswered and would wipe answered/audioActive (lock-screen race).
+      callKitGate.systemRinging = true;
+      applyNativeIncomingHint(ev);
+      const pushId = ev?.callId ? String(ev.callId) : "";
+      // Only clear answerSent for a brand-new call id.
+      if (pushId && state.call?.callId && pushId !== String(state.call.callId)) {
+        callKitGate.answered = false;
+        callKitGate.audioActive = false;
+        callKitGate.forcedAudio = false;
+        callKitGate.answerSent = false;
+        callKitGate.acceptedSignaled = false;
+      }
+      state.wsReplaced = false;
+      ensureWs();
+      console.info("[ios] incomingPush", pushId || "");
+      armCallKitStatePoll();
+      void syncCallKitStateFromNative("incomingPush");
+      // Start pulling SDP immediately — don't wait for answer gesture.
+      void ensureIncomingOfferForCallKit();
+      // If we already answered (replay race), stop ATA ringback with push line ids.
+      if (callKitGate.answered) signalCallKitAccepted("incomingPush");
     });
     await kit.addListener("callEnded", () => {
+      if (!callKitEnabled() && !callKitGate.systemRinging && !callKitGate.answered) return;
+      const wasMissed = callKitGate.systemRinging && !callKitGate.answered;
+      resetCallKitGate();
       if (state.call) hangup();
+      if (wasMissed) {
+        state.pendingNativeMissed = Math.max(1, Number(state.pendingNativeMissed) || 0);
+        void syncIosAppBadge();
+        void refresh().then(() => syncIosAppBadge()).catch(() => {});
+      } else {
+        void syncIosAppBadge();
+      }
     });
-    await kit.registerVoIP();
-    console.info("[ios] CallKit / PushKit armed");
+
+    try {
+      const res = await kit.registerAlertPush?.();
+      console.info("[ios] alert push permission", res?.granted);
+    } catch (e) {
+      console.warn("[ios] registerAlertPush failed", e);
+    }
+    if (useCallKit) {
+      try {
+        await kit.registerVoIP();
+      } catch (e) {
+        console.warn("[ios] registerVoIP failed", e);
+      }
+    }
+    try {
+      await kit.requestBadgePermission?.();
+    } catch (e) {
+      console.warn("[ios] badge permission", e);
+    }
+    armIosAppBadgeLifecycle();
+    armIosMicLifecycle();
+    void syncIosAppBadge();
+    if (useCallKit) {
+      void syncCallKitStateFromNative("boot");
+      armCallKitStatePoll();
+      console.info("[ios] CallKit / PushKit armed");
+    } else {
+      // Cold start after tap: reclaim any pending offer for the softphone card.
+      void ensureIncomingOfferForCallKit().then((ok) => {
+        if (ok) paintCallLayer();
+      });
+      console.info("[ios] CallKit tabled — alert APNs + in-app softphone armed");
+    }
   } catch (e) {
     console.warn("[ios] CallKit boot failed", e);
     iosCallKitReady = false;
@@ -10981,16 +18323,35 @@ async function bootIosCallKit() {
 
 async function boot() {
   await ensurePublicHttps();
+  // Native shell: mark early so CSS can avoid double safe-area / dvh WebView quirks.
+  try {
+    if (window.Capacitor?.isNativePlatform?.()) {
+      document.documentElement.classList.add("capacitor-native");
+      document.documentElement.classList.add("ph-standalone");
+      document.documentElement.dataset.nativePlatform = window.Capacitor.getPlatform?.() || "native";
+    }
+  } catch {}
   initSpecularTilt();
+  await restoreNativeSession();
+  await syncCallKitFlagFromNative();
   if (state.sessionId) {
     try {
+      if (mustCompleteHowItWorks()) startForcedHowItWorks();
       await refresh();
+      void persistSession(state.sessionId);
+      if (mustCompleteHowItWorks()) {
+        startForcedHowItWorks();
+        render();
+        void bootIosCallKit();
+        return;
+      }
       void bootIosCallKit();
       return;
-    } catch {
-      state.sessionId = "";
-      localStorage.removeItem("kl_session");
-      localStorage.removeItem("kl_line");
+    } catch (e) {
+      if (isUnauthorizedError(e)) {
+        await persistSession("");
+        localStorage.removeItem("kl_line");
+      }
     }
   }
   const invite = new URLSearchParams(location.search).get("invite");
@@ -10998,20 +18359,28 @@ async function boot() {
   // Invite deep-links skip splash but still offer tutorial if never seen
   if (invite) {
     state.mode = "join";
-    if (localStorage.getItem(TUTORIAL_KEY) === "1") {
+    if (mustCompleteHowItWorks()) {
+      startForcedHowItWorks();
+    } else if (localStorage.getItem(TUTORIAL_KEY) === "1") {
       state.screen = "join";
     } else {
       state.tutorialIndex = 0;
+      state.tutorialFarthest = 0;
       state.screen = "tutorial";
     }
   } else if (guardianCode && state.sessionId) {
     state.pendingGuardianCode = guardianCode;
-    state.screen = "home";
-    state.nav = "controls";
-    localStorage.setItem("kl_nav", "controls");
+    if (mustCompleteHowItWorks()) {
+      startForcedHowItWorks();
+    } else {
+      state.screen = "home";
+      state.nav = "controls";
+      localStorage.setItem("kl_nav", "controls");
+    }
   } else if (guardianCode) {
     state.pendingGuardianCode = guardianCode;
-    state.screen = "login";
+    if (mustCompleteHowItWorks()) startForcedHowItWorks();
+    else state.screen = "login";
   } else {
     state.screen = "splash";
   }
@@ -11022,7 +18391,7 @@ async function boot() {
         method: "POST",
         body: JSON.stringify({ code: state.pendingGuardianCode }),
       });
-      setFlash("You’re now a guardian of that child line", "ok");
+      setFlash("You’re now a co-parent for that kid", "ok");
       state.pendingGuardianCode = "";
       history.replaceState({}, "", location.pathname);
       await refresh();

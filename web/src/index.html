@@ -3,20 +3,23 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#0c1814" />
+    <meta name="theme-color" content="#0e1a15" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="PhoneHome" />
     <meta name="application-name" content="PhoneHome" />
-    <meta name="description" content="PhoneHome — the home phone, remixed. Private family calling with approved contacts only." />
+    <meta name="description" content="PhoneHome — the home phone, reborn. Private calling for family and approved trusted friends." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Sora:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,soft,wght@0,9..144,30..100,500;0,9..144,30..100,700;1,9..144,50,500&family=Fredoka:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700&family=Oswald:wght@500;600;700&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=Sora:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=VT323&family=Varela+Round&display=swap"
       rel="stylesheet"
     />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>PhoneHome</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
@@ -24,8 +27,8 @@
     <div class="atmosphere" aria-hidden="true"></div>
     <div id="app"></div>
     <!-- Persist across screen re-renders so WebRTC audio isn't torn down mid-call -->
-    <audio id="remote-audio" autoplay playsinline></audio>
-    <audio id="vm-monitor-audio" autoplay playsinline></audio>
+    <audio id="remote-audio" autoplay playsinline webkit-playsinline></audio>
+    <audio id="vm-monitor-audio" autoplay playsinline webkit-playsinline></audio>
     <div id="group-audio-root" hidden></div>
     <div id="toast-root" hidden aria-live="polite"></div>
     <div id="ptr-root" class="ptr-root" hidden aria-hidden="true">

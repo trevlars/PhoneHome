@@ -10,7 +10,7 @@ Lab path: Grandstream **HT801** → FreePBX (CT 121, `10.0.5.105`) → **ARI Sta
 | **ATA → ATA** | Same resolve; if target has `ata_devices`, originate `PJSIP/<ext>` and mix SIP↔SIP (no softphone) |
 | **Softphone → ATA** | Softphone `call.offer` → PhoneHome claims via `POST bridged:/claim` → originate FXS with CID → Flite “Call from {name}” on answer → WebRTC + ExternalMedia |
 
-1. ATA dials speed-dial **0** (Home / parent) or **1–9** (same slots as PhoneHome Home), or **\*98** / bare **\*** for Messages / greeting IVR.
+1. ATA dials **0** (Home / parent), **1** (TreeHouse), or **2–9** (same contact slots as PhoneHome Home), or **\*98** / bare **\*** for Messages / greeting IVR.
 2. FreePBX `extensions_custom.conf` sends the call to `Stasis(phonehome,<digits|vm>)`.
 3. Bridge rings the FXS until the softphone answers (ringback), calls resolve (allowlist + `canCall`) — or runs the PhoneHome-backed *98 IVR for `vm`. Then answers + ExternalMedia ↔ WebRTC.
 4. If `toSipExtension` is set → originate that FreePBX extension (FXS rings). Else → claim the ATA’s PhoneHome line on `/ws` and place a normal `call.offer`.

@@ -1,5 +1,8 @@
 # Hosting for parent testing
 
+> **Self-host (anyone):** start with **[`self-host.md`](./self-host.md)** — background app on macOS/Windows/Linux, Docker, env-based URLs.  
+> **This page** documents the **trevlars lab** layout (Proxmox, eero DDNS, specific CT IDs).
+
 **PhoneHome** Stage 1 needs **HTTPS** so phones can use the microphone (secure context). Cousins only need the public URL + an invite — no VPN.
 
 Repo / deploy **host paths** still use `kids-landline` (CT hostname, systemd unit, `/opt/kids-landline`) — intentional so lab boxes don’t need a migrate. The **product and GitHub repo** are **PhoneHome** (`https://github.com/trevlars/PhoneHome`).
@@ -64,7 +67,11 @@ Add eero port forwards → **PVE** `10.0.5.31` (SIP TLS via proxy) / FreePBX RTP
 
 Do **not** forward UDP 5060 for PhoneHome ATAs. Cleartext SIP is not a supported production path (`docs/privacy-security.md`).
 
-If RTP still shows `10000–20000` on FreePBX after a GUI save, re-narrow under **Settings → Asterisk SIP Settings → RTP Port Ranges**, or keep forwarding the wider range.
+Confirm FreePBX live range with `rtp show settings` — **Port end must be 10200**. Deploy (`proxmox-rsync.sh`) and `phonehome-set-sip-secret` pin `rtp_additional.conf` **after** every `fwconsole reload` (FreePBX regenerates `rtpend=20000`; Asterisk reads that file before `rtp_custom.conf`, so custom alone never wins). A call that SDP-offers e.g. `m=audio 14842` will ring with **no audio** when eero only forwards 10000–10200.
+
+If the eero app says the external port is already in use when widening the range, **edit is blocked by the existing rule** — keep **UDP 10000–10200 → 10.0.5.105** and rely on the post-reload pin. To widen instead: delete the old RTP forward, then create **UDP 10000–20000 → 10.0.5.105** (optional).
+
+TLS transport `local_net` must stay narrow (`10.0.4.0/24` for the lab ATA LAN). A wide `10.0.0.0/8` makes remote ATAs (Contact rewritten to the PVE SIP proxy) look local, so Asterisk puts private RTP in SDP — **ring, no audio**. Remote endpoints also get `media_address=<public IP>` via `phonehome-set-sip-secret`.
 
 **Cert sync (PVE, once):**
 
@@ -134,6 +141,10 @@ DATA_DIR=/var/lib/kids-landline node /opt/kids-landline/server/scripts/reissue-c
 5. Both sides approve each other → **Call**.
 
 Invite links use `PUBLIC_BASE_URL` (`https://y5876647.eero.online:8443` on the lab). LAN `http://10.0.5.106:8787` is fine for browsing on Wi‑Fi, but **calls and invite shares need that HTTPS URL**.
+
+### Bridged (ATA ↔ softphone)
+
+The ARI bridge terminates WebRTC toward softphones. It must use the **same coturn** as `/api/ice`, or off-LAN softphones will **ring with no audio** while softphone↔softphone still works. `phonehome-bridge` reads `TURN_*` from `/var/lib/kids-landline/bridge.env` (also synced by `deploy/phonehome-sync-public-url.sh`). Lab LAN TURN should be **coturn on PVE** (`turn:10.0.5.31:3478`), not the PhoneHome CT IP.
 
 ## Docker alternative
 

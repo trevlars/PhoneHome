@@ -4,6 +4,7 @@ import {
   ataPresenceRegistered,
   deriveAtaStatus,
   parseBridgeSipStatus,
+  shouldAttemptFxsInbound,
   unknownSipStatus,
 } from "./ataStatus.js";
 
@@ -61,6 +62,34 @@ test("directory presence only counts a confirmed registration", () => {
   assert.equal(ataPresenceRegistered(online), true);
   assert.equal(ataPresenceRegistered({ ...online, ok: false }), false);
   assert.equal(ataPresenceRegistered(unknownSipStatus("timeout")), false);
+});
+
+test("inbound FXS still attempts on unknown/reload blips", () => {
+  assert.equal(shouldAttemptFxsInbound(online), true);
+  assert.equal(shouldAttemptFxsInbound(unknownSipStatus("ARI not connected")), true);
+  assert.equal(
+    shouldAttemptFxsInbound({
+      ...online,
+      registered: false,
+      callable: false,
+      state: "unknown",
+      confidence: "none",
+      method: "ari-endpoint-state",
+    }),
+    true
+  );
+  assert.equal(
+    shouldAttemptFxsInbound({
+      ...online,
+      registered: false,
+      callable: false,
+      state: "offline",
+      confidence: "high",
+      contacts: 0,
+      reason: "no available contact",
+    }),
+    false
+  );
 });
 
 test("parseBridgeSipStatus keeps confidence and contact count", () => {

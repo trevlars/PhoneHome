@@ -4,15 +4,20 @@
  * Paths:
  *   ATA → softphone: Stasis → resolve → WS call.offer → ExternalMedia ↔ WebRTC
  *   ATA → ATA:       Stasis → resolve (toSipExtension) → originate PJSIP → mixing bridge
+ *   ATA → TreeHouse: Stasis → resolve treeHouse → Asterisk mixing + presence join (pad #1)
  *   softphone → ATA: HTTP /claim → WS as callee → answer WebRTC → originate FXS + ExternalMedia
  */
 import ari from "ari-client";
 import dgram from "node:dgram";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
 import WebSocket from "ws";
 import OpusScript from "opusscript";
 import {
@@ -27,6 +32,7 @@ import { createVmIvr } from "./vm-ivr.mjs";
 import { createVoicePrompts } from "./voicePrompts.mjs";
 import { amiConfigFromEnv, fetchAmiContactEvidence } from "./amiContacts.mjs";
 
+const execFileAsync = promisify(execFile);
 const PH_URL = (process.env.PHONEHOME_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const PH_WS = process.env.PHONEHOME_WS || PH_URL.replace(/^http/, "ws") + "/ws";
 const BRIDGE_SECRET = (process.env.BRIDGE_SECRET || "").trim();
@@ -42,6 +48,13 @@ const BRIDGE_HTTP_BIND = process.env.BRIDGE_HTTP_BIND || "0.0.0.0";
 const MEDIA_BASE_URL =
   process.env.MEDIA_BASE_URL || `http://${EXT_MEDIA_HOST}:${BRIDGE_HTTP_PORT}`;
 const SIP_ENDPOINT_PREFIX = process.env.SIP_ENDPOINT_PREFIX || "PJSIP";
+/** Local Piper (amy) for in-Stasis FXS announce — no dialplan leave / SRTP break. */
+const PIPER_DIR = process.env.PIPER_DIR || "/opt/piper";
+const PIPER_BIN = process.env.PIPER_BIN || path.join(PIPER_DIR, "piper", "piper");
+const PIPER_MODEL =
+  process.env.PIPER_MODEL || path.join(PIPER_DIR, "voices", "en_US-amy-medium.onnx");
+/** Match softphone RING_TIMEOUT_MS — unanswered ATA/soft ring → leave-a-message. */
+const RING_TIMEOUT_MS = Math.max(15_000, Number(process.env.RING_TIMEOUT_MS || 40_000));
 /**
  * Optional AMI login used only to read AOR contacts (registration truth).
  * Unset by default → /sip-status falls back to coarse ARI endpoint state and
@@ -77,6 +90,14 @@ const pendingIvrSay = new Map();
 /** Channels temporarily leaving Stasis for phonehome-announce / phonehome-ivr-say dialplan. */
 const announceInProgress = new Set();
 const ivrSayInProgress = new Set();
+/**
+ * Household-scoped Asterisk mixing bridges for analog TreeHouse (pad #1).
+ * Softphone mesh stays WebRTC; FXS legs share this bridge so multiple ATAs can hear each other.
+ * @type {Map<string, { bridge: import("ari-client").Bridge, channels: Set<string> }>}
+ */
+const treeHouseAtaBridges = new Map();
+/** Parent listen-only ExternalMedia on the analog TreeHouse mix. parentLineId → session */
+const treeHouseListenSessions = new Map();
 
 let nextMediaPort = EXT_MEDIA_PORT_BASE;
 /** @type {import("ari-client").Client | null} */
@@ -214,9 +235,39 @@ function playFinished(playback, timeoutMs = 20000) {
   });
 }
 
-async function playMediaUri(channel, media) {
+async function playMediaUri(channel, media, timeoutMs = 20000) {
   const playback = await channel.play({ media });
-  await playFinished(playback);
+  await playFinished(playback, timeoutMs);
+}
+
+/**
+ * Softphone hung up on an ATA↔WebRTC call — BYE the FXS immediately.
+ *
+ * Do NOT play Asterisk busy/beep over the SRTP FXS leg before hangup. That path
+ * left HT801s in a silent "still in call" state (no dialtone on the next
+ * off-hook) until power-cycle — receive still worked because FreePBX INVITEs
+ * the Contact. Instant hangup restores idle dialtone on the adapter.
+ */
+async function endAtaCallFromSoftphoneHangup(session, reason = "softphone-hangup") {
+  if (!session || session.closed) return;
+  const fxs = session.fxsChannel;
+  console.log(`[bridged] ${reason} call=${session.callId || "?"} — drop FXS`);
+  try {
+    if (session.bridge && fxs?.id) {
+      try {
+        await session.bridge.removeChannel({ channel: fxs.id });
+      } catch {}
+    }
+  } catch (e) {
+    console.warn(`[bridged] FXS unbridge skipped:`, e?.message || e);
+  }
+  // Prefer a direct channel hangup so BYE reaches the ATA even if session.close races.
+  if (fxs) {
+    try {
+      await fxs.hangup();
+    } catch {}
+  }
+  await session.close(ariClient);
 }
 
 const voicePrompts = createVoicePrompts({
@@ -294,6 +345,10 @@ class CallSession {
     this.callId = null;
     this.fromLineId = null;
     this.toLineId = null;
+    /** ARI channel for the FXS caller (ATA→soft). Answered early on call.accepted. */
+    this.fxsChannel = null;
+    /** True after channel.answer() — stops analog ringback before WebRTC SDP. */
+    this.fxsAnswered = false;
     this.closed = false;
     this.opusEnc = new OpusScript(48000, 1, OpusScript.Application.VOIP);
     this.opusDec = new OpusScript(48000, 1, OpusScript.Application.VOIP);
@@ -324,6 +379,23 @@ class CallSession {
     this.closed = true;
     for (const id of this._sessionKeys) sessions.delete(id);
     this._sessionKeys.clear();
+    if (this.treeHouseListen) {
+      if (this.fromLineId) treeHouseListenSessions.delete(this.fromLineId);
+      try {
+        await this.pc?.close();
+      } catch {}
+      try {
+        this.rtpSock?.close();
+      } catch {}
+      try {
+        this.opusEnc?.delete?.();
+        this.opusDec?.delete?.();
+      } catch {}
+      try {
+        if (this.extChannel) await this.extChannel.hangup();
+      } catch {}
+      return;
+    }
     // Flush hangup to the softphone before tearing down the socket — iOS was
     // staying "in call" when close() raced ahead of the hangup frame.
     try {
@@ -364,9 +436,12 @@ class CallSession {
     try {
       if (this.destChannel) await this.destChannel.hangup();
     } catch {}
-    try {
-      if (this.bridge) await this.bridge.destroy();
-    } catch {}
+    // TreeHouse uses a shared household mixing bridge — leaveTreeHouseAta owns teardown.
+    if (!this.treeHouse) {
+      try {
+        if (this.bridge) await this.bridge.destroy();
+      } catch {}
+    }
     try {
       if (this.channelId && client) await client.channels.hangup({ channelId: this.channelId });
     } catch {}
@@ -486,7 +561,53 @@ function decodeOpusToMonoPcm48(session, payload) {
   return pcm;
 }
 
-function waitIceGathering(pc, ms = 2500) {
+/**
+ * Same TURN/STUN set as PhoneHome `/api/ice`. Without TURN, ATA↔remote softphone
+ * ICE dies on private host candidates (ring / media-up, silent call).
+ */
+function buildIceServers() {
+  const servers = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+  const turnUrls = (process.env.TURN_URLS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  // Coturn on lab PVE is 10.0.5.31 — not the PhoneHome CT IP.
+  const turnLanUrls = (process.env.TURN_LAN_URLS || "turn:10.0.5.31:3478")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allTurn = [...new Set([...turnUrls, ...turnLanUrls])];
+  const withTransport = [];
+  for (const u of allTurn) {
+    withTransport.push(u);
+    if (u.startsWith("turn:") && !u.includes("?transport=")) {
+      withTransport.push(`${u}?transport=tcp`);
+    }
+  }
+  const uniqTurn = [...new Set(withTransport)];
+  if (uniqTurn.length && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    servers.push({
+      urls: uniqTurn,
+      username: process.env.TURN_USERNAME,
+      credential: process.env.TURN_CREDENTIAL,
+    });
+  }
+  return servers;
+}
+
+const ICE_SERVERS = buildIceServers();
+const HAS_TURN = ICE_SERVERS.some((s) => {
+  const u = s.urls;
+  const list = Array.isArray(u) ? u : [u];
+  return list.some((x) => String(x).startsWith("turn:"));
+});
+/** TURN allocate needs more than STUN-only gathering. */
+const ICE_GATHER_MS = HAS_TURN ? 8000 : 2500;
+
+function waitIceGathering(pc, ms = ICE_GATHER_MS) {
   return new Promise((resolve) => {
     if (pc.iceGatheringState === "complete") return resolve();
     const done = () => {
@@ -500,11 +621,33 @@ function waitIceGathering(pc, ms = 2500) {
     try {
       pc.iceGatheringStateChange.subscribe(done);
     } catch {
-      setTimeout(resolve, 2000);
+      setTimeout(resolve, Math.min(ms, 2000));
       return;
     }
     setTimeout(resolve, ms);
   });
+}
+
+function wireIceStateLogs(session, pc, label) {
+  const tag = () => `[bridged] ICE ${label} call=${session.callId || "?"}`;
+  try {
+    pc.iceConnectionStateChange?.subscribe?.((s) => {
+      console.log(`${tag()} iceConnectionState=${s || pc.iceConnectionState}`);
+    });
+  } catch {}
+  try {
+    pc.connectionStateChange?.subscribe?.((s) => {
+      console.log(`${tag()} connectionState=${s || pc.connectionState}`);
+    });
+  } catch {}
+  // werift also exposes onIceConnectionStateChange on some builds
+  const prevIce = pc.onIceConnectionStateChange;
+  pc.onIceConnectionStateChange = (s) => {
+    try {
+      prevIce?.(s);
+    } catch {}
+    console.log(`${tag()} iceConnectionState=${s || pc.iceConnectionState}`);
+  };
 }
 
 function createPeerConnection(session) {
@@ -514,19 +657,31 @@ function createPeerConnection(session) {
   // Restricting to mono opus/48000 caused "negotiate codecs failed" on call.answer
   // (ATA→softphone), which crashed bridged and dropped the call on parent answer.
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    iceServers: ICE_SERVERS,
     codecs: {
       audio: [useOPUS({ payloadType: 111 }), usePCMU()],
     },
   });
   session.pc = pc;
   pc.addTrack(audioTrack);
+  wireIceStateLogs(session, pc, session.treeHouseListen ? "listen" : "call");
 
   pc.ontrack = (ev) => {
     const track = ev.track;
     if (!track || track.kind !== "audio") return;
+    // Parent listen-only: never inject parent RTP into the analog mix.
+    if (session.treeHouseListen) return;
     track.onReceiveRtp.subscribe((rtp) => {
-      if (session.closed || !session.remoteRtp || !session.rtpSock) return;
+      if (session.closed || !session.rtpSock) return;
+      if (!session.remoteRtp) {
+        session._rtpDropNoRemote = (session._rtpDropNoRemote || 0) + 1;
+        if (session._rtpDropNoRemote === 1 || session._rtpDropNoRemote % 200 === 0) {
+          console.warn(
+            `[bridged] WebRTC→FXS drop x${session._rtpDropNoRemote} (waiting for Asterisk ExternalMedia RTP)`
+          );
+        }
+        return;
+      }
       try {
         const pcm48 = decodeOpusToMonoPcm48(session, rtp.payload);
         const pcm8 = downsample48kTo8k(pcm48);
@@ -576,6 +731,18 @@ function createPeerConnection(session) {
     });
   };
   return pc;
+}
+
+/** Stop FXS ringback as soon as CallKit/softphone accepts (before SDP). */
+async function answerFxsEarly(session, reason = "accepted") {
+  if (!session?.fxsChannel || session.fxsAnswered || session.closed) return;
+  try {
+    await session.fxsChannel.answer();
+    session.fxsAnswered = true;
+    console.log(`[bridged] FXS answered early (${reason}) ch=${session.channelId}`);
+  } catch (e) {
+    console.warn(`[bridged] FXS early answer failed:`, e?.message || e);
+  }
 }
 
 async function startWebRtcLeg(session, resolved) {
@@ -635,7 +802,8 @@ async function startWebRtcLeg(session, resolved) {
   );
 
   await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("No answer from softphone")), 60000);
+    const t = setTimeout(() => reject(new Error("No answer from softphone")), RING_TIMEOUT_MS);
+    let settled = false;
     const onMsg = async (raw) => {
       let msg;
       try {
@@ -645,23 +813,36 @@ async function startWebRtcLeg(session, resolved) {
       }
       try {
         if (msg.type === "call.ringing" && msg.callId) session.callId = msg.callId;
+        // CallKit Answer (no SDP yet) — stop analog ringback immediately.
+        if (msg.type === "call.accepted") {
+          session.callId = msg.callId || session.callId;
+          void answerFxsEarly(session, "call.accepted");
+          return;
+        }
         if (msg.type === "call.rejected") {
+          if (settled) return;
+          settled = true;
           clearTimeout(t);
           ws.off("message", onMsg);
           reject(new Error(msg.reason || "rejected"));
           return;
         }
         if (msg.type === "call.answer" && msg.sdp) {
-          clearTimeout(t);
-          ws.off("message", onMsg);
+          // Keep listening for trickle ICE after answer — softphones do not
+          // wait for iceGatheringComplete before sending call.answer.
           session.callId = msg.callId || session.callId;
+          void answerFxsEarly(session, "call.answer");
           const remote = msg.sdp?.type ? msg.sdp : { type: "answer", sdp: msg.sdp };
           await pc.setRemoteDescription(remote);
           const sdp = String(remote.sdp || "");
           const m = sdp.match(/a=rtpmap:(\d+) opus\/48000/i);
           if (m) session.opusPt = Number(m[1]);
           setOpusDecoderChannels(session, opusChannelsFromSdp(sdp));
-          resolve();
+          if (!settled) {
+            settled = true;
+            clearTimeout(t);
+            resolve();
+          }
           return;
         }
         if (msg.type === "call.ice" && msg.candidate) {
@@ -670,12 +851,30 @@ async function startWebRtcLeg(session, resolved) {
           } catch {}
           return;
         }
+        if (msg.type === "call.hold") {
+          if (msg.callId && session.callId && msg.callId !== session.callId) return;
+          void applySoftphoneHold(session, msg.onHold).catch((e) =>
+            console.warn(`[bridged] softphone hold (ATA→soft) failed:`, e.message || e)
+          );
+          return;
+        }
         if (msg.type === "call.hangup") {
-          clearTimeout(t);
-          ws.off("message", onMsg);
-          reject(new Error("remote hangup"));
+          if (!settled) {
+            settled = true;
+            clearTimeout(t);
+            ws.off("message", onMsg);
+            reject(new Error("remote hangup"));
+            return;
+          }
+          // Already connected — must tear down FXS (was a no-op before → silent handset).
+          try {
+            ws.off("message", onMsg);
+          } catch {}
+          void endAtaCallFromSoftphoneHangup(session, "softphone-hangup");
         }
       } catch (e) {
+        if (settled) return;
+        settled = true;
         clearTimeout(t);
         ws.off("message", onMsg);
         const detail = e?.message || String(e);
@@ -692,6 +891,7 @@ async function startWebRtcLeg(session, resolved) {
       }
     };
     ws.on("message", onMsg);
+    session._webrtcMsgHandler = onMsg;
   });
 
   pc.onIceCandidate?.subscribe?.((candidate) => {
@@ -771,7 +971,180 @@ async function attachExternalMedia(client, session, sipChannel) {
   return { bridge, ext };
 }
 
-function waitForSipLeg(channelId, timeoutMs = 60000) {
+/**
+ * Listen-only tap of the household analog TreeHouse mix → parent WebRTC.
+ * direction "out": Asterisk mix to our RTP socket; do not send into the mix.
+ */
+async function attachTreeHouseListenMedia(client, session, mixBridge) {
+  const port = nextMediaPort;
+  nextMediaPort += 2;
+  if (nextMediaPort > EXT_MEDIA_PORT_BASE + 2000) nextMediaPort = EXT_MEDIA_PORT_BASE;
+
+  const sock = dgram.createSocket("udp4");
+  session.rtpSock = sock;
+  session.rtpPort = port;
+  await new Promise((resolve) => sock.bind(port, "0.0.0.0", resolve));
+
+  sock.on("message", (msg, rinfo) => {
+    session.remoteRtp = { address: rinfo.address, port: rinfo.port };
+    if (session.closed || !session.audioTrack) return;
+    const parsed = parseRtpPayload(msg);
+    if (!parsed) return;
+    try {
+      const pcm8 = ulawToPcm16(parsed.payload);
+      const pcm48 = upsample8kTo48k(pcm8);
+      for (let off = 0; off + 960 <= pcm48.length; off += 960) {
+        const frame = pcm48.subarray(off, off + 960);
+        const encoded = session.opusEnc.encode(int16ToBuffer(frame), 960);
+        session.webrtcSeq = (session.webrtcSeq + 1) & 0xffff;
+        session.webrtcTs = (session.webrtcTs + 960) >>> 0;
+        const header = new RtpHeader({
+          padding: false,
+          extension: false,
+          marker: false,
+          payloadOffset: 12,
+          payloadType: session.opusPt,
+          sequenceNumber: session.webrtcSeq,
+          timestamp: session.webrtcTs,
+          ssrc: session.webrtcSsrc,
+        });
+        const pkt = new RtpPacket(header, encoded);
+        session.audioTrack.writeRtp(pkt);
+      }
+    } catch {
+      // ignore encode errors on short frames
+    }
+  });
+
+  let ext;
+  try {
+    ext = await client.channels.externalMedia({
+      app: ARI_APP,
+      external_host: `${EXT_MEDIA_HOST}:${port}`,
+      format: "ulaw",
+      encapsulation: "rtp",
+      transport: "udp",
+      connection_type: "client",
+      direction: "out",
+    });
+  } catch (e) {
+    console.warn(`[bridged] TreeHouse listen ExternalMedia out failed, retry both:`, e.message || e);
+    ext = await client.channels.externalMedia({
+      app: ARI_APP,
+      external_host: `${EXT_MEDIA_HOST}:${port}`,
+      format: "ulaw",
+      encapsulation: "rtp",
+      transport: "udp",
+      connection_type: "client",
+      direction: "both",
+    });
+  }
+  session.extChannel = ext;
+  session.bindChannel(ext);
+  await mixBridge.addChannel({ channel: ext.id });
+  return ext;
+}
+
+async function announceOnTreeHouseMix(client, mixBridge, text) {
+  const phrase = sanitizeIvrText(text);
+  if (!phrase || !mixBridge?.id) return;
+  try {
+    const ch = await client.channels.originate({
+      endpoint: "Local/s@phonehome-ivr-say",
+      app: ARI_APP,
+      appArgs: "th-announce",
+      variables: { PH_IVR_TEXT: phrase },
+    });
+    try {
+      await ch.answer();
+    } catch {}
+    await mixBridge.addChannel({ channel: ch.id });
+    setTimeout(() => {
+      ch.hangup().catch(() => {});
+    }, 16_000);
+  } catch (e) {
+    console.warn(`[bridged] TreeHouse listen announce skipped:`, e.message || e);
+  }
+}
+
+async function handleTreeHouseListenOffer(client, claim, msg) {
+  const parentLineId = String(msg.fromLineId || "");
+  const childLineId = claim.lineId;
+  const ataSession = [...sessions.values()].find(
+    (s) => s.treeHouse && s.fromLineId === childLineId && !s.closed && !s.treeHouseListen
+  );
+  const hhId = ataSession?._treeHouseHh;
+  const entry = hhId && treeHouseAtaBridges.get(hhId);
+  if (!entry?.bridge) {
+    console.warn(`[bridged] TreeHouse listen: no analog mix for ${childLineId}`);
+    return;
+  }
+  const existing = treeHouseListenSessions.get(parentLineId);
+  if (existing) {
+    try {
+      await existing.close(client);
+    } catch {}
+  }
+
+  const listen = new CallSession(`th-listen-${parentLineId}`);
+  listen.treeHouseListen = true;
+  listen.fromLineId = parentLineId;
+  listen.toLineId = childLineId;
+  listen._treeHouseHh = hhId;
+  listen.ws = claim.ws;
+  listen.callId = null;
+  sessions.set(listen.channelId, listen);
+  treeHouseListenSessions.set(parentLineId, listen);
+
+  const pc = createPeerConnection(listen);
+  const queuedIce = claim._listenIce || [];
+  claim._listenIce = [];
+  const remoteSdp = msg.sdp?.type ? msg.sdp : { type: "offer", sdp: msg.sdp };
+  await pc.setRemoteDescription(remoteSdp);
+  const sdpStr = String(remoteSdp.sdp || "");
+  const m = sdpStr.match(/a=rtpmap:(\d+) opus\/48000/i);
+  if (m) listen.opusPt = Number(m[1]);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await waitIceGathering(pc);
+  const local = pc.localDescription;
+  if (claim.ws?.readyState === WebSocket.OPEN) {
+    claim.ws.send(
+      JSON.stringify({
+        type: "group.answer",
+        roomId: msg.roomId,
+        fromLineId: childLineId,
+        toLineId: parentLineId,
+        sdp: { type: local.type, sdp: local.sdp },
+      })
+    );
+  }
+  pc.onIceCandidate?.subscribe?.((candidate) => {
+    if (!candidate || claim.ws?.readyState !== WebSocket.OPEN) return;
+    claim.ws.send(
+      JSON.stringify({
+        type: "group.ice",
+        roomId: msg.roomId,
+        fromLineId: childLineId,
+        toLineId: parentLineId,
+        candidate: candidate.toJSON?.() || candidate,
+      })
+    );
+  });
+  for (const c of queuedIce) {
+    try {
+      await pc.addIceCandidate(c);
+    } catch {}
+  }
+  await attachTreeHouseListenMedia(client, listen, entry.bridge);
+  const childName = sanitizeAnnounceName(ataSession?.fromLabel || "Someone");
+  void announceOnTreeHouseMix(client, entry.bridge, `${childName}'s parent is listening`);
+  console.log(
+    `[bridged] TreeHouse listen media parent=${parentLineId} child=${childLineId} rtp=${listen.rtpPort}`
+  );
+}
+
+function waitForSipLeg(channelId, timeoutMs = RING_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => {
       pendingSipLegs.delete(channelId);
@@ -816,26 +1189,27 @@ function sanitizeAnnounceName(name) {
 
 /**
  * Play "{prefix} {name}" on an FXS channel via FreePBX Flite dialplan, then re-enter Stasis.
- * Inbound screening: prefix "Call from". Outbound speed-dial confirm: prefix "Calling".
+ * Prefer announceCallerInStasis for live calls — leaving Stasis for Flite can wedge remote SRTP.
+ * @returns {Promise<object>} channel object from post-announce StasisStart (use this for bridging)
  */
 async function announceOnFxs(channel, name, prefix = "Call from") {
   const text = sanitizeAnnounceName(name);
   const pref = String(prefix || "Call from").replace(/[^a-zA-Z\s]/g, " ").replace(/\s+/g, " ").trim() || "Call from";
-  console.log(`[bridged] FXS announce "${pref} ${text}" ch=${channel.id}`);
+  console.log(`[bridged] FXS announce (flite dialplan) "${pref} ${text}" ch=${channel.id}`);
   announceInProgress.add(channel.id);
   try {
     await channel.setChannelVar({ variable: "PH_ANNOUNCE_NAME", value: text });
     await channel.setChannelVar({ variable: "PH_ANNOUNCE_PREFIX", value: pref });
-    await new Promise((resolve, reject) => {
+    const postChannel = await new Promise((resolve, reject) => {
       const t = setTimeout(() => {
         pendingAnnounce.delete(channel.id);
         reject(new Error("announce timeout"));
       }, 25000);
       pendingAnnounce.set(channel.id, {
-        resolve: () => {
+        resolve: (ch) => {
           clearTimeout(t);
           pendingAnnounce.delete(channel.id);
-          resolve();
+          resolve(ch || channel);
         },
         reject: (err) => {
           clearTimeout(t);
@@ -855,40 +1229,243 @@ async function announceOnFxs(channel, name, prefix = "Call from") {
           reject(e);
         });
     });
+    return postChannel;
   } finally {
     announceInProgress.delete(channel.id);
   }
 }
 
+/**
+ * Render a short telephony WAV with local Piper (no cloud). Used for Call-from screening
+ * on handsets without CID displays — stays in Stasis so remote HT801 SRTP stays up.
+ * @param {string} phrase
+ * @returns {Promise<string>} path to 8 kHz mono PCM wav
+ */
+async function renderPiperTelephonyWav(phrase) {
+  if (!fs.existsSync(PIPER_BIN) || !fs.existsSync(PIPER_MODEL)) {
+    throw new Error(`piper missing (${PIPER_BIN} / ${PIPER_MODEL})`);
+  }
+  const id = randomBytes(6).toString("hex");
+  const raw = path.join(os.tmpdir(), `ph-ann-raw-${id}.wav`);
+  const out = path.join(os.tmpdir(), `ph-ann-${id}.wav`);
+  await new Promise((resolve, reject) => {
+    const child = spawn(PIPER_BIN, ["-m", PIPER_MODEL, "-f", raw], {
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    let err = "";
+    child.stderr.on("data", (d) => {
+      err += String(d);
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`piper exit ${code}: ${err.slice(0, 200)}`));
+    });
+    child.stdin.write(String(phrase || "Call"));
+    child.stdin.end();
+  });
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-loglevel",
+    "error",
+    "-i",
+    raw,
+    "-ac",
+    "1",
+    "-ar",
+    "8000",
+    "-c:a",
+    "pcm_s16le",
+    out,
+  ]);
+  try {
+    fs.unlinkSync(raw);
+  } catch {}
+  return out;
+}
+
+/**
+ * In-Stasis "Call from {name}" / "Calling {name}" — Piper WAV via ARI Playback.
+ * Falls back to dialplan Flite only if Piper/ffmpeg is unavailable.
+ * @returns {Promise<object>} same channel (still in Stasis)
+ */
+async function announceCallerInStasis(channel, name, prefix = "Call from") {
+  const text = sanitizeAnnounceName(name);
+  const pref =
+    String(prefix || "Call from")
+      .replace(/[^a-zA-Z\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "Call from";
+  const phrase = `${pref} ${text}`;
+  console.log(`[bridged] FXS announce (in-Stasis) "${phrase}" ch=${channel.id}`);
+  try {
+    await channel.answer();
+  } catch {}
+  let wav = null;
+  try {
+    wav = await renderPiperTelephonyWav(phrase);
+    const url = registerMediaFile(wav, 90_000);
+    await playMediaUri(channel, `sound:${url}`, 20000);
+    return channel;
+  } catch (e) {
+    console.warn(`[bridged] in-Stasis announce failed (${e.message || e}); flite fallback`);
+    return announceOnFxs(channel, name, prefix);
+  } finally {
+    if (wav) {
+      try {
+        fs.unlinkSync(wav);
+      } catch {}
+    }
+  }
+}
+
 /** Inbound FXS screening whisper — keep call sites explicit. */
 function announceCallerOnFxs(channel, name) {
-  return announceOnFxs(channel, name, "Call from");
+  return announceCallerInStasis(channel, name, "Call from");
 }
 
 /** Outbound speed-dial / Home: confirm who we are about to ring. */
 function announceDialingOnFxs(channel, name) {
-  return announceOnFxs(channel, name, "Calling");
+  return announceCallerInStasis(channel, name, "Calling");
 }
 
 async function originateSip(client, session, sipExtension, callerId) {
   const endpoint = sipEndpoint(sipExtension);
   console.log(`[bridged] originate ${endpoint} callerId=${callerId || ""}`);
+  const ringSec = Math.max(15, Math.round(RING_TIMEOUT_MS / 1000));
   const dest = await client.channels.originate({
     endpoint,
     app: ARI_APP,
     appArgs: "sip-leg",
     callerId: callerId || '"PhoneHome" <0000>',
-    timeout: 60,
+    timeout: ringSec,
   });
   session.destChannel = dest;
   session.bindChannel(dest);
-  const answered = await waitForSipLeg(dest.id, 60000);
+  const answered = await waitForSipLeg(dest.id, RING_TIMEOUT_MS);
   try {
     await answered.answer();
   } catch {
     /* already Up */
   }
   return answered || dest;
+}
+
+/**
+ * Analog pad #1 → TreeHouse: presence join + Asterisk mixing (no WebRTC / ExternalMedia).
+ * Softphones keep their mesh; they hear enter announce + presence. Multiple ATAs share one
+ * household mixing bridge. Does not touch the soft↔analog ExternalMedia path.
+ */
+async function startTreeHouseAta(client, session, channel, resolved) {
+  session.fromLineId = resolved.fromLineId;
+  session.treeHouse = true;
+  session.householdId = resolved.householdId;
+  session.fromLabel = resolved.fromLabel;
+  const sipExtension = String(resolved.fromSipExtension || "").replace(/\D/g, "");
+  if (resolved.fromLineId && sipExtension) {
+    try {
+      await ensureInboundClaim(resolved.fromLineId, sipExtension);
+    } catch (e) {
+      console.warn(`[bridged] TreeHouse inbound claim skipped:`, e.message || e);
+    }
+  }
+
+  const hhId = resolved.householdId;
+  let entry = treeHouseAtaBridges.get(hhId);
+  if (!entry && hhId) {
+    const bridge = await client.bridges.create({
+      type: "mixing",
+      name: `ph-treehouse-${hhId}`,
+    });
+    entry = { bridge, channels: new Set() };
+    treeHouseAtaBridges.set(hhId, entry);
+  }
+  if (entry) {
+    session.bridge = entry.bridge;
+    session._treeHouseHh = hhId;
+  }
+
+  const joined = await phFetch("/api/bridge/treehouse/join", {
+    method: "POST",
+    body: JSON.stringify({ lineId: resolved.fromLineId }),
+  });
+  console.log(
+    `[bridged] TreeHouse join ${resolved.fromLabel} room=${joined.roomId} members=${
+      (joined.members || []).length
+    }`
+  );
+
+  try {
+    await channel.answer();
+  } catch {}
+
+  try {
+    await sayIvrText(channel, "Welcome to the TreeHouse");
+  } catch (e) {
+    console.warn(`[bridged] TreeHouse welcome skipped:`, e.message || e);
+  }
+
+  if (entry) {
+    entry.channels.add(channel.id);
+    await entry.bridge.addChannel({ channel: channel.id });
+  }
+
+  // Stay until the handset hangs up. Do not watch StasisEnd — Flite welcome
+  // leaves Stasis briefly (ivrSayInProgress) and would end TreeHouse early.
+  await new Promise((resolve) => {
+    const onEnd = () => {
+      channel.removeListener("ChannelDestroyed", onEnd);
+      channel.removeListener("ChannelHangupRequest", onEnd);
+      resolve();
+    };
+    channel.on("ChannelDestroyed", onEnd);
+    channel.on("ChannelHangupRequest", onEnd);
+  });
+}
+
+async function leaveTreeHouseAta(session) {
+  const lineId = session?.fromLineId;
+  const hhId = session?._treeHouseHh;
+  for (const [parentId, listen] of [...treeHouseListenSessions.entries()]) {
+    if (listen.toLineId === lineId) {
+      try {
+        await listen.close(ariClient);
+      } catch {}
+      treeHouseListenSessions.delete(parentId);
+    }
+  }
+  if (hhId && session?.channelId) {
+    const entry = treeHouseAtaBridges.get(hhId);
+    if (entry) {
+      entry.channels.delete(session.channelId);
+      try {
+        await entry.bridge.removeChannel({ channel: session.channelId });
+      } catch {}
+      if (entry.channels.size === 0) {
+        for (const [parentId, listen] of [...treeHouseListenSessions.entries()]) {
+          if (listen._treeHouseHh !== hhId) continue;
+          try {
+            await listen.close(ariClient);
+          } catch {}
+          treeHouseListenSessions.delete(parentId);
+        }
+        try {
+          await entry.bridge.destroy();
+        } catch {}
+        treeHouseAtaBridges.delete(hhId);
+      }
+    }
+  }
+  if (lineId) {
+    try {
+      await phFetch("/api/bridge/treehouse/leave", {
+        method: "POST",
+        body: JSON.stringify({ lineId }),
+      });
+    } catch (e) {
+      console.warn(`[bridged] TreeHouse leave:`, e.message || e);
+    }
+  }
 }
 
 /** ATA → ATA: SIP↔SIP via Asterisk mixing bridge (no softphone). */
@@ -906,19 +1483,25 @@ async function startAtaToAta(client, session, channel, resolved) {
   });
   session.bridge = bridge;
 
+  // Caller FXS — needed for hold peer lookup when callee is the one who holds.
+  session.fxsChannel = channel;
+
   const cidName = resolved.cidName || resolved.fromLabel || "PhoneHome";
   const cidNumber = resolved.cidNumber || channel.caller?.number || "2000";
   const callerId = formatSipCallerId(cidName, cidNumber);
   const dest = await originateSip(client, session, resolved.toSipExtension, callerId);
+  // Spoken screening for handsets with no CID display (in-Stasis Piper — no Flite leave).
+  let peer = dest;
   try {
-    await announceCallerOnFxs(dest, cidName);
+    peer = (await announceCallerOnFxs(dest, cidName)) || dest;
   } catch (e) {
     console.warn(`[bridged] ATA↔ATA announce skipped:`, e.message || e);
   }
+  session.destChannel = peer;
   await channel.answer();
-  await bridge.addChannel({ channel: `${channel.id},${dest.id}` });
+  await bridge.addChannel({ channel: `${channel.id},${peer.id}` });
   session.bindChannel(channel);
-  session.bindChannel(dest);
+  session.bindChannel(peer);
   console.log(
     `[bridged] ATA↔ATA up ${resolved.fromLabel} → ${resolved.toLabel} ext=${resolved.toSipExtension} cid=${callerId}`
   );
@@ -936,20 +1519,78 @@ function holdPeerChannel(session, holderChannel) {
   if (session.channelId && holderChannel?.id === session.channelId && session.extChannel) {
     return session.extChannel;
   }
+  // ATA→ATA: callee holds — caller FXS is the peer
+  if (session.fxsChannel && session.fxsChannel.id !== holderChannel?.id) return session.fxsChannel;
   return null;
 }
 
-function notifySoftphoneHold(session, onHold) {
-  const payload = JSON.stringify({
+function notifySoftphoneHold(session, onHold, byLineId) {
+  const payload = {
     type: "call.hold",
     callId: session.callId,
     fromLineId: session.fromLineId,
     toLineId: session.toLineId,
     onHold: Boolean(onHold),
-  });
+  };
+  if (byLineId) payload.byLineId = byLineId;
+  const body = JSON.stringify(payload);
   try {
-    if (session.ws?.readyState === WebSocket.OPEN) session.ws.send(payload);
+    if (session.ws?.readyState === WebSocket.OPEN) session.ws.send(body);
   } catch {}
+}
+
+/**
+ * Softphone Hold/Resume — play Asterisk MOH on the FXS (analog) leg.
+ * Softphone mutes its mic locally; Cap/WKWebView WebRTC MOH is often silent.
+ * Does not mute the FXS handset (unlike # hold where the analog is the holder).
+ * Resume also clears FXS # hold so a parent can override a kid's analog hold.
+ */
+async function applySoftphoneHold(session, onHold) {
+  if (!session || session.closed) return;
+  const want = Boolean(onHold);
+  if (session.onHold === want) return;
+  const fxs = session.fxsChannel || session.destChannel;
+  if (!fxs) {
+    console.warn(
+      `[bridged] softphone hold ignored — no FXS channel call=${session.callId || "?"}`
+    );
+    return;
+  }
+  session.onHold = want;
+  console.log(
+    `[bridged] softphone hold ${want ? "ON" : "OFF"} call=${session.callId || "?"} fxs=${fxs.id}`
+  );
+  if (want) {
+    try {
+      await fxs.startMoh({ mohClass: "default" });
+    } catch (e) {
+      try {
+        await fxs.startMoh();
+      } catch (e2) {
+        console.warn(`[bridged] softphone hold MOH failed:`, e2.message || e2);
+      }
+    }
+  } else {
+    try {
+      await fxs.stopMoh();
+    } catch (e) {
+      console.warn(`[bridged] softphone unhold stopMoh failed:`, e.message || e);
+    }
+    // Also undo FXS # hold (muted handset + MOH on peer) for adult override.
+    try {
+      await fxs.unmute({ direction: "both" });
+    } catch (e) {
+      console.warn(`[bridged] softphone unhold unmute failed:`, e.message || e);
+    }
+    const peer = holdPeerChannel(session, fxs);
+    if (peer) {
+      try {
+        await peer.stopMoh();
+      } catch (e) {
+        console.warn(`[bridged] softphone unhold peer stopMoh failed:`, e.message || e);
+      }
+    }
+  }
 }
 
 async function toggleFxsHold(session, holderChannel) {
@@ -993,7 +1634,12 @@ async function toggleFxsHold(session, holderChannel) {
       }
     }
   }
-  notifySoftphoneHold(session, session.onHold);
+  // Softphone attributes hold to the ATA line (peer of the softphone).
+  const ataLineId =
+    session.destChannel && holderChannel.id === session.destChannel.id
+      ? session.toLineId
+      : session.fromLineId;
+  notifySoftphoneHold(session, session.onHold, ataLineId || undefined);
 }
 
 async function onFxsDtmf(event, channel) {
@@ -1015,7 +1661,55 @@ async function onFxsDtmf(event, channel) {
   }
 }
 
-/** Softphone → ATA: answer WebRTC offer, originate FXS, ExternalMedia. */
+/**
+ * HT801 hold via SIP re-INVITE (a=sendonly / a=inactive).
+ * Asterisk fires ChannelHold / ChannelUnhold; we play MOH on the peer so the
+ * other party hears hold music.  We do NOT mute at ARI level — Asterisk already
+ * handles the RTP direction negotiated in the re-INVITE.
+ */
+async function onFxsSipHold(channel, isHold) {
+  const session = sessions.get(channel.id);
+  if (!session || session.closed) return;
+  const isFxs =
+    channel.id === session.channelId ||
+    channel.id === session.destChannel?.id ||
+    channel.id === session.fxsChannel?.id;
+  if (!isFxs) return;
+  if (session.onHold === Boolean(isHold)) return; // already correct state
+  session.onHold = Boolean(isHold);
+  const peer = holdPeerChannel(session, channel);
+  console.log(
+    `[bridged] FXS SIP hold ${isHold ? "ON" : "OFF"} ch=${channel.id} peer=${peer?.id || "none"}`
+  );
+  if (isHold) {
+    if (peer) {
+      try {
+        await peer.startMoh({ mohClass: "default" });
+      } catch (e) {
+        try {
+          await peer.startMoh();
+        } catch (e2) {
+          console.warn(`[bridged] SIP hold MOH failed:`, e2.message || e2);
+        }
+      }
+    }
+  } else {
+    if (peer) {
+      try {
+        await peer.stopMoh();
+      } catch (e) {
+        console.warn(`[bridged] SIP unhold stopMoh failed:`, e.message || e);
+      }
+    }
+  }
+  const ataLineId =
+    session.destChannel && channel.id === session.destChannel.id
+      ? session.toLineId
+      : session.fromLineId;
+  notifySoftphoneHold(session, session.onHold, ataLineId || undefined);
+}
+
+/** Softphone → ATA: answer WebRTC early (ICE), then ring FXS + ExternalMedia. */
 async function handleSoftphoneToAta(client, claim, msg) {
   const callId = msg.callId || claim.callId;
   const fromLineId = msg.fromLineId;
@@ -1049,9 +1743,16 @@ async function handleSoftphoneToAta(client, claim, msg) {
     const pc = createPeerConnection(session);
     const remoteSdp = msg.sdp?.type ? msg.sdp : { type: "offer", sdp: msg.sdp };
     await pc.setRemoteDescription(remoteSdp);
+    // Trickle that arrived before PC existed (claim WS is up before offer handler runs).
+    const buffered = claim._pendingIce || [];
+    claim._pendingIce = [];
+    for (const cand of buffered) {
+      try {
+        await pc.addIceCandidate(cand);
+      } catch {}
+    }
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    const iceReady = waitIceGathering(pc);
 
     const sdpStr = String(remoteSdp.sdp || "");
     const m = sdpStr.match(/a=rtpmap:(\d+) opus\/48000/i);
@@ -1071,26 +1772,56 @@ async function handleSoftphoneToAta(client, claim, msg) {
       );
     });
 
-    // Ring the FXS before answering WebRTC. Unregistered ATA fails here so the
-    // caller stays on "ringing" instead of connected-then-drop.
-    const dest = await originateSip(client, session, sipExtension, callerId);
+    // Ring FXS immediately — do not wait on ICE gather first (that delayed the
+    // landline ~8s while Grandma heard endless softphone ringback).
+    const destPromise = originateSip(client, session, sipExtension, callerId);
+
+    // Early WebRTC answer so remote ICE/TURN can connect while the handset rings.
+    // Full gather in parallel; send answer after a short window so we include
+    // relay candidates without blocking FXS ring.
+    await waitIceGathering(pc, Math.min(ICE_GATHER_MS, 2500));
+    const local = pc.localDescription;
+    if (claim.ws.readyState === WebSocket.OPEN) {
+      claim.ws.send(
+        JSON.stringify({
+          type: "call.answer",
+          callId,
+          fromLineId,
+          toLineId,
+          early: true,
+          sdp: { type: local.type, sdp: local.sdp },
+        })
+      );
+      claim.ws.send(
+        JSON.stringify({
+          type: "call.ringing",
+          callId,
+          fromLineId,
+          toLineId,
+        })
+      );
+    }
+    console.log(`[bridged] softphone→ATA early WebRTC answer call=${callId} (FXS ringing)`);
+
+    const dest = await destPromise;
+    // Spoken "Call from {name}" on the handset (in-Stasis Piper — do NOT use Flite
+    // leave/re-enter here; that races ExternalMedia and dumps the softphone to VM).
     try {
       await announceCallerOnFxs(dest, cidName);
     } catch (e) {
       console.warn(`[bridged] softphone→ATA announce skipped:`, e.message || e);
     }
-    await iceReady;
-    const local = pc.localDescription;
-    claim.ws.send(
-      JSON.stringify({
-        type: "call.answer",
-        callId,
-        fromLineId,
-        toLineId,
-        sdp: { type: local.type, sdp: local.sdp },
-      })
-    );
     await attachExternalMedia(client, session, dest);
+    if (claim.ws.readyState === WebSocket.OPEN) {
+      claim.ws.send(
+        JSON.stringify({
+          type: "call.fxs-up",
+          callId,
+          fromLineId,
+          toLineId,
+        })
+      );
+    }
     console.log(
       `[bridged] softphone→ATA media up call=${callId} rtp=${session.rtpPort} ext=${sipExtension} cid=${callerId}`
     );
@@ -1216,13 +1947,60 @@ async function ensureInboundClaim(lineId, sipExtension, callId) {
       );
       return;
     }
-    if (msg.type === "call.ice" && claim.session?.pc && msg.candidate) {
-      claim.session.pc.addIceCandidate(msg.candidate).catch(() => {});
+    if (msg.type === "group.offer") {
+      if (!ariClient) {
+        console.error("[bridged] ARI not ready for TreeHouse listen");
+        return;
+      }
+      handleTreeHouseListenOffer(ariClient, claim, msg).catch((e) =>
+        console.error("[bridged] TreeHouse listen offer", e.message || e)
+      );
+      return;
+    }
+    if (msg.type === "group.ice") {
+      const listen = treeHouseListenSessions.get(msg.fromLineId);
+      if (listen?.pc && msg.candidate) {
+        listen.pc.addIceCandidate(msg.candidate).catch(() => {});
+      } else if (msg.candidate) {
+        claim._listenIce = claim._listenIce || [];
+        claim._listenIce.push(msg.candidate);
+      }
+      return;
+    }
+    if (msg.type === "group.peer-left" && msg.listener) {
+      const parentId = String(msg.lineId || "");
+      const listen = treeHouseListenSessions.get(parentId);
+      if (listen) {
+        listen.close(ariClient).catch(() => {});
+      }
+      return;
+    }
+    if (msg.type === "call.ice" && msg.candidate) {
+      if (claim.session?.pc) {
+        claim.session.pc.addIceCandidate(msg.candidate).catch(() => {});
+      } else {
+        claim._pendingIce = claim._pendingIce || [];
+        claim._pendingIce.push(msg.candidate);
+      }
+      return;
+    }
+    if (msg.type === "call.hold" && claim.session) {
+      if (msg.callId && claim.session.callId && msg.callId !== claim.session.callId) return;
+      void applySoftphoneHold(claim.session, msg.onHold).catch((e) =>
+        console.warn(`[bridged] softphone hold (soft→ATA) failed:`, e.message || e)
+      );
       return;
     }
     if (msg.type === "call.hangup" && claim.session) {
-      claim.session.close(ariClient).catch(() => {});
+      const s = claim.session;
       claim.session = null;
+      // Soft→ATA: destChannel is the FXS; play busy so the kid hears the far end hang up.
+      if (s.destChannel && !s.fxsChannel) {
+        s.fxsChannel = s.destChannel;
+      }
+      void endAtaCallFromSoftphoneHangup(s, "softphone-hangup").catch((e) =>
+        console.error(`[bridged] hangup cleanup failed:`, e.message || e)
+      );
     }
   });
 
@@ -1532,16 +2310,33 @@ function startHttpServer() {
     console.log(
       `[bridged] HTTP on ${BRIDGE_HTTP_BIND}:${BRIDGE_HTTP_PORT} (media ${MEDIA_BASE_URL})`
     );
+    console.log(
+      `[bridged] WebRTC ICE: ${ICE_SERVERS.length} server group(s), TURN=${HAS_TURN ? "yes" : "NO (remote softphones will be silent)"} gather=${ICE_GATHER_MS}ms`
+    );
   });
   return server;
 }
 
+/** Prefer SIP CallerID digits; fall back to PJSIP/<ext>-… channel name (empty CID). */
+function callerExtensionFromChannel(channel) {
+  const fromCid = String(channel?.caller?.number || channel?.caller?.name || "").replace(/\D/g, "");
+  if (fromCid) return fromCid;
+  const name = String(channel?.name || "");
+  const m = name.match(/^PJSIP\/(\d+)/i);
+  return m ? m[1] : "";
+}
+
 async function onStasisStart(client, event, channel) {
   const rawArg = String((event.args && event.args[0]) || "");
-  const caller = String(channel.caller?.number || channel.caller?.name || "").replace(/\D/g, "");
-  console.log(`[bridged] StasisStart ch=${channel.id} caller=${caller} arg=${rawArg}`);
+  const caller = callerExtensionFromChannel(channel);
+  console.log(`[bridged] StasisStart ch=${channel.id} caller=${caller} arg=${rawArg} name=${channel.name || ""}`);
 
   // *98 Messages / greeting IVR (do not strip letters — "vm" is intentional)
+  if (rawArg === "th-announce") {
+    console.log(`[bridged] TreeHouse listen announce ch=${channel.id}`);
+    return;
+  }
+
   if (rawArg === "vm" || rawArg === "*98" || rawArg === "98") {
     const session = new CallSession(channel.id);
     sessions.set(channel.id, session);
@@ -1561,48 +2356,118 @@ async function onStasisStart(client, event, channel) {
   const digits = rawArg.replace(/\D/g, "");
   const session = new CallSession(channel.id);
   sessions.set(channel.id, session);
+  let resolved = null;
 
   try {
-    const resolved = await phFetch("/api/bridge/resolve", {
+    resolved = await phFetch("/api/bridge/resolve", {
       method: "POST",
       body: JSON.stringify({ sipExtension: caller, dialed: digits }),
     });
     if (!resolved.ok) throw Object.assign(new Error(resolved.reason || "resolve failed"), { body: resolved });
+
+    if (resolved.treeHouse) {
+      console.log(`[bridged] ${resolved.fromLabel} → TreeHouse (${digits})`);
+      try {
+        await startTreeHouseAta(client, session, channel, {
+          ...resolved,
+          fromSipExtension: caller,
+        });
+      } finally {
+        await leaveTreeHouseAta(session);
+      }
+      await session.close(client);
+      return;
+    }
+
     console.log(
       `[bridged] ${resolved.fromLabel} → ${resolved.toLabel} (${digits})${
         resolved.toSipExtension ? ` [FXS ${resolved.toSipExtension}]` : ""
       }`
     );
 
+    // FXS-first when the kid has an ATA, but do not strand the caller if the
+    // landline contact is stale/Unavail while their softphone still shows online.
     if (resolved.toSipExtension) {
-      await startAtaToAta(client, session, channel, resolved);
-      return;
+      const sip = await sipRegistrationStatus(resolved.toSipExtension);
+      const tryAta = Boolean(sip.callable || sip.registered);
+      if (tryAta) {
+        try {
+          await startAtaToAta(client, session, channel, resolved);
+          return;
+        } catch (e) {
+          const msg = e?.message || String(e);
+          markSipUnreachable(resolved.toSipExtension, msg);
+          if (
+            !/Allocation failed|invalid URI|not registered|unreachable|offline/i.test(msg)
+          ) {
+            throw e;
+          }
+          console.warn(
+            `[bridged] ATA ${resolved.toSipExtension} unreachable (${msg}); falling back to softphone`
+          );
+          try {
+            await session.destChannel?.hangup();
+          } catch {}
+          session.destChannel = null;
+          try {
+            await session.bridge?.destroy();
+          } catch {}
+          session.bridge = null;
+        }
+      } else {
+        console.log(
+          `[bridged] ATA ${resolved.toSipExtension} not registered (${
+            sip.state || sip.reason || "offline"
+          }); ringing softphone`
+        );
+      }
     }
 
     // NOTE: outbound "Calling {Name}" announce deferred — Answer()+dialplan divert
     // before ExternalMedia was risky while debugging silent media (RTP to SIP proxy).
-    // Ring FXS until softphone answers — early Answer() stole ringback and
-    // made "no ring on handset" the default for ATA→parent.
+    // Ring FXS until softphone accepts — early Answer() at StasisStart stole ringback.
+    // CallKit Answer sends call.accepted → answerFxsEarly() stops ringback before SDP.
+    session.fxsChannel = channel;
     try {
       await channel.ring();
     } catch {}
     await startWebRtcLeg(session, resolved);
     try {
-      await channel.answer();
+      if (!session.fxsAnswered) await channel.answer();
+      session.fxsAnswered = true;
     } catch {}
     await attachExternalMedia(client, session, channel);
     console.log(`[bridged] media up call=${session.callId} rtp=${session.rtpPort}`);
   } catch (e) {
     console.error(`[bridged] call failed:`, e.message || e);
     const body = e.body || { reason: e.message };
+    const errText = String(body.reason || e.message || "");
+    const noAnswer = /No answer from (ATA|softphone)/i.test(errText);
+    const offlineAta = /Allocation failed|invalid URI|not registered|unreachable|offline/i.test(
+      errText
+    );
     const policy =
       body.voice ||
-      /quiet|pause|timeout|Bedtime|School|talk time|not available|approved/i.test(
-        String(body.reason || e.message || "")
-      );
+      /quiet|pause|timeout|Bedtime|School|talk time|not available|approved/i.test(errText);
     try {
-      if (policy) await playUnavailablePrompt(channel, body);
-      else {
+      if (noAnswer && session.fromLineId && session.toLineId) {
+        // Stop ringing the far leg before depositing.
+        try {
+          await session.destChannel?.hangup();
+        } catch {}
+        await vmIvr.runNoAnswerDeposit(channel, {
+          fromLineId: session.fromLineId,
+          toLineId: session.toLineId,
+          toLabel: resolved?.toLabel || "them",
+        });
+      } else if (policy) await playUnavailablePrompt(channel, body);
+      else if (offlineAta) {
+        await channel.answer();
+        await sayIvrText(
+          channel,
+          "That phone is offline right now. Please try again in a minute."
+        );
+      } else {
         await channel.answer();
         await playMediaUri(channel, "sound:cannot-complete-as-dialed");
       }
@@ -1708,6 +2573,14 @@ async function main() {
 
   client.on("ChannelDtmfReceived", (event, channel) => {
     onFxsDtmf(event, channel).catch((e) => console.error("[bridged] dtmf", e.message || e));
+  });
+
+  client.on("ChannelHold", (event, channel) => {
+    onFxsSipHold(channel, true).catch((e) => console.error("[bridged] ChannelHold", e.message || e));
+  });
+
+  client.on("ChannelUnhold", (event, channel) => {
+    onFxsSipHold(channel, false).catch((e) => console.error("[bridged] ChannelUnhold", e.message || e));
   });
 
   await client.start(ARI_APP);

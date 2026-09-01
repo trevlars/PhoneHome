@@ -59,13 +59,21 @@ test("buildHt801ConfigXml includes SIP TLS + SRTP P-values", () => {
   assert.match(xml, /<P130>2<\/P130>/); // TLS
   assert.match(xml, /<P183>2<\/P183>/); // SRTP forced
   assert.match(xml, /<P20501>0<\/P20501>/); // no random SIP port
-  assert.match(xml, /<P32>3<\/P32>/); // short register expiration so a PBX restart self-heals
+  assert.match(xml, /<P32>1<\/P32>/); // short register expiration so a PBX restart self-heals
+  assert.match(xml, /<P2397>1<\/P2397>/); // SIP OPTIONS keep-alive
+  assert.match(xml, /<P2398>15<\/P2398>/);
+  assert.match(xml, /<P2330>15<\/P2330>/);
+  assert.match(xml, /<P84>20<\/P84>/); // NAT keep-alive interval
+  assert.match(xml, /<P109>0<\/P109>/); // no outbound without registration
+  assert.match(xml, /<P138>10<\/P138>/); // fast REGISTER retry
   assert.match(xml, /<P8463>0<\/P8463>/); // skip cert validate for LAN IP
   assert.match(xml, /<P52>2<\/P52>/); // Keep-Alive
   assert.match(xml, /<P8565>1<\/P8565>/); // Enable E911
   assert.match(xml, /<P8597>911;933<\/P8597>/);
   assert.match(xml, /<P8599>1<\/P8599>/);
   assert.match(xml, /<P90>\{ \[0-9\] \| 911 \| 933 \| \*98 \| \* \| \*x\+/);
+  assert.match(xml, /<P4200>\{ \[0-9\] \| 911 \| 933 \| \*98 \| \* \| \*x\+/);
+  assert.match(xml, /<P892>1<\/P892>/); // loop current disconnect
   assert.match(xml, /<P237>example\.com:8443\/provision\/tok<\/P237>/);
   assert.match(xml, /<P212>2<\/P212>/);
   assert.match(xml, /<P192><\/P192>/); // firmware path cleared (config-only)

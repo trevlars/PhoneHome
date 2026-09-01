@@ -38,6 +38,11 @@ import {
   redeemGuardianInvite,
   redeemInvite,
   registerParent,
+  provisionGrandparent,
+  resetProvisionedRelativePassword,
+  updateProvisionedRelativeLogin,
+  canViewerSeeLine,
+  ensureSphereForParent,
   removeGuardian,
   resetChildPasswordByGuardian,
   setChildLineLogin,
@@ -65,8 +70,23 @@ import {
   routeCallTarget,
   createBridgeSession,
   householdHomeParentLine,
+  householdAdminParentLine,
+  householdSecondaryParentLine,
+  updateUserProfile,
+  parentDisplayLabel,
+  peerLabelForHousehold,
+  canJoinAdultFamilyRoom,
+  addAdultFamilyRoomMember,
+  listFamilyRoomChoicesForLine,
   deleteChildLine,
   deleteParentAccount,
+  canJoinFamilyRoom,
+  isFamilyRoomAdminAlwaysAllowed,
+  listFamilyRoomAlwaysAllowedLineIds,
+  addFamilyRoomMember,
+  removeFamilyRoomMember,
+  addFamilyRoomTalkPair,
+  canTalkInFamilyRoom,
   wipeLineCascade,
 } from "./api.js";
 import { openDb } from "./db.js";
@@ -131,6 +151,7 @@ test("quiet hours use household timezone not server clock", () => {
   const hhB = createHousehold(db, b.user.id, "House B");
   const lineA = addLine(db, hhA.id, a.user.id, "A phone");
   const lineB = addLine(db, hhB.id, b.user.id, "B phone");
+  updateLine(db, hhB.id, lineB.id, { mode: "child", child_label: "Kid B" }, { actorUserId: b.user.id });
   addAllowlist(db, hhA.id, lineB.id, "B");
   addAllowlist(db, hhB.id, lineA.id, "A");
 
@@ -457,6 +478,13 @@ test("child accounts cannot create family invites", () => {
   );
   assert.equal(isChildOnlyAccount(db, login.childUser.id), true);
   assert.equal(isChildOnlyAccount(db, kid.user.id), true);
+  assert.equal(canManageHouseholdChildState(db, kid.user.id, hh.id), false);
+  assert.equal(canManageHouseholdChildState(db, login.childUser.id, hh.id), false);
+  assert.equal(canManageHouseholdChildState(db, parent.user.id, hh.id), true);
+  assert.throws(
+    () => addAllowlist(db, hh.id, parent.user.id, "Nope", { actorUserId: kid.user.id }),
+    /only parents/i
+  );
   assert.equal(publicUser(login.childUser, { isChildOnly: true }).is_child_only, true);
   assert.equal(publicUser(parent.user, { isChildOnly: false }).is_child_only, false);
 });
@@ -518,6 +546,7 @@ test("School preset sets weekdays + holiday skip; canCall voice is school", () =
   const hhB = createHousehold(db, b.user.id, "House B");
   const lineA = addLine(db, hhA.id, a.user.id, "A phone");
   const lineB = addLine(db, hhB.id, b.user.id, "B phone");
+  updateLine(db, hhB.id, lineB.id, { mode: "child", child_label: "Kid B" }, { actorUserId: b.user.id });
   addAllowlist(db, hhA.id, lineB.id, "B");
   addAllowlist(db, hhB.id, lineA.id, "A");
 
@@ -539,6 +568,39 @@ test("School preset sets weekdays + holiday skip; canCall voice is school", () =
 
   const sat = new Date("2026-08-22T15:00:00.000Z");
   assert.equal(canCall(db, lineA.id, lineB.id, sat).ok, true);
+});
+
+test("kid bedtime does not silence parent phones; parent DND is inbound only", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const a = registerParent(db, "A");
+  const b = registerParent(db, "B");
+  const hhA = createHousehold(db, a.user.id, "House A");
+  const hhB = createHousehold(db, b.user.id, "House B");
+  const parentA = addLine(db, hhA.id, a.user.id, "Parent A");
+  const parentB = addLine(db, hhB.id, b.user.id, "Parent B");
+  const kidB = addLine(db, hhB.id, b.user.id, "Kid B");
+  updateLine(db, hhB.id, kidB.id, { mode: "child", child_label: "Kid B" }, { actorUserId: b.user.id });
+  addAllowlist(db, hhA.id, parentB.id, "Parent B");
+  addAllowlist(db, hhA.id, kidB.id, "Kid B");
+  addAllowlist(db, hhB.id, parentA.id, "Parent A");
+
+  const night = new Date("2026-01-15T06:00:00.000Z"); // 22:00 PST
+  updateHouseholdRules(db, hhB.id, {
+    schedule_preset: "bedtime",
+    quiet_tz: "America/Los_Angeles",
+  });
+  assert.equal(canCall(db, parentA.id, kidB.id, night).ok, false);
+  assert.equal(canCall(db, parentA.id, parentB.id, night).ok, true);
+
+  updateHouseholdRules(db, hhB.id, {
+    parent_schedule_preset: "evenings",
+    parent_quiet_tz: "America/Los_Angeles",
+  });
+  const toParent = canCall(db, parentA.id, parentB.id, night);
+  assert.equal(toParent.ok, false);
+  if (!toParent.ok) assert.match(toParent.reason, /Do Not Disturb/i);
+  assert.equal(canCall(db, parentB.id, parentA.id, night).ok, true);
 });
 
 test("parent can leave voicemail for same-household kid without allowlist", () => {
@@ -811,6 +873,31 @@ test("parent PIN set verify clear and trim", () => {
   assert.equal((snap.households[0] as { parent_pin_hash?: string }).parent_pin_hash, undefined);
 });
 
+test("addLine can create a child line directly", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const a = registerParent(db, "A");
+  const hh = createHousehold(db, a.user.id, "House A");
+  addLine(db, hh.id, a.user.id, "A phone");
+  const kid = addLine(db, hh.id, a.user.id, "Maya", "softphone", {
+    mode: "child",
+    child_label: "Maya",
+  });
+  assert.equal(kid.mode, "child");
+  assert.equal(kid.child_label, "Maya");
+  assert.equal(kid.name, "Maya");
+
+  const snap = householdSnapshot(db, a.user.id);
+  const listed = snap.households[0].lines.find((l: { id: string }) => l.id === kid.id);
+  assert.ok(listed);
+  assert.equal(listed.mode, "child");
+  assert.equal(listed.child_label, "Maya");
+  assert.equal(listed.guardians.length, 1);
+  assert.equal(listed.guardians[0].user_id, a.user.id);
+  const parentStill = snap.households[0].lines.find((l: { name: string }) => l.name === "A phone");
+  assert.equal(parentStill?.mode || "parent", "parent");
+});
+
 test("line child mode flag", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
   const db = openDb(path.join(dir, "t.db"));
@@ -917,6 +1004,12 @@ test("guardian invite redeem and child password reset", () => {
   const redeemed = redeemGuardianInvite(db, dad.user.id, invite.code);
   assert.equal(redeemed.guardians.some((g) => g.user_id === dad.user.id), true);
   assert.throws(() => redeemGuardianInvite(db, dad.user.id, invite.code));
+  // Co-parent also joins the child's household as a member.
+  assert.ok(
+    db
+      .prepare(`SELECT 1 FROM household_members WHERE household_id = ? AND user_id = ?`)
+      .get(hh.id, dad.user.id)
+  );
 
   assert.throws(() =>
     resetChildPasswordByGuardian(db, mom.user.id, line.id, "newpass99")
@@ -942,6 +1035,109 @@ test("guardian invite redeem and child password reset", () => {
       "hacked999"
     )
   );
+});
+
+test("parent provisions grandparent login and kid mutual allowlist", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const mom = registerParent(db, "Mom", { username: "momgp", password: "password1" });
+  const hh = createHousehold(db, mom.user.id, "Larsen");
+  addLine(db, hh.id, mom.user.id, "Mom phone");
+  const kid = addLine(db, hh.id, mom.user.id, "Gemma", "softphone", { mode: "child" });
+  updateLine(db, hh.id, kid.id, { mode: "child" }, { actorUserId: mom.user.id });
+
+  const created = provisionGrandparent(db, mom.user.id, hh.id, {
+    displayName: "Grandma Larsen",
+    username: "rhonda2",
+    password: "16Monkeys!",
+    label: "Grandma",
+    kidLineIds: [kid.id],
+  });
+  assert.equal(created.username, "rhonda2");
+  assert.equal(created.relative.profile_role, "grandparent");
+  assert.deepEqual(created.relative.kid_line_ids, [kid.id]);
+
+  const login = loginWithPassword(db, "rhonda2", "16Monkeys!");
+  assert.equal(login.user.profile_role, "grandparent");
+
+  const ok = canCall(db, kid.id, created.line.id);
+  assert.equal(ok.ok, true);
+  const back = canCall(db, created.line.id, kid.id);
+  assert.equal(back.ok, true);
+
+  const snap = householdSnapshot(db, mom.user.id);
+  assert.equal(snap.households[0].provisioned_relatives.length, 1);
+  assert.equal(snap.households[0].provisioned_relatives[0].username, "rhonda2");
+
+  const reset = resetProvisionedRelativePassword(
+    db,
+    mom.user.id,
+    hh.id,
+    created.relative.id,
+    "NewPass99!"
+  );
+  assert.match(reset.message, /password updated/i);
+  const again = loginWithPassword(db, "rhonda2", "NewPass99!");
+  assert.equal(again.user.id, login.user.id);
+
+  assert.throws(() =>
+    provisionGrandparent(db, mom.user.id, hh.id, {
+      displayName: "Dup",
+      username: "rhonda2",
+      password: "password99",
+      kidLineIds: [kid.id],
+    })
+  );
+
+  const kid2 = addLine(db, hh.id, mom.user.id, "Owen", "softphone", { mode: "child" });
+  updateLine(db, hh.id, kid2.id, { mode: "child" }, { actorUserId: mom.user.id });
+  const updated = updateProvisionedRelativeLogin(db, mom.user.id, hh.id, created.relative.id, {
+    displayName: "Grandma Rhonda",
+    label: "Nana",
+    kidLineIds: [kid2.id],
+  });
+  assert.equal(updated.relative.display_name, "Grandma Rhonda");
+  assert.equal(updated.relative.display_label, "Nana");
+  assert.deepEqual(updated.relative.kid_line_ids, [kid2.id]);
+  assert.equal(canCall(db, created.line.id, kid.id).ok, false);
+  assert.equal(canCall(db, created.line.id, kid2.id).ok, true);
+});
+
+test("directory does not leak other invitees in the host circle to grandparents", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const mom = registerParent(db, "Mom", { username: "momdir", password: "password1" });
+  const cousin = registerParent(db, "Cousin", { username: "cousindir", password: "password1" });
+  const hh = createHousehold(db, mom.user.id, "Larsen");
+  const momLine = addLine(db, hh.id, mom.user.id, "Mom phone");
+  const kid = addLine(db, hh.id, mom.user.id, "Gemma", "softphone", { mode: "child" });
+  updateLine(db, hh.id, kid.id, { mode: "child" }, { actorUserId: mom.user.id });
+
+  // Cousin joins via invite → lands in Mom’s circle alongside future Grandma.
+  const invCousin = createInvite(db, hh.id, mom.user.id);
+  const cousinJoin = redeemInvite(db, invCousin.code, cousin.user.id, "Cousin house");
+  const cousinLine = addLine(db, cousinJoin.household.id, cousin.user.id, "Cousin phone");
+
+  const gp = provisionGrandparent(db, mom.user.id, hh.id, {
+    displayName: "Grandma",
+    username: "grandmadir",
+    password: "password1!",
+    label: "Grandma",
+    kidLineIds: [kid.id],
+  });
+  const gpUser = loginWithPassword(db, "grandmadir", "password1!").user;
+
+  assert.equal(canViewerSeeLine(db, gpUser.id, kid.id), true);
+  assert.equal(canViewerSeeLine(db, gpUser.id, momLine.id), true);
+  assert.equal(canViewerSeeLine(db, gpUser.id, cousinLine.id), false);
+  assert.equal(canViewerSeeLine(db, mom.user.id, cousinLine.id), true);
+  assert.equal(canViewerSeeLine(db, mom.user.id, gp.line.id), true);
+
+  const snap = householdSnapshot(db, gpUser.id);
+  const ids = new Set(snap.directory.map((d: { id: string }) => d.id));
+  assert.equal(ids.has(kid.id), true);
+  assert.equal(ids.has(momLine.id), true);
+  assert.equal(ids.has(cousinLine.id), false);
 });
 
 test("decline pending contact hides from pending list", () => {
@@ -982,17 +1178,17 @@ test("speed dial swap, ringer defaults, layout lock, greeting", () => {
   const lineC = addLine(db, hhC.id, c.user.id, "C");
   const e1 = addAllowlist(db, hh.id, lineB.id, "B");
   const e2 = addAllowlist(db, hh.id, lineC.id, "C");
-  updateAllowlistEntry(db, hh.id, e1.id, { speed_dial: 1 });
-  updateAllowlistEntry(db, hh.id, e2.id, { speed_dial: 2 });
   updateAllowlistEntry(db, hh.id, e1.id, { speed_dial: 2 });
+  updateAllowlistEntry(db, hh.id, e2.id, { speed_dial: 3 });
+  updateAllowlistEntry(db, hh.id, e1.id, { speed_dial: 3 });
   const again1 = db.prepare(`SELECT speed_dial FROM allowlist WHERE id = ?`).get(e1.id) as {
     speed_dial: number;
   };
   const again2 = db.prepare(`SELECT speed_dial FROM allowlist WHERE id = ?`).get(e2.id) as {
     speed_dial: number;
   };
-  assert.equal(again1.speed_dial, 2);
-  assert.equal(again2.speed_dial, 1);
+  assert.equal(again1.speed_dial, 3);
+  assert.equal(again2.speed_dial, 2);
 
   const rules = updateHouseholdRules(db, hh.id, {
     ring_volume: 40,
@@ -1066,7 +1262,7 @@ test("speed dial swap, ringer defaults, layout lock, greeting", () => {
   assert.equal(clearedAv.avatar_path, null);
 });
 
-test("allowlist auto-assign reserves speed dial 1 for household child", () => {
+test("allowlist auto-assign reserves speed dial 0 and 1", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
   const db = openDb(path.join(dir, "t.db"));
   const a = registerParent(db, "A");
@@ -1079,14 +1275,55 @@ test("allowlist auto-assign reserves speed dial 1 for household child", () => {
   const hhB = createHousehold(db, b.user.id, "Cousins");
   const cousin = addLine(db, hhB.id, b.user.id, "Cousin");
 
-  // External contact should not take slot 1 while a household child exists.
+  // Single parent: slot 2 is a normal contact slot — first external gets 2.
   const cousinAl = addAllowlist(db, hh.id, cousin.id, "Cousin");
   assert.equal(cousinAl.speed_dial, 2);
 
-  // Same-household child allowlist row prefers slot 1.
   const kidAl = addAllowlist(db, hh.id, kidLine.id, "Gemma");
-  assert.equal(kidAl.speed_dial, 1);
+  assert.equal(kidAl.speed_dial, 3);
+  updateAllowlistEntry(db, hh.id, cousinAl.id, { speed_dial: 4 });
+  updateAllowlistEntry(db, hh.id, kidAl.id, { speed_dial: 2 });
+  const movedKid = db.prepare(`SELECT speed_dial FROM allowlist WHERE id = ?`).get(kidAl.id) as {
+    speed_dial: number;
+  };
+  assert.equal(movedKid.speed_dial, 2);
+  assert.throws(
+    () => addAllowlist(db, hh.id, parentLine.id, "Parent", { speedDial: 1 }),
+    /locked|TreeHouse|0/i
+  );
+  assert.throws(
+    () => addAllowlist(db, hh.id, parentLine.id, "Parent", { speedDial: 0 }),
+    /TreeHouse|locked/i
+  );
   assert.ok(parentLine.id);
+});
+
+test("allowlist reserves speed dial 2 only when a second parent exists", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const a = registerParent(db, "A");
+  const b = registerParent(db, "B");
+  const c = registerParent(db, "C");
+  const hh = createHousehold(db, a.user.id, "House");
+  addLine(db, hh.id, a.user.id, "Parent");
+  addLine(db, hh.id, b.user.id, "Co-parent");
+  const kidLine = addLine(db, hh.id, a.user.id, "Kid phone");
+  updateLine(db, hh.id, kidLine.id, { mode: "child", child_label: "Gemma" }, { actorUserId: a.user.id });
+
+  const hhC = createHousehold(db, c.user.id, "Cousins");
+  const cousin = addLine(db, hhC.id, c.user.id, "Cousin");
+
+  assert.ok(householdSecondaryParentLine(db, hh.id));
+  const cousinAl = addAllowlist(db, hh.id, cousin.id, "Cousin");
+  assert.equal(cousinAl.speed_dial, 3);
+  assert.throws(
+    () => addAllowlist(db, hh.id, kidLine.id, "Gemma", { speedDial: 2 }),
+    /reserved|co-parent|2/i
+  );
+  assert.throws(
+    () => updateAllowlistEntry(db, hh.id, cousinAl.id, { speed_dial: 2 }),
+    /reserved|co-parent|2/i
+  );
 });
 
 test("answering machine defaults off and is opt-in", () => {
@@ -1120,6 +1357,7 @@ test("ATA binding, config XML, and speed-dial resolve", () => {
   const b = registerParent(db, "B");
   const hhA = createHousehold(db, a.user.id, "House A");
   const hhB = createHousehold(db, b.user.id, "House B");
+  const hhAParent = addLine(db, hhA.id, a.user.id, "Mom");
   const kid = addLine(db, hhA.id, a.user.id, "Kid");
   updateLine(db, hhA.id, kid.id, { mode: "child", child_label: "Gemma" }, { actorUserId: a.user.id });
   const parentLine = addLine(db, hhB.id, b.user.id, "Trevor");
@@ -1145,16 +1383,32 @@ test("ATA binding, config XML, and speed-dial resolve", () => {
   assert.match(xml, /<P35>2001<\/P35>/);
   assert.match(xml, /<P34>PhoneHomeHt801!<\/P34>/);
 
-  // Mutual allowlist with speed dial 1
-  addAllowlist(db, hhA.id, parentLine.id, "Trevor", { speedDial: 1 });
-  addAllowlist(db, hhB.id, kid.id, "Gemma", { speedDial: 1 });
+  // Mutual allowlist with speed dial 2 (0 = TreeHouse, 1 = admin parent)
+  addAllowlist(db, hhA.id, parentLine.id, "Trevor", { speedDial: 2 });
+  addAllowlist(db, hhB.id, kid.id, "Gemma", { speedDial: 2 });
 
   const miss = resolveAtaDial(db, "2001", "9");
   assert.equal(miss.ok, false);
 
-  const hit = resolveAtaDial(db, "2001", "1");
+  const tree = resolveAtaDial(db, "2001", "0");
+  assert.equal(tree.ok, true);
+  if (tree.ok) {
+    assert.equal(tree.treeHouse, true);
+    assert.equal(tree.fromLineId, kid.id);
+    assert.equal(tree.toLabel, "TreeHouse");
+  }
+
+  const admin = resolveAtaDial(db, "2001", "1");
+  assert.equal(admin.ok, true);
+  if (admin.ok && !("treeHouse" in admin && admin.treeHouse)) {
+    assert.equal(admin.fromLineId, kid.id);
+    assert.equal(admin.toLineId, hhAParent.id);
+    assert.equal(admin.toSipExtension, null);
+  }
+
+  const hit = resolveAtaDial(db, "2001", "2");
   assert.equal(hit.ok, true);
-  if (hit.ok) {
+  if (hit.ok && !("treeHouse" in hit && hit.treeHouse)) {
     assert.equal(hit.fromLineId, kid.id);
     assert.equal(hit.toLineId, parentLine.id);
     // Parent softphone has no ATA → softphone path
@@ -1173,7 +1427,7 @@ test("ATA binding, config XML, and speed-dial resolve", () => {
     },
     { allowSipCredentialOverride: true }
   );
-  const ataToAta = resolveAtaDial(db, "2001", "1");
+  const ataToAta = resolveAtaDial(db, "2001", "2");
   assert.equal(ataToAta.ok, true);
   if (ataToAta.ok) {
     assert.equal(ataToAta.toSipExtension, "2002");
@@ -1216,23 +1470,23 @@ test("ATA binding, config XML, and speed-dial resolve", () => {
   assert.ok(session.sessionId);
 });
 
-test("dial 0 resolves to designated household parent (Home)", () => {
+test("dial 0 is TreeHouse; dial 1 is admin parent", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
   const db = openDb(path.join(dir, "t.db"));
   const a = registerParent(db, "Mom");
   const hh = createHousehold(db, a.user.id, "Home");
   const parentLine = addLine(db, hh.id, a.user.id, "Mom phone");
-  // Guarantee Mom wins Home (0) even when created_at ties within the same ms.
   db.prepare(`UPDATE lines SET created_at = ? WHERE id = ?`).run("2026-01-01T00:00:00.000Z", parentLine.id);
   const laterParent = addLine(db, hh.id, a.user.id, "Dad phone");
   db.prepare(`UPDATE lines SET created_at = ? WHERE id = ?`).run("2026-01-02T00:00:00.000Z", laterParent.id);
   const kid = addLine(db, hh.id, a.user.id, "Kid");
   updateLine(db, hh.id, kid.id, { mode: "child", child_label: "Gemma" }, { actorUserId: a.user.id });
 
-  // First parent-mode line by created_at wins (Mom), not Dad.
-  const home = householdHomeParentLine(db, hh.id);
-  assert.equal(home?.id, parentLine.id);
-  assert.notEqual(home?.id, laterParent.id);
+  const admin = householdAdminParentLine(db, hh.id);
+  assert.equal(admin?.id, parentLine.id);
+  assert.equal(householdHomeParentLine(db, hh.id)?.id, parentLine.id);
+  const secondary = householdSecondaryParentLine(db, hh.id);
+  assert.equal(secondary?.id, laterParent.id);
 
   upsertAtaDevice(
     db,
@@ -1246,36 +1500,41 @@ test("dial 0 resolves to designated household parent (Home)", () => {
     { allowSipCredentialOverride: true }
   );
 
-  // Dial 0 does not need allowlist.speed_dial=0
-  const homeDial = resolveAtaDial(db, "2001", "0");
-  assert.equal(homeDial.ok, true);
-  if (homeDial.ok) {
-    assert.equal(homeDial.fromLineId, kid.id);
-    assert.equal(homeDial.toLineId, parentLine.id);
-    assert.equal(homeDial.dialed, "0");
+  const treeDial = resolveAtaDial(db, "2001", "0");
+  assert.equal(treeDial.ok, true);
+  if (treeDial.ok) {
+    assert.equal(treeDial.treeHouse, true);
+    assert.equal(treeDial.fromLineId, kid.id);
+    assert.equal(treeDial.dialed, "0");
   }
 
-  // 911 / 933 → same parent (interim E911; bypass pause)
+  const parentDial = resolveAtaDial(db, "2001", "1");
+  assert.equal(parentDial.ok, true);
+  if (parentDial.ok && !("treeHouse" in parentDial && parentDial.treeHouse)) {
+    assert.equal(parentDial.fromLineId, kid.id);
+    assert.equal(parentDial.toLineId, parentLine.id);
+    assert.equal(parentDial.dialed, "1");
+  }
+
+  // 911 / 933 → admin parent (interim E911; bypass pause)
   db.prepare(`UPDATE households SET kill_switch = 1 WHERE id = ?`).run(hh.id);
   const e911 = resolveAtaDial(db, "2001", "911");
   assert.equal(e911.ok, true);
-  if (e911.ok) {
+  if (e911.ok && !("treeHouse" in e911 && e911.treeHouse)) {
     assert.equal(e911.toLineId, parentLine.id);
     assert.equal(e911.dialed, "911");
   }
   const e933 = resolveAtaDial(db, "2001", "933");
   assert.equal(e933.ok, true);
-  if (e933.ok) assert.equal(e933.toLineId, parentLine.id);
+  if (e933.ok && !("treeHouse" in e933 && e933.treeHouse)) assert.equal(e933.toLineId, parentLine.id);
   db.prepare(`UPDATE households SET kill_switch = 0 WHERE id = ?`).run(hh.id);
 
-  // Assigning speed_dial 0 via allowlist is rejected (reserved)
-  const al = addAllowlist(db, hh.id, laterParent.id, "Dad", { speedDial: 2 });
+  const al = addAllowlist(db, hh.id, laterParent.id, "Dad", { speedDial: 3 });
   assert.throws(
     () => updateAllowlistEntry(db, hh.id, al.id, { speed_dial: 0 }),
-    /1–9|reserved|Home/i
+    /TreeHouse|locked/i
   );
 
-  // Parent ATA dialing 0 → self → rejected
   upsertAtaDevice(
     db,
     parentLine.id,
@@ -1286,8 +1545,8 @@ test("dial 0 resolves to designated household parent (Home)", () => {
     },
     { allowSipCredentialOverride: true }
   );
-  const selfHome = resolveAtaDial(db, "2002", "0");
-  assert.equal(selfHome.ok, false);
+  const selfParent = resolveAtaDial(db, "2002", "1");
+  assert.equal(selfParent.ok, false);
 
   const box = resolveAtaMailbox(db, "2001");
   assert.equal(box.ok, true);
@@ -1398,7 +1657,7 @@ test("deleteChildLine wipes line media ATA login and cross-household allowlist",
     dataDir: dir,
   });
 
-  addAllowlist(db, hhMom.id, cousinLine.id, "Cousin", { speedDial: 1 });
+  addAllowlist(db, hhMom.id, cousinLine.id, "Cousin", { speedDial: 2 });
   addAllowlist(db, hhCousin.id, kid.id, "Maya", { speedDial: 2 });
   addAllowlist(db, hhCousin.id, otherKid.id, "Sam", { speedDial: 3 });
   logCall(db, kid.id, cousinLine.id, "completed");
@@ -1504,4 +1763,270 @@ test("wipeLineCascade is idempotent for unknown line ids", () => {
   const r = wipeLineCascade(db, fakeId, dir);
   assert.equal(r.wiped, false);
   assert.equal(db.prepare(`SELECT 1 FROM allowlist WHERE target_line_id = ?`).get(fakeId), undefined);
+});
+
+test("TreeHouse always-allows household kids only; talk pairs are symmetric", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-fr-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const mom = registerParent(db, "Mom", { username: "frmom", password: "password1" });
+  const other = registerParent(db, "Other", { username: "frother", password: "password1" });
+  const hh = createHousehold(db, mom.user.id, "Home");
+  const hhOther = createHousehold(db, other.user.id, "Elsewhere");
+  const parentLine = addLine(db, hh.id, mom.user.id, "Mom phone");
+  const kid = addLine(db, hh.id, mom.user.id, "Kid");
+  updateLine(db, hh.id, kid.id, { mode: "child", child_label: "Maya" }, { actorUserId: mom.user.id });
+  const kid2 = addLine(db, hh.id, mom.user.id, "Kid2");
+  updateLine(db, hh.id, kid2.id, { mode: "child", child_label: "Sam" }, { actorUserId: mom.user.id });
+  const cousin = addLine(db, hhOther.id, other.user.id, "Cousin");
+  addAllowlist(db, hh.id, cousin.id, "Cousin");
+
+  assert.equal(isFamilyRoomAdminAlwaysAllowed(db, hh.id, parentLine.id), false);
+  assert.equal(isFamilyRoomAdminAlwaysAllowed(db, hh.id, kid.id), true);
+  assert.equal(canJoinFamilyRoom(db, hh.id, parentLine.id), false);
+  assert.equal(canJoinFamilyRoom(db, hh.id, kid.id), true);
+  assert.equal(isFamilyRoomAdminAlwaysAllowed(db, hh.id, cousin.id), false);
+  assert.equal(canJoinFamilyRoom(db, hh.id, cousin.id), false);
+  assert.equal(isFamilyRoomAdminAlwaysAllowed(db, hhOther.id, parentLine.id), false);
+  assert.equal(canJoinFamilyRoom(db, hhOther.id, parentLine.id), false);
+
+  const always = listFamilyRoomAlwaysAllowedLineIds(db, hh.id);
+  assert.ok(always.includes(kid.id));
+  assert.ok(always.includes(kid2.id));
+  assert.equal(always.includes(parentLine.id), false);
+  assert.equal(always.includes(cousin.id), false);
+
+  assert.throws(() => addFamilyRoomMember(db, hh.id, kid.id, mom.user.id));
+  assert.throws(() => removeFamilyRoomMember(db, hh.id, kid.id, mom.user.id));
+
+  addFamilyRoomMember(db, hh.id, cousin.id, mom.user.id);
+  assert.equal(canJoinFamilyRoom(db, hh.id, cousin.id), true);
+
+  // Household kids auto-talk; cousin needs explicit pair.
+  assert.equal(canTalkInFamilyRoom(db, hh.id, kid.id, kid2.id), true);
+  assert.equal(canTalkInFamilyRoom(db, hh.id, kid.id, cousin.id), false);
+  addFamilyRoomTalkPair(db, hh.id, kid.id, cousin.id, mom.user.id);
+  assert.equal(canTalkInFamilyRoom(db, hh.id, kid.id, cousin.id), true);
+  assert.equal(canTalkInFamilyRoom(db, hh.id, cousin.id, kid.id), true);
+  assert.equal(canTalkInFamilyRoom(db, hh.id, kid2.id, cousin.id), false);
+});
+
+test("parent_title and FamilyRoom approvals include kids and adults", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const mom = registerParent(db, "Trevor Larsen");
+  const other = registerParent(db, "Grandma");
+  const hh = createHousehold(db, mom.user.id, "Larsen");
+  const hhOther = createHousehold(db, other.user.id, "Grandma house");
+  const momLine = addLine(db, hh.id, mom.user.id, "Mom phone");
+  const kidLine = addLine(db, hh.id, mom.user.id, "Kid phone");
+  updateLine(
+    db,
+    hh.id,
+    kidLine.id,
+    { mode: "child", child_label: "Maya" },
+    { actorUserId: mom.user.id }
+  );
+  const grandmaLine = addLine(db, hhOther.id, other.user.id, "Grandma");
+
+  updateUserProfile(db, mom.user.id, { parent_title: "mom" });
+  assert.equal(parentDisplayLabel(db, momLine.id), "Mom");
+
+  // Allowlist nickname must not override Mom/Dad for FXS / voice CID.
+  addAllowlist(db, hh.id, momLine.id, "Trevor");
+  assert.equal(peerLabelForHousehold(db, hh.id, momLine.id), "Mom");
+  // Saving Mom/Dad rewrites stale personal-name nicknames on the allowlist.
+  updateUserProfile(db, mom.user.id, { parent_title: "mom" });
+  const al = db.prepare(`SELECT label FROM allowlist WHERE target_line_id = ?`).get(momLine.id) as {
+    label: string;
+  };
+  assert.equal(al.label, "Mom");
+
+  assert.equal(canJoinAdultFamilyRoom(db, hh.id, momLine.id), false);
+  assert.equal(canJoinAdultFamilyRoom(db, hh.id, kidLine.id), false);
+  assert.equal(canJoinAdultFamilyRoom(db, hh.id, grandmaLine.id), false);
+
+  addAdultFamilyRoomMember(db, hh.id, momLine.id, mom.user.id);
+  addAdultFamilyRoomMember(db, hh.id, kidLine.id, mom.user.id);
+  assert.equal(canJoinAdultFamilyRoom(db, hh.id, momLine.id), true);
+  assert.equal(canJoinAdultFamilyRoom(db, hh.id, kidLine.id), true);
+
+  addAllowlist(db, hh.id, grandmaLine.id, "Grandma");
+  addAdultFamilyRoomMember(db, hh.id, grandmaLine.id, mom.user.id);
+  assert.equal(canJoinAdultFamilyRoom(db, hh.id, grandmaLine.id), true);
+
+  const choices = listFamilyRoomChoicesForLine(db, momLine.id);
+  assert.ok(choices.length >= 1);
+  assert.equal(choices[0].slot, 1);
+  assert.match(choices[0].label, /Larsen/i);
+
+  const kidChoices = listFamilyRoomChoicesForLine(db, kidLine.id);
+  assert.ok(kidChoices.length >= 1);
+  assert.equal(kidChoices[0].slot, 1);
+});
+
+test("FamilyRoom IVR slot 1 is household name and slot 2 is other parent last name", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const mom = registerParent(db, "Trevor Larsen");
+  const dad = registerParent(db, "Mike Smith", { username: "frdad", password: "password1" });
+  const hh = createHousehold(db, mom.user.id, "Larsen");
+  const momLine = addLine(db, hh.id, mom.user.id, "Mom phone");
+  const dadLine = addLine(db, hh.id, dad.user.id, "Dad phone");
+  db.prepare(`INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, 'parent')`).run(
+    hh.id,
+    dad.user.id
+  );
+  updateUserProfile(db, mom.user.id, { parent_title: "mom" });
+  updateUserProfile(db, dad.user.id, { parent_title: "dad" });
+  addAdultFamilyRoomMember(db, hh.id, momLine.id, mom.user.id);
+  addAdultFamilyRoomMember(db, hh.id, dadLine.id, mom.user.id);
+
+  assert.equal(parentDisplayLabel(db, momLine.id), "Mom");
+  assert.equal(parentDisplayLabel(db, dadLine.id), "Dad");
+
+  const choices = listFamilyRoomChoicesForLine(db, momLine.id);
+  assert.equal(choices.length, 2);
+  assert.equal(choices[0].slot, 1);
+  assert.equal(choices[0].label, "Larsen");
+  assert.equal(choices[1].slot, 2);
+  assert.equal(choices[1].label, "Smith");
+  assert.equal(choices[1].householdId, hh.id);
+});
+
+test("FamilyRoom IVR slot 2 uses Mom/Dad when last names match the household", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+  const mom = registerParent(db, "Trevor Larsen");
+  const dad = registerParent(db, "Chris Larsen", { username: "frdad2", password: "password1" });
+  const hh = createHousehold(db, mom.user.id, "Larsen");
+  const momLine = addLine(db, hh.id, mom.user.id, "Mom phone");
+  const dadLine = addLine(db, hh.id, dad.user.id, "Dad phone");
+  db.prepare(`INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, 'parent')`).run(
+    hh.id,
+    dad.user.id
+  );
+  updateUserProfile(db, dad.user.id, { parent_title: "dad" });
+  addAdultFamilyRoomMember(db, hh.id, momLine.id, mom.user.id);
+  addAdultFamilyRoomMember(db, hh.id, dadLine.id, mom.user.id);
+
+  const choices = listFamilyRoomChoicesForLine(db, momLine.id);
+  assert.equal(choices[0].label, "Larsen");
+  assert.equal(choices[1].label, "Dad");
+});
+
+test("test review account only ever sees and calls Trevor", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kl-"));
+  const db = openDb(path.join(dir, "t.db"));
+
+  const trevor = registerParent(db, "Trevor", { username: "trevor", password: "password1" });
+  const stranger = registerParent(db, "Stranger", { username: "stranger", password: "password1" });
+  const tester = registerParent(db, "Test", { username: "test", password: "password1" });
+
+  const hhT = createHousehold(db, trevor.user.id, "Larsen");
+  const hhS = createHousehold(db, stranger.user.id, "Other");
+  const hhTest = createHousehold(db, tester.user.id, "Tester");
+
+  const trevorLine = addLine(db, hhT.id, trevor.user.id, "Trevor's phone");
+  const strangerLine = addLine(db, hhS.id, stranger.user.id, "Stranger phone");
+  const testLine = addLine(db, hhTest.id, tester.user.id, "Test's phone");
+
+  // Allowlist Trevor (ok) — stranger must be rejected by hard gate.
+  addAllowlist(db, hhTest.id, trevorLine.id, "Trevor", { actorUserId: tester.user.id });
+  assert.throws(
+    () => addAllowlist(db, hhTest.id, strangerLine.id, "Nope", { actorUserId: tester.user.id }),
+    /only contact Trevor/i
+  );
+
+  // Pollute circle the way invite sync used to — scrub + canViewerSeeLine must hide them.
+  const sphere = ensureSphereForParent(db, tester.user.id);
+  // Bypass gate with raw insert to simulate legacy DB drift.
+  db.prepare(
+    `INSERT OR IGNORE INTO sphere_members (sphere_id, line_id, added_by_user_id, created_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(sphere.id, strangerLine.id, tester.user.id, new Date().toISOString());
+  db.prepare(
+    `INSERT OR REPLACE INTO allowlist (id, household_id, target_line_id, label, speed_dial, favorite, always_allow, created_at)
+     VALUES (?, ?, ?, ?, ?, 1, 0, ?)`
+  ).run("al_leak", hhTest.id, strangerLine.id, "Leak", 3, new Date().toISOString());
+
+  assert.equal(canViewerSeeLine(db, tester.user.id, trevorLine.id), true);
+  assert.equal(canViewerSeeLine(db, tester.user.id, testLine.id), true);
+  assert.equal(canViewerSeeLine(db, tester.user.id, strangerLine.id), false);
+
+  const snap = householdSnapshot(db, tester.user.id);
+  const dirIds = new Set(snap.directory.map((d: { id: string }) => d.id));
+  assert.equal(dirIds.has(trevorLine.id), true);
+  assert.equal(dirIds.has(testLine.id), true);
+  assert.equal(dirIds.has(strangerLine.id), false);
+  assert.equal(snap.households[0].allowlist.length, 1);
+  assert.equal(snap.households[0].allowlist[0].target_line_id, trevorLine.id);
+  const mine = snap.households[0].spheres.find((s: { is_mine: boolean }) => s.is_mine);
+  assert.ok(mine);
+  assert.equal(mine.member_line_ids.includes(strangerLine.id), false);
+  assert.ok(mine.member_line_ids.includes(trevorLine.id) || mine.member_line_ids.includes(testLine.id));
+
+  addAllowlist(db, hhT.id, testLine.id, "Test");
+  assert.equal(canCall(db, testLine.id, trevorLine.id).ok, true);
+  assert.equal(canCall(db, trevorLine.id, testLine.id).ok, true);
+  assert.equal(canCall(db, testLine.id, strangerLine.id).ok, false);
+
+  // Bidirectional: other families must never see Test, even with polluted allowlist/circle.
+  assert.throws(
+    () => addAllowlist(db, hhS.id, testLine.id, "Test", { actorUserId: stranger.user.id }),
+    /only available to Trevor/i
+  );
+  db.prepare(
+    `INSERT OR REPLACE INTO allowlist (id, household_id, target_line_id, label, speed_dial, favorite, always_allow, created_at)
+     VALUES (?, ?, ?, ?, ?, 1, 0, ?)`
+  ).run("al_test_leak", hhS.id, testLine.id, "Test", 4, new Date().toISOString());
+  const strangerSphere = ensureSphereForParent(db, stranger.user.id);
+  db.prepare(
+    `INSERT OR IGNORE INTO sphere_members (sphere_id, line_id, added_by_user_id, created_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(strangerSphere.id, testLine.id, stranger.user.id, new Date().toISOString());
+
+  assert.equal(canViewerSeeLine(db, stranger.user.id, testLine.id), false);
+  assert.equal(canViewerSeeLine(db, trevor.user.id, testLine.id), true);
+
+  const strangerSnap = householdSnapshot(db, stranger.user.id);
+  assert.equal(
+    strangerSnap.households[0].allowlist.some((a: { target_line_id: string }) => a.target_line_id === testLine.id),
+    false
+  );
+  assert.equal(
+    strangerSnap.directory.some((d: { id: string }) => d.id === testLine.id),
+    false
+  );
+
+  const kid = addLine(db, hhT.id, trevor.user.id, "Gemma", "softphone", { mode: "child" });
+  updateLine(db, hhT.id, kid.id, { mode: "child" }, { actorUserId: trevor.user.id });
+  const kidLogin = setChildLineLogin(db, trevor.user.id, kid.id, {
+    username: "gemmakid",
+    password: "password1!",
+  });
+  // Household still has Test for Trevor; kid softphone must not see it.
+  const kidSnap = householdSnapshot(db, kidLogin.childUser.id);
+  assert.equal(
+    kidSnap.households[0].allowlist.some((a: { target_line_id: string }) => a.target_line_id === testLine.id),
+    false
+  );
+  assert.equal(
+    kidSnap.directory.some((d: { id: string }) => d.id === testLine.id),
+    false
+  );
+
+  const trevorSnap = householdSnapshot(db, trevor.user.id);
+  assert.equal(
+    trevorSnap.households[0].allowlist.some((a: { target_line_id: string }) => a.target_line_id === testLine.id),
+    true
+  );
+  // Review softphone must not sit in Trevor’s circle (kids inherit that list).
+  const trevorSphere = trevorSnap.households[0].spheres.find((s: { is_mine: boolean }) => s.is_mine);
+  assert.ok(trevorSphere);
+  assert.equal(trevorSphere.member_line_ids.includes(testLine.id), false);
+  assert.equal(
+    trevorSnap.households[0].allowlist.find((a: { target_line_id: string }) => a.target_line_id === testLine.id)
+      ?.is_test_review,
+    true
+  );
 });

@@ -97,3 +97,23 @@ export function deriveAtaStatus(sip: BridgeSipStatus): {
 export function ataPresenceRegistered(sip: BridgeSipStatus): boolean {
   return deriveAtaStatus(sip).status === "online";
 }
+
+/**
+ * Inbound to a line with an ATA: ring the landline unless we are sure it is offline.
+ * Brief "unknown" during FreePBX/PJSIP reload must not skip FXS and only VoIP-wake
+ * the app (landline never rings; softphone often no-answers).
+ */
+export function shouldAttemptFxsInbound(sip: BridgeSipStatus): boolean {
+  if (sip.callable || sip.registered) return true;
+  // Confirmed dead Contact only — completed check, high confidence, offline.
+  if (
+    sip.ok &&
+    sip.state === "offline" &&
+    sip.confidence === "high" &&
+    !sip.registered &&
+    !sip.callable
+  ) {
+    return false;
+  }
+  return true;
+}

@@ -7,23 +7,26 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * For offline/bundled QA, set PHONEHOME_CAP_BUNDLED=1 and re-run `npx cap sync ios`.
  */
 const bundled = process.env.PHONEHOME_CAP_BUNDLED === '1';
-const liveUrl = process.env.PHONEHOME_CAP_URL || 'https://y5876647.eero.online:8443';
+// Set PHONEHOME_CAP_URL to your hub's PUBLIC_BASE_URL before `npx cap sync ios`.
+const liveUrl = process.env.PHONEHOME_CAP_URL || '';
 
 const config: CapacitorConfig = {
   appId: 'app.phonehome.ios',
   appName: 'PhoneHome',
   webDir: '../web/public',
-  ...(bundled
-    ? {}
-    : {
+  ...(!bundled && liveUrl
+    ? {
         server: {
           url: liveUrl,
           cleartext: false,
         },
-      }),
+      }
+    : {}),
   ios: {
-    contentInset: 'automatic',
+    // CSS owns safe-area insets (env()). "automatic" double-pads the WebView on notch phones.
+    contentInset: 'never',
     preferredContentMode: 'mobile',
+    backgroundColor: '#16241e',
   },
 };
 

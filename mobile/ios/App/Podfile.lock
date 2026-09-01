@@ -33,7 +33,7 @@ SPEC CHECKSUMS:
   CapacitorApp: f01a913211780e0718dae9750442c3e23f96e106
   CapacitorCordova: e61ee8c40101b8cd011d0224261606a290c082cf
   CapacitorPreferences: 69d9991307507aeab8ef8019c10b9babfda0e9ca
-  PhonehomeCallkit: ca913f4350a1fa890411b52b0634f1329fceb27d
+  PhonehomeCallkit: 74ad1774ecf74ed38c02f30f8bc69f1947179a44
 
 PODFILE CHECKSUM: d6b2d2719b33356baa1a9a2242ff01923b1df951
 

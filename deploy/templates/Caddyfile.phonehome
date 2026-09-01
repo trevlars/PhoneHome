@@ -1,0 +1,12 @@
+# Caddy reverse proxy template for PhoneHome self-host.
+# Copy to your Caddy config and replace placeholders.
+#
+#   PHONEHOME_HOST=phonehome.example.com
+#   PHONEHOME_UPSTREAM=127.0.0.1:8787
+#
+# SIP TLS cert sync: deploy/sync-phonehome-sip-cert.sh (when FreePBX shares this hostname)
+
+{$PHONEHOME_HOST}:8443 {
+	encode gzip
+	reverse_proxy {$PHONEHOME_UPSTREAM:127.0.0.1:8787}
+}

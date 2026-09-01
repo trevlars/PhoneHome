@@ -2,7 +2,7 @@
   "name": "phonehome",
   "version": "0.1.0",
   "private": true,
-  "description": "PhoneHome — the home phone, remixed. Private family softphones (Digits-inspired). Maintained by trevlars.",
+  "description": "PhoneHome — the home phone, reborn. Private family softphones (Digits-inspired). Maintained by trevlars.",
   "workspaces": [
     "server",
     "web"
@@ -12,6 +12,10 @@
     "dev:web": "npm run build -w web -- --watch",
     "build": "npm run build -w web && npm run build -w server",
     "start": "npm run start -w server",
+    "serve": "node deploy/phonehome-supervisor.mjs",
+    "phonehome:init": "bash deploy/phonehome-init.sh",
+    "phonehome:install": "bash deploy/install-service.sh",
+    "phonehome:analog": "bash deploy/setup-analog.sh",
     "lab": "npm run build -w web && npm run start -w server",
     "test": "npm run test -w server"
   },

@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+EnvironmentFile=-/etc/phonehome/freepbx-syncd.env
 ExecStart=/usr/bin/python3 /usr/local/sbin/phonehome-freepbx-syncd
 Restart=on-failure
 RestartSec=2

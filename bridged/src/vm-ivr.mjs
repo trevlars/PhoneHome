@@ -474,5 +474,84 @@ export function createVmIvr(deps) {
     }
   }
 
-  return { runVoicemailIvr, registerMediaFile };
+  /**
+   * After unanswered ATA/softphone ring: play callee greeting (or default), record, save.
+   * @param {import("ari-client").Channel} channel caller FXS (still in Stasis)
+   * @param {{ fromLineId: string, toLineId: string, toLabel?: string }} opts
+   */
+  async function runNoAnswerDeposit(channel, opts) {
+    const fromLineId = String(opts?.fromLineId || "");
+    const toLineId = String(opts?.toLineId || "");
+    const toLabel = String(opts?.toLabel || "them").slice(0, 40);
+    if (!fromLineId || !toLineId) return;
+
+    try {
+      await channel.answer();
+    } catch {}
+
+    // Personal OGM if present; else a short default.
+    let playedGreeting = false;
+    try {
+      const { buf, contentType } = await phGetBuffer(`/api/bridge/lines/${toLineId}/greeting`);
+      const wav = await ensureWavFile(buf, contentType, `ogm-${toLineId}`);
+      await playHttpWav(channel, wav);
+      playedGreeting = true;
+    } catch {
+      /* no custom greeting */
+    }
+    if (!playedGreeting) {
+      await say(
+        channel,
+        "no-answer-default",
+        `Sorry. ${toLabel} is not available. Please leave a message after the beep.`
+      );
+    } else {
+      await say(channel, "leave-message-beep", "Please leave a message after the beep.");
+    }
+
+    const recName = `ph-vm-${fromLineId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24)}-${Date.now()}`;
+    let rec;
+    try {
+      rec = await channel.record({
+        name: recName,
+        format: "wav",
+        beep: true,
+        ifExists: "overwrite",
+        maxDurationSeconds: 45,
+        maxSilenceSeconds: 5,
+        terminateOn: "#",
+      });
+    } catch (e) {
+      console.error("[bridged] no-answer record start failed:", e.message || e);
+      await say(channel, "sorry-record", "Sorry. Could not record.");
+      return;
+    }
+    await recordFinished(rec);
+
+    try {
+      const buf = await ariGetRecordingFile(recName);
+      if (!buf || buf.length < 64) {
+        await say(channel, "sorry-short", "No message recorded.");
+        await ariDeleteRecording(recName);
+        return;
+      }
+      await phFetch("/api/bridge/voicemails", {
+        method: "POST",
+        body: JSON.stringify({
+          fromLineId,
+          toLineId,
+          audioBase64: buf.toString("base64"),
+          audioMime: "audio/wav",
+        }),
+      });
+      await say(channel, "message-saved", "Message saved. Goodbye.");
+      console.log(`[bridged] no-answer voicemail ${fromLineId}→${toLineId} (${buf.length}b)`);
+    } catch (e) {
+      console.error("[bridged] no-answer voicemail save failed:", e.message || e);
+      await say(channel, "sorry-save", "Sorry. Could not save the message.");
+    }
+    await ariDeleteRecording(recName);
+  }
+
+  return { runVoicemailIvr, runNoAnswerDeposit, registerMediaFile };
 }

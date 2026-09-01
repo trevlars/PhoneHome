@@ -9,9 +9,9 @@ WorkingDirectory=/opt/kids-landline
 Environment=PORT=8787
 Environment=DATA_DIR=/var/lib/kids-landline
 Environment=NODE_ENV=production
-Environment=PUBLIC_BASE_URL=https://y5876647.eero.online:8443
-# Public SIP host for ATA configs (FQDN → Let's Encrypt SAN + P8463=1). Prefer this over SIP_SERVER (LAN IP).
-Environment=SIP_PUBLIC_HOST=y5876647.eero.online
+# Host-specific URLs — run deploy/phonehome-init.sh or copy deploy/phonehome.env.example
+EnvironmentFile=-/var/lib/kids-landline/phonehome.env
+EnvironmentFile=-/var/lib/kids-landline/bridge.env
 # Keep FreePBX sip.secret in lockstep with PhoneHome (remote Download config accuracy).
 EnvironmentFile=-/var/lib/kids-landline/freepbx-sync.env
 # One-tap HT801 push needs LAN. Shared/cloud hosts: ATA_LAN_PUSH=0 (UI leads with Download config).

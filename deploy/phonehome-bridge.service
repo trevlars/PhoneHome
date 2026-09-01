@@ -15,6 +15,11 @@ Environment=ARI_APP=phonehome
 Environment=EXT_MEDIA_HOST=10.0.5.106
 Environment=EXT_MEDIA_PORT_BASE=14000
 Environment=BRIDGE_HTTP_PORT=8790
+# TURN for ATA↔remote softphone WebRTC (same coturn as kids-landline). Prefer bridge.env.
+# Environment=TURN_URLS=turn:YOUR.PUBLIC.IP:3478
+# Environment=TURN_LAN_URLS=turn:10.0.5.31:3478
+# Environment=TURN_USERNAME=kidslandline
+# Environment=TURN_CREDENTIAL=secret-from-pve-root-creds-file
 EnvironmentFile=-/var/lib/kids-landline/bridge.env
 ExecStart=/usr/bin/node src/index.mjs
 Restart=on-failure

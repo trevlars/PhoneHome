@@ -165,7 +165,14 @@ export function buildHt801ConfigXml(input: Ht801ConfigInput): string {
   // ephemeral Contact (e.g. :53622). FreePBX then cannot re-INVITE after the
   // TLS session drops (Unavail / Allocation failed). Pin to Local SIP Port.
   lines.push(p("P20501", 0)); // Use Random SIP Port: No
+  // Pulse dialing must stay ON: Gemma’s FXS handset is pulse (clicks, not DTMF).
+  // Factory default / accidental 0 silently black-holes outbound (dialtone, no INVITE).
+  // Tradeoff: Flash→hold (P26062) can mis-detect on pulse lines; softphone hold and
+  // in-call `#` DTMF hold still work when the handset can send tones.
+  lines.push(p("P20521", 1)); // Enable Pulse Dialing: Yes (required for pulse handsets)
   lines.push(p("P52", 2)); // NAT Traversal: Keep-Alive (remote / public SIP)
+  // Blank UDP keep-alive interval (seconds) while NAT Traversal = Keep-Alive.
+  lines.push(p("P84", 20));
   lines.push(p("P130", 2)); // SIP Transport: TLS
   lines.push(p("P2329", 0)); // SIP URI Scheme When Using TLS: sip (not sips)
   // Preferred vocoder: PCMU (0) then PCMA (8) — G.711 for FreePBX / bridge
@@ -180,11 +187,25 @@ export function buildHt801ConfigXml(input: Ht801ConfigInput): string {
   // P8463: Validate Server Certificates (1=Yes). On for public-CA FQDNs; off for LAN IPs.
   lines.push(p("P8463", validate ? 1 : 0));
   lines.push(p("P81", 0)); // Unregister On Reboot: No
+  // Do not allow outbound when unregistered — clearer failure than a black hole.
+  lines.push(p("P109", 0)); // Outgoing Call without Registration: No
   // Register Expiration, in minutes. Grandstream defaults to 60, which means a
   // FreePBX/Asterisk restart drops the contact and the ATA does not notice for
   // up to an hour — the line looks dead until someone power-cycles it. Keep this
-  // above the AOR's minimum_expiration (60s) and well under maximum_expiration.
-  lines.push(p("P32", 3));
+  // at/above the AOR's minimum_expiration (60s) and well under maximum_expiration.
+  // Remote ATAs phone home through a TCP TLS proxy; dead Contacts must refresh fast.
+  lines.push(p("P32", 1));
+  // Re-REGISTER this many seconds before expiration (keeps Contact fresh).
+  lines.push(p("P2330", 15));
+  // Faster retry when REGISTER fails (seconds).
+  lines.push(p("P138", 10));
+  // SIP OPTIONS Keep-Alive: when the TLS path via the SIP proxy dies after a
+  // call, FreePBX marks the Contact Unavail and Gemma→Beckett gets "cannot be
+  // completed as dialed" until re-REGISTER. OPTIONS detects the dead path and
+  // forces re-registration without a power cycle (HT80x Profile 1: 1=OPTIONS).
+  lines.push(p("P2397", 1)); // Enable SIP OPTIONS/NOTIFY Keep Alive: OPTIONS
+  lines.push(p("P2398", 15)); // Interval (seconds) — detect dead path quickly
+  lines.push(p("P2399", 3)); // Max lost before re-REGISTER
   lines.push(p("P4567", 0)); // Allow Incoming SIP from Proxy Only — No (lab)
   // E911 / emergency dialing (Advanced → E911/HELD). Numbers must never be empty
   // (empty P8597 can crash some HT8xx firmware). Real PSAP still needs a SIP trunk;
@@ -194,7 +215,19 @@ export function buildHt801ConfigXml(input: Ht801ConfigInput): string {
   lines.push(p("P8599", 1)); // Priority Header: emergency
   // Dial plan: speed-dial 0–9 + emergency + *98 / bare * Messages (*x+ keeps *0–*9).
   // Bare `*` alone was missing — HT801 never INVITEd FreePBX for softphone-parity Messages.
-  lines.push(p("P90", "{ [0-9] | 911 | 933 | *98 | * | *x+ | *xx*x+ }"));
+  // HT801 (gen1) uses P90; HT801V2 Port Settings dial plan is P4200 — both must match or
+  // V2 keeps the factory `{ x+ | … }` plan (waits for digit timeout, no instant 0–9).
+  const dialPlan = "{ [0-9] | 911 | 933 | *98 | * | *x+ | *xx*x+ }";
+  lines.push(p("P90", dialPlan));
+  lines.push(p("P4200", dialPlan));
+  // After remote BYE (softphone hangup), drop loop current so the next off-hook
+  // gets a clean dialtone + DTMF detect — without this, HT801V2 often keeps
+  // dialtone but ignores keypad until power-cycle.
+  lines.push(p("P892", 1)); // Loop Current Disconnect: Yes
+  // Enable Call Features: Flash → hold, 3-way, etc. Factory default is 1 but pin
+  // explicitly so a config reset cannot quietly break analog hold.
+  lines.push(p("P26062", 1)); // Enable Call Features: Yes (Flash→hold via ATA)
+  lines.push(p("P21925", 1)); // Play busy/reorder before LCD on call fail
 
   if (input.configServerPath) {
     const via = input.upgradeVia ?? 2;
@@ -207,7 +240,9 @@ export function buildHt801ConfigXml(input: Ht801ConfigInput): string {
     lines.push(p("P192", ""));
     lines.push(p("P238", 0));
     lines.push(p("P194", 1)); // Always Check for New Firmware / config
-    lines.push(p("P193", 10080)); // check weekly (minutes)
+    // Minutes between config checks. Weekly left remotes stale after server-side
+    // provision fixes; 60m is enough with SIP check-sync for urgent pushes.
+    lines.push(p("P193", 60));
   }
 
   lines.push(`  </config>`);

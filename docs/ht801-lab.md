@@ -13,15 +13,17 @@
 
 ## Super-easy parent flow (preferred)
 
-In the app: **Parent → Analog Phone**. The parent phone app can be anywhere. **One-tap / Set up adapter** only works when **PhoneHome at your house** (the home hub / CT running the service) shares Wi‑Fi with the HT801 — not because the parent’s phone is on that LAN. Otherwise: plug Ethernet, open the adapter’s web page by IP, **Download config** from the app, upload on the HT801 (from any device that can reach the adapter’s local UI), reboot, plug a phone, dial **0** (parent) or **1–9**. Contacts stay in PhoneHome (changing a speed dial in the app updates the handset; no re-upload). Config Server Path is optional/advanced.
+In the app: **Parent → Analog Phone**. The parent phone app can be anywhere. **One-tap / Set up adapter** only works when **PhoneHome at your house** (the home hub / CT running the service) shares Wi‑Fi with the HT801 — not because the parent’s phone is on that LAN. Otherwise: plug Ethernet, open the adapter’s web page by IP, **Download config** from the app, upload on the HT801 (from any device that can reach the adapter’s local UI), reboot, plug a phone, dial **0** (TreeHouse), **1** (Home/parent), or **2–9** (speed dial). Contacts stay in PhoneHome (changing a speed dial in the app updates the handset; no re-upload). Config Server Path is optional/advanced.
 
-**SIP extensions are auto-assigned** unique per ATA/line (starting at `2001`) when you save the connection — Gemma and cousins never share a number. PhoneHome also auto-generates the SIP password. Parents cannot edit or override the extension (anti-takeover). You still need a matching FreePBX extension (same number + secret) until auto-provision exists. Lab: child line Gemma / `line_yfGcRwQbNr`; server **`y5876647.eero.online`** (public; requires eero **TCP 5061** + **UDP 10000–10200** → FreePBX — see `docs/hosting.md`).
+**SIP extensions are auto-assigned** unique per ATA/line (starting at `2001`) when you save the connection — Gemma and cousins never share a number. PhoneHome also auto-generates the SIP password. Parents cannot edit or override the extension (anti-takeover). On Save (and before Download/push), PhoneHome **creates or updates the matching FreePBX PJSIP extension** via `phonehome-freepbx-syncd` → `phonehome-set-sip-secret` (TLS + SRTP; `rewrite_contact=yes` for remote public SIP hosts, `no` for lab LAN). Manual FreePBX clicking is no longer required for new ATAs.
+
+Lab: child line Gemma / `line_yfGcRwQbNr`; server **`y5876647.eero.online`** (public; requires eero **TCP 5061** + **UDP 10000–10200** → FreePBX — see `docs/hosting.md`).
 
 1. Open PhoneHome → **Parent** → **Analog Phone**.
 2. Select the child line (lab: Gemma / `line_yfGcRwQbNr`).
-3. **Save connection** (Advanced: server/MAC/caller ID only — extension is read-only after assign). Note the assigned extension, then create that extension on FreePBX with the password from the downloaded config.
+3. **Save connection** (Advanced: server/MAC/caller ID only — extension is read-only after assign). FreePBX gets the extension + secret automatically.
 4. **Download config** / **Set up adapter** → reboot when asked.
-5. Plug RJ11 phone into FXS. Dial **0** (parent / Home) or **1–9**.
+5. Plug RJ11 phone into FXS. Dial **0** (TreeHouse), **1** (Home/parent), or **2–9** (speed dial).
 
 ## Manual SIP settings (if you skip PhoneHome config)
 
@@ -174,6 +176,10 @@ Configs use **`SIP_PUBLIC_HOST`** / `y5876647.eero.online` as the SIP server so 
 
 Required eero forwards: **TCP 5061 → 10.0.5.31** (PVE SIP TLS proxy → FreePBX), **UDP 10000–10200 → 10.0.5.105**. See `docs/hosting.md`.
 
+**Remote audio gotcha:** `rewrite_contact=yes` makes the PJSIP Contact the PVE proxy (`10.0.5.31`). Transport `local_net` must **not** be `10.0.0.0/8` (that IP looks “local”), or Asterisk advertises private RTP to the remote HT801 — ring works, **no audio**. Use `local_net=10.0.4.0/24` (lab ATA LAN) and set `media_address=<public IP>` on remote endpoints (`phonehome-set-sip-secret`).
+
+**Remote “cannot be completed as dialed” after a good call:** FreePBX→ATA originates need a live TLS Contact through the PVE socat proxy. After some calls that Contact goes Unavail until the HT801 re-REGISTERs (Beckett can often still *place* calls). Mitigations in PhoneHome HT801 XML: **SIP OPTIONS Keep-Alive** (`P2397=1`, 15s), **1-minute register** (`P32=1`), NAT keep-alive (`P84=20`), plus Asterisk TLS `tcp_keepalive_*`, AOR `max_contacts=1` + `remove_unavailable=yes` (`(+type=aor)`). After changing XML: Parent → Analog → **Download config** → upload on the box → reboot once.
+
 Lab ATA: prefer public hostname (hairpin via PVE proxy). Advanced → server `10.0.5.105` still works on-site but keeps cert validation **off** (IP / no free LE IP cert).
 
 ## Softphone vs ATA keypad (* / # / 0)
@@ -183,10 +189,11 @@ On the PhoneHome **softphone** Home pad, bottom row is **\* · 0 · \#**:
 | Key | Softphone |
 | --- | --- |
 | **\*** | Messages — opens Messages and starts Play (new first) |
-| **0** | **Home** — calls the household’s designated parent line (locked slot; not rearrangeable). Rule: first line with `mode=parent` (by `created_at`, then `id`). On the parent’s own pad, 0 is unused (would be self). |
+| **0** | **TreeHouse** — kid hangout voice room (house pad; parents listen-only in app) |
+| **1** | **Home** — calls the household’s designated parent line (locked slot). On a parent’s own pad, 1 targets the household child slot. |
 | **\#** | Redial last placeable outbound target (else “Nothing to redial”). In-call hold uses the **Hold** button. |
 
-**ATA / FreePBX:** HT801 dials **0–9** via Stasis (`0` = same Home/parent resolve as softphone). Dial **\*98** (or bare **\*** after the ATA’s No Key Timeout) for the PhoneHome Messages / greeting assistant (shared softphone inbox — not FreePBX Comedian Mail). Softphone **\#** redial is not wired on the ATA.
+**ATA / FreePBX:** HT801 dials **0–9** via Stasis — **0 = TreeHouse**, **1 = Home/parent** (same as softphone pads 0 and 1). Dial **\*98** (or bare **\*** after the ATA’s No Key Timeout) for the PhoneHome Messages / greeting assistant (shared softphone inbox — not FreePBX Comedian Mail). Softphone **\#** redial is not wired on the ATA.
 
 **During an analog call:** press **\#** to put the other party on hold (they hear music on hold); press **\#** again to resume. Works softphone↔analog and analog↔analog.
 
@@ -225,7 +232,7 @@ Parent → Analog Phone → pick **Adapter for this line** (kid) → **Set up ad
 
 If login fails with “tries left” / “locked”, wait ~2 minutes. After a successful setup, the sticker password no longer works — use the new admin password you chose.
 
-1. Save SIP connection once (extension + password auto-assigned and locked; create the same extension on FreePBX until auto-provision exists).
+1. Save SIP connection once (extension + password auto-assigned and locked; FreePBX extension is created via `freepbx-sync` on Save).
 2. Enter adapter LAN IP, password printed on the box, and a new admin password (8–30 chars, upper+lower+digit, **no symbols**).
 3. **PhoneHome at your house** (the hub/host process — not the parent’s phone browser) logs into the HT801 (`/cgi-bin/dologin`), sets the new password, uploads config XML (`/cgi-bin/upload_cfg`), and reboots.
 

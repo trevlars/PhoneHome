@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PhoneHome — Family invite card</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=DM+Sans:wght@400;600&display=swap");
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: #e8efe9;
+      color: #16241e;
+      padding: 1.5rem;
+    }
+    .toolbar {
+      max-width: 720px;
+      margin: 0 auto 1rem;
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: end;
+    }
+    .toolbar label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; }
+    .toolbar input {
+      font: inherit;
+      padding: 0.5rem 0.65rem;
+      border: 1px solid #9bb5a4;
+      border-radius: 8px;
+      min-width: 220px;
+    }
+    button {
+      font: inherit;
+      font-weight: 600;
+      padding: 0.55rem 1rem;
+      border: none;
+      border-radius: 8px;
+      background: #2d6a4f;
+      color: #fff;
+      cursor: pointer;
+    }
+    button.secondary { background: #fff; color: #2d6a4f; border: 1px solid #2d6a4f; }
+    .card {
+      max-width: 720px;
+      margin: 0 auto;
+      background: #fffef8;
+      border-radius: 20px;
+      box-shadow: 0 12px 40px rgba(22, 36, 30, 0.12);
+      overflow: hidden;
+      border: 2px solid #c9dccf;
+    }
+    .card-inner {
+      padding: 2rem 2.25rem 2.25rem;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(45, 106, 79, 0.12), transparent),
+        linear-gradient(180deg, #fffef8 0%, #f4f9f5 100%);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .house {
+      width: 52px;
+      height: 52px;
+      background: #2d6a4f;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      font-size: 1.6rem;
+    }
+    h1 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.75rem;
+      margin: 0;
+      line-height: 1.15;
+    }
+    .tagline { margin: 0.15rem 0 0; color: #4a6358; font-size: 0.95rem; }
+    .invite-box {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1.5rem;
+      align-items: center;
+      margin-top: 1.5rem;
+      padding: 1.25rem;
+      background: #fff;
+      border-radius: 14px;
+      border: 1px dashed #9bb5a4;
+    }
+    .url {
+      font-size: 1.05rem;
+      font-weight: 600;
+      word-break: break-all;
+      color: #1b4332;
+    }
+    .code-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b7f74;
+      margin-bottom: 0.35rem;
+    }
+    .code {
+      font-family: ui-monospace, monospace;
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      color: #2d6a4f;
+    }
+    #qr {
+      width: 120px;
+      height: 120px;
+      background: #fff;
+      border-radius: 8px;
+    }
+    ol {
+      margin: 1.25rem 0 0;
+      padding-left: 1.2rem;
+      line-height: 1.55;
+      color: #2f4639;
+    }
+    .footer {
+      margin-top: 1.25rem;
+      font-size: 0.8rem;
+      color: #6b7f74;
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .toolbar { display: none; }
+      .card { box-shadow: none; border: 1px solid #ccc; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label>PhoneHome URL <input id="urlIn" type="url" placeholder="https://phonehome.example.com:8443" /></label>
+    <label>Invite code <input id="codeIn" type="text" maxlength="6" placeholder="123456" /></label>
+    <label>Household name <input id="nameIn" type="text" placeholder="The Smiths" /></label>
+    <button type="button" onclick="render()">Update</button>
+    <button type="button" class="secondary" onclick="window.print()">Print / Save PDF</button>
+  </div>
+
+  <article class="card" id="card">
+    <div class="card-inner">
+      <div class="brand">
+        <div class="house" aria-hidden="true">🏠</div>
+        <div>
+          <h1 id="title">Join us on PhoneHome</h1>
+          <p class="tagline">Private family voice — encrypted calls, parent-approved contacts</p>
+        </div>
+      </div>
+      <div class="invite-box">
+        <div>
+          <div class="code-label">Open this link on your phone</div>
+          <div class="url" id="urlOut">https://…</div>
+          <div style="margin-top:1rem">
+            <div class="code-label">Invite code</div>
+            <div class="code" id="codeOut">——</div>
+          </div>
+        </div>
+        <div id="qr" aria-hidden="true"></div>
+      </div>
+      <ol>
+        <li>Open the link in Safari or Chrome (use <strong>https</strong>, not a LAN address).</li>
+        <li>Tap <strong>I was invited</strong> → create your account.</li>
+        <li>Enter the 6-digit code → add your softphone.</li>
+        <li>We approve each other → you can call.</li>
+      </ol>
+      <p class="footer">PhoneHome — your family's private line. No ads, no call recording. Host: <span id="hostName">you</span>.</p>
+    </div>
+  </article>
+
+  <script type="module">
+    import { toSvg } from "../web/public/vendor/better-qr.js";
+
+    const urlIn = document.getElementById("urlIn");
+    const codeIn = document.getElementById("codeIn");
+    const nameIn = document.getElementById("nameIn");
+
+    const params = new URLSearchParams(location.search);
+    urlIn.value = params.get("url") || localStorage.getItem("ph_invite_url") || "";
+    codeIn.value = params.get("code") || localStorage.getItem("ph_invite_code") || "";
+    nameIn.value = params.get("name") || localStorage.getItem("ph_invite_name") || "";
+
+    window.render = function render() {
+      const url = urlIn.value.trim().replace(/\/$/, "");
+      const code = codeIn.value.replace(/\D/g, "").slice(0, 6);
+      const name = nameIn.value.trim() || "our family";
+      localStorage.setItem("ph_invite_url", url);
+      localStorage.setItem("ph_invite_code", code);
+      localStorage.setItem("ph_invite_name", name);
+
+      document.getElementById("title").textContent =
+        name === "our family" ? "Join us on PhoneHome" : `Join ${name} on PhoneHome`;
+      document.getElementById("hostName").textContent = name;
+      document.getElementById("urlOut").textContent = url || "https://your-phonehome-url";
+      document.getElementById("codeOut").textContent = code || "————";
+
+      const qr = document.getElementById("qr");
+      qr.innerHTML = "";
+      if (url) {
+        const svg = toSvg(url, { margin: 1, scale: 4 });
+        qr.innerHTML = svg;
+      }
+    };
+
+    render();
+  </script>
+</body>
+</html>

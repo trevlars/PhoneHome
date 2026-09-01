@@ -392,9 +392,10 @@ export async function pushHt801Config(input: Ht801PushInput): Promise<Ht801PushR
   );
   const upText = await upRes.text();
   let upOk = false;
+  let upJson: GsJson | null = null;
   try {
-    const upJson = JSON.parse(upText) as GsJson;
-    upOk = upJson.response === "success" || /success/i.test(JSON.stringify(upJson.body ?? ""));
+    upJson = JSON.parse(upText) as GsJson;
+    upOk = upJson.response === "success" || /success|needreboot/i.test(JSON.stringify(upJson.body ?? ""));
     if (!upOk) {
       const why = failReason(upJson.body, "upload rejected");
       if (/invalid file/i.test(why)) throw new Error("Adapter rejected the config file (invalid file)");
@@ -404,6 +405,9 @@ export async function pushHt801Config(input: Ht801PushInput): Promise<Ht801PushR
       if (/busy/i.test(why)) throw new Error("Adapter is busy — wait a moment and try once");
       throw new Error(`Config upload rejected (${why})`);
     }
+    // restore_cfg often rotates the session — reboot with the new token if present.
+    const rotated = sessionFrom(upJson.body);
+    if (rotated) session = rotated;
   } catch (e) {
     if (upOk) {
       /* already accepted */
@@ -420,17 +424,52 @@ export async function pushHt801Config(input: Ht801PushInput): Promise<Ht801PushR
     }
   }
 
-  // 4) Reboot so SIP + password apply
+  // 4) Reboot so SIP + password apply. Do not claim success on a 401/invalid-session body.
   let rebooted = false;
   if (!input.skipReboot) {
     try {
-      await fetchFn(`${base}/cgi-bin/rs`, {
+      const rbRes = await fetchFn(`${base}/cgi-bin/rs`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formBody({ session_token: session }),
         signal: AbortSignal.timeout(8000),
       });
-      rebooted = true;
+      const rbText = await rbRes.text();
+      let rbOk = /success|ok|reboot/i.test(rbText) && !/invalid session|unauthorized|fail/i.test(rbText);
+      try {
+        const rbJson = JSON.parse(rbText) as GsJson;
+        rbOk = rbJson.response === "success";
+      } catch {
+        /* non-JSON: keep heuristic */
+      }
+      if (!rbOk) {
+        // One more try after a fresh login (upload can invalidate the prior session).
+        const reloginRes = await fetchFn(`${base}/cgi-bin/dologin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: formBody({ username: "admin", P2: encodeP2(next) }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const reloginJson = await readJson(reloginRes);
+        const tok2 = sessionFrom(reloginJson.body);
+        if (reloginJson.response === "success" && tok2) {
+          const rb2 = await fetchFn(`${base}/cgi-bin/rs`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: formBody({ session_token: tok2 }),
+            signal: AbortSignal.timeout(8000),
+          });
+          const rb2Text = await rb2.text();
+          try {
+            const rb2Json = JSON.parse(rb2Text) as GsJson;
+            rebooted = rb2Json.response === "success";
+          } catch {
+            rebooted = /success|ok|reboot/i.test(rb2Text) && !/invalid session/i.test(rb2Text);
+          }
+        }
+      } else {
+        rebooted = true;
+      }
     } catch {
       rebooted = false;
     }

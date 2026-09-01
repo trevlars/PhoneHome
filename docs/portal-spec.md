@@ -45,7 +45,7 @@ Quiet Time (instant + scheduled windows) is evaluated with VIP exceptions. Sched
 - `POST /api/auth/login|register|logout`
 - `GET /api/me` (households include `dnd`, `usage_today_minutes`, allowlist `always_allow` + `mutual`)
 - `POST /api/households`
-- `PATCH /api/households/:id/rules` (kill, dnd, quiet, quiet_days, skip_holidays, cap, preset, PIN)
+- `PATCH /api/households/:id/rules` (kill, dnd, quiet, quiet_days, skip_holidays, cap, preset, parent DND, PIN)
 - `POST /api/households/:id/pin/verify`
 - `POST /api/households/:id/lines`
 - `POST /api/households/:id/invites`

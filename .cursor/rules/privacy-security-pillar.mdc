@@ -1,0 +1,21 @@
+---
+description: PhoneHome privacy & encryption pillar — children’s conversations are sacred; never ship cleartext voice paths.
+alwaysApply: true
+---
+
+# Privacy & security pillar (always)
+
+PhoneHome is for **family and children’s private calls**. Encryption and security are a **product pillar**, not a backlog nicety. Full doctrine: `docs/privacy-security.md`.
+
+## Hard rules for this repo
+
+- **Never** introduce or re-enable a supported **public cleartext SIP (UDP 5060) or plain RTP** path for production/parent UI. Lab-only exceptions need an explicit time-boxed note in `docs/threat-model.md`.
+- **Softphones:** WebRTC **DTLS-SRTP**; app/API over **HTTPS** off-LAN.
+- **Analog (HT801):** provision **SIP TLS + SRTP forced** (`P130=2`, `P183=2`). Do not “simplify” back to UDP for convenience.
+- **Do not** log SIP passwords, SRTP/DTLS keys, or SDP crypto lines.
+- **Do not** add call recording, cloud transcription, or analytics on call content without explicit product + legal review.
+- **Listen-in / silent join** stays constrained by `docs/listen-in-future.md` — audited, parent-policy, not invisible adult spyware.
+- Prefer **data minimization**: allowlists and presence over content retention.
+- Self-signed SIP TLS + disabled ATA cert validation is **known debt** — prefer real CA certs; do not expand that pattern without documenting it.
+
+When a change trades privacy for convenience, **refuse the convenience** or escalate in the doc + threat model before merging.

@@ -29,7 +29,16 @@ FREEPBX_IP="${FREEPBX_IP:-10.0.5.105}"
 # every analog REGISTER, which is exactly why banning it took the line down.
 SIP_PROXY_IP="${SIP_PROXY_IP:-10.0.5.31}"
 SIP_PROXY_PORT="${SIP_PROXY_PORT:-5061}"
-SIP_HOST="${SIP_HOST:-y5876647.eero.online}"
+SIP_HOST="${SIP_HOST:-}"
+if [[ -z "$SIP_HOST" ]]; then
+  SIP_HOST="$(ct "$PHONEHOME_CT" "grep -E '^SIP_PUBLIC_HOST=' /var/lib/kids-landline/phonehome.env 2>/dev/null | head -1 | cut -d= -f2-" || true)"
+  SIP_HOST="${SIP_HOST%\"}"
+  SIP_HOST="${SIP_HOST#\"}"
+fi
+if [[ -z "$SIP_HOST" ]]; then
+  echo "SIP_HOST is required (set in phonehome.env or export SIP_HOST=…)" >&2
+  exit 1
+fi
 F2B_JAIL="${F2B_JAIL:-asterisk-iptables}"
 F2B_WHITELIST="${F2B_WHITELIST:-/etc/fail2ban/jail.d/zz-phonehome-trusted.local}"
 TRUSTED_NETS="${TRUSTED_NETS:-10.0.4.0/24 10.0.5.0/24}"

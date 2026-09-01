@@ -1,6 +1,6 @@
 # PhoneHome
 
-Open, Digits-inspired private family voice network — **PhoneHome**: the home phone, remixed. **Stage 1** ships now: a shared signaling server (“Minecraft clubhouse”) plus mobile-friendly **web softphones** with households, invites, allowlists, quiet hours, kill switch, and encrypted WebRTC calls.
+Open, Digits-inspired private family voice network — **PhoneHome**: the home phone, reborn. **Stage 1** ships now: a shared signaling server (“Minecraft clubhouse”) plus mobile-friendly **web softphones** with households, invites, allowlists, quiet hours, kill switch, and encrypted WebRTC calls.
 
 **iOS CallKit shell (in progress):** Capacitor app in [`mobile/`](mobile/) — see [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
 
@@ -38,15 +38,27 @@ Cousins need **no VPN** — only the server URL + invite code.
 
 ## Host for other parents
 
-Remote phones need **HTTPS**. Run the Stage 1 server on a always-on host (Pi / VPS / Proxmox LXC), then put a Cloudflare Tunnel (or any reverse proxy with TLS) in front. See **`docs/hosting.md`**.
+Remote phones need **HTTPS**. See **[`docs/self-host.md`](docs/self-host.md)** for the full guide (background service on Mac/Windows/Linux, Docker, analog stack).
 
-Quick tunnel example (prints a `*.trycloudflare.com` URL):
+Quick path:
+
+```bash
+./deploy/phonehome-init.sh    # writes ~/.phonehome/phonehome.env
+./deploy/install-service.sh   # LaunchAgent / systemd / Windows task
+```
+
+Cloudflare quick tunnel (no port forward):
 
 ```bash
 cloudflared tunnel --url http://127.0.0.1:8787
+# set PUBLIC_BASE_URL to the printed https://….trycloudflare.com URL
 ```
 
-Share that URL + an invite code. Host setup code is printed on first boot (`data/HOST_CODE.txt` or `DATA_DIR/HOST_CODE.txt`).
+Share that URL + an invite code. Host setup code is printed on first boot (`DATA_DIR/HOST_CODE.txt`).
+
+**Invite card:** open [`deploy/invite-card.html`](deploy/invite-card.html) in a browser → enter URL + code → Print / Save PDF for cousins.
+
+**Analog (HT801):** after init, run [`deploy/setup-analog.sh`](deploy/setup-analog.sh) and [`deploy/install-freepbx-sync.sh`](deploy/install-freepbx-sync.sh) on FreePBX — see [`docs/self-host.md`](docs/self-host.md).
 
 ## Repo layout
 
@@ -54,7 +66,7 @@ Share that URL + an invite code. Host setup code is printed on first boot (`data
 | --- | --- |
 | `server/` | Stage 1 signaling + REST API (SQLite) |
 | `web/` | Parent PWA / softphone UI |
-| `docs/` | Specs + **[`privacy-security.md`](docs/privacy-security.md)** pillar, threat model, hosting, Hub/BT |
+| `docs/` | Specs + **[`self-host.md`](docs/self-host.md)**, privacy pillar, threat model, lab hosting |
 | `hardware/` | Stage 2 HW stubs (hub, satellite, bt-landline) |
 | `hub-os/` | Future appliance image notes |
 | `bridged/` | Future SIP↔WebRTC / FXS gateway notes |

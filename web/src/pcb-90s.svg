@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" fill="none">
+  <!--
+    Original tileable PCB / motherboard motif for PhoneHome 90s Tech theme.
+    Free for use with this project. Barely-visible under Bondi atmosphere washes.
+  -->
+  <rect width="480" height="480" fill="#0a1f28"/>
+  <!-- FR4 body hint -->
+  <rect width="480" height="480" fill="#0d2a34" opacity="0.9"/>
+
+  <!-- Copper-ish traces -->
+  <g stroke="#3d8a7a" stroke-width="2.5" stroke-linecap="square" opacity="0.85">
+    <path d="M40 40h120v40h80"/>
+    <path d="M40 40v100h60"/>
+    <path d="M240 60h140v80H280v40"/>
+    <path d="M420 40v160h-60v40"/>
+    <path d="M80 200h160v60H160v80"/>
+    <path d="M300 220h100v120H280"/>
+    <path d="M40 360h100v80"/>
+    <path d="M200 380h180v40h60"/>
+    <path d="M120 120h40v80h-40"/>
+    <path d="M360 140v60h80"/>
+    <path d="M60 280h80v40H60"/>
+    <path d="M400 300h40v100"/>
+  </g>
+
+  <!-- Secondary thinner traces -->
+  <g stroke="#2a6b7a" stroke-width="1.5" opacity="0.7">
+    <path d="M100 80h40v60"/>
+    <path d="M200 100h80"/>
+    <path d="M320 180h60v40"/>
+    <path d="M140 260h60"/>
+    <path d="M260 320h80v40"/>
+    <path d="M80 400h40"/>
+    <path d="M380 80v40h40"/>
+    <path d="M440 200v80"/>
+    <path d="M180 160v40h40"/>
+    <path d="M40 240h40"/>
+  </g>
+
+  <!-- Vias / pads -->
+  <g fill="#4aa8b8" opacity="0.75">
+    <circle cx="40" cy="40" r="4"/>
+    <circle cx="160" cy="40" r="4"/>
+    <circle cx="240" cy="60" r="4"/>
+    <circle cx="380" cy="60" r="4"/>
+    <circle cx="420" cy="40" r="4"/>
+    <circle cx="100" cy="140" r="4"/>
+    <circle cx="160" cy="200" r="4"/>
+    <circle cx="240" cy="260" r="4"/>
+    <circle cx="380" cy="220" r="4"/>
+    <circle cx="420" cy="200" r="4"/>
+    <circle cx="140" cy="360" r="4"/>
+    <circle cx="280" cy="340" r="4"/>
+    <circle cx="380" cy="420" r="4"/>
+    <circle cx="440" cy="400" r="4"/>
+    <circle cx="60" cy="280" r="3.5"/>
+    <circle cx="200" cy="380" r="3.5"/>
+    <circle cx="360" cy="140" r="3.5"/>
+  </g>
+
+  <!-- Chip outlines -->
+  <g stroke="#5ecf9a" stroke-width="1.75" fill="none" opacity="0.65">
+    <rect x="180" y="140" width="72" height="56" rx="2"/>
+    <rect x="300" y="280" width="88" height="48" rx="2"/>
+    <rect x="70" y="300" width="56" height="40" rx="2"/>
+  </g>
+  <!-- Chip pins -->
+  <g stroke="#3d8a7a" stroke-width="1.25" opacity="0.7">
+    <path d="M186 140v-8M194 140v-8M202 140v-8M210 140v-8M218 140v-8M226 140v-8M234 140v-8M242 140v-8"/>
+    <path d="M186 196v8M194 196v8M202 196v8M210 196v8M218 196v8M226 196v8M234 196v8M242 196v8"/>
+    <path d="M306 280v-8M314 280v-8M322 280v-8M330 280v-8M338 280v-8M346 280v-8M354 280v-8M362 280v-8M370 280v-8M378 280v-8"/>
+    <path d="M306 328v8M314 328v8M322 328v8M330 328v8M338 328v8M346 328v8M354 328v8M362 328v8M370 328v8M378 328v8"/>
+  </g>
+
+  <!-- DIP package -->
+  <g opacity="0.6">
+    <rect x="320" y="90" width="28" height="64" rx="1" fill="none" stroke="#6eb8c8" stroke-width="1.5"/>
+    <path stroke="#3d8a7a" stroke-width="1.2" d="M320 98h-8M320 106h-8M320 114h-8M320 122h-8M320 130h-8M320 138h-8M320 146h-8"/>
+    <path stroke="#3d8a7a" stroke-width="1.2" d="M348 98h8M348 106h8M348 114h8M348 122h8M348 130h8M348 138h8M348 146h8"/>
+  </g>
+
+  <!-- Ground pour hints (subtle fills) -->
+  <path fill="#123844" opacity="0.5" d="M0 0h40v40H0zM440 440h40v40h-40zM0 440h40v40H0z"/>
+</svg>

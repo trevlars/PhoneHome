@@ -8,7 +8,8 @@ const dest = path.join(__dirname, "public");
 
 fs.mkdirSync(dest, { recursive: true });
 for (const file of fs.readdirSync(src)) {
-  fs.copyFileSync(path.join(src, file), path.join(dest, file));
+  // vendor/ and other dirs need recursive copy (copyFileSync rejects directories).
+  fs.cpSync(path.join(src, file), path.join(dest, file), { recursive: true });
 }
 
 // Cache-bust app.js / app.css so iOS Safari doesn't keep a pre-HTTPS bundle.
@@ -18,7 +19,13 @@ if (fs.existsSync(indexPath)) {
   let html = fs.readFileSync(indexPath, "utf8");
   html = html
     .replace(/(href="\/app\.css)(?:\?[^"]*)?(")/, `$1?v=${v}$2`)
-    .replace(/(src="\/app\.js)(?:\?[^"]*)?(")/, `$1?v=${v}$2`);
+    .replace(/(src="\/app\.js)(?:\?[^"]*)?(")/, `$1?v=${v}$2`)
+    .replace(/(href="\/icon\.svg)(?:\?[^"]*)?(")/, `$1?v=${v}$2`)
+    .replace(/(href="\/favicon\.ico)(?:\?[^"]*)?(")/, `$1?v=${v}$2`)
+    .replace(/(href="\/favicon-32\.png)(?:\?[^"]*)?(")/, `$1?v=${v}$2`)
+    .replace(/(href="\/favicon-16\.png)(?:\?[^"]*)?(")/, `$1?v=${v}$2`)
+    .replace(/(href="\/apple-touch-icon\.png)(?:\?[^"]*)?(")/, `$1?v=${v}$2`)
+    .replace(/(href="\/icon-1024\.png)(?:\?[^"]*)?(")/, `$1?v=${v}$2`);
   fs.writeFileSync(indexPath, html);
   console.log(`web: cache-bust v=${v}`);
 }
@@ -28,7 +35,7 @@ console.log(`web: copied ${fs.readdirSync(src).length} files to public/`);
 if (process.argv.includes("--watch")) {
   fs.watch(src, { recursive: true }, () => {
     for (const file of fs.readdirSync(src)) {
-      fs.copyFileSync(path.join(src, file), path.join(dest, file));
+      fs.cpSync(path.join(src, file), path.join(dest, file), { recursive: true });
     }
     console.log("web: rebuilt");
   });

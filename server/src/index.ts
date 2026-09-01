@@ -6,8 +6,12 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
+import { sessionCookieOptions } from "./sessionCookie.js";
+import { groupSignalingRole } from "./treehouseListen.js";
 import {
   addAllowlist,
+  addContactToParentSphere,
+  linkVisibleContactToParentSphere,
   addGuardianByUsername,
   addLine,
   bootstrapAdmin,
@@ -19,6 +23,38 @@ import {
   createInvite,
   canCreateHouseholdInvite,
   declineAllowlist,
+  ensureSphereForParent,
+  getSphereByOwner,
+  listHouseholdParentSpheres,
+  listSphereMemberLineIds,
+  removeLineFromSphere,
+  renameSphere,
+  setLineSphereAccess,
+  listFamilyRoomMembers,
+  addFamilyRoomMember,
+  removeFamilyRoomMember,
+  familyRoomCandidateLines,
+  canJoinFamilyRoom,
+  listFamilyRoomAlwaysAllowedLineIds,
+  listFamilyRoomTalkPairs,
+  addFamilyRoomTalkPair,
+  removeFamilyRoomTalkPair,
+  canTalkInFamilyRoom,
+  familyRoomTalkPeers,
+  MAX_FAMILY_ROOM,
+  listAdultFamilyRoomMembers,
+  addAdultFamilyRoomMember,
+  removeAdultFamilyRoomMember,
+  adultFamilyRoomCandidateLines,
+  canJoinAdultFamilyRoom,
+  listFamilyRoomChoicesForLine,
+  isHouseholdOwner,
+  updateUserProfile,
+  householdAdminParentLine,
+  householdSecondaryParentLine,
+  householdHomeParentLine,
+  listHouseholdParentLines,
+  parentDisplayLabel,
   endCallLog,
   expireStaleRings,
   expireStaleAnswered,
@@ -37,7 +73,11 @@ import {
   redeemGuardianInvite,
   redeemInvite,
   registerParent,
+  provisionGrandparent,
+  resetProvisionedRelativePassword,
+  updateProvisionedRelativeLogin,
   leaveVoicemailForContact,
+  leaveVoicemailFromBridge,
   deleteVoicemail,
   deleteVoicemails,
   lineAnsweringMachineOn,
@@ -70,6 +110,7 @@ import {
   getSessionUser,
   getAtaByLineId,
   getAtaByProvisionToken,
+  getAtaBySipExtension,
   upsertAtaDevice,
   deleteAtaDevice,
   deleteChildLine,
@@ -95,14 +136,32 @@ import { formatFanvilProvisionUrl } from "./g100s.js";
 import {
   deriveAtaStatus,
   parseBridgeSipStatus,
+  shouldAttemptFxsInbound,
   unknownSipStatus,
   type AtaStatusKind,
   type BridgeSipStatus,
 } from "./ataStatus.js";
 import { freepbxSyncConfigured, syncAtaSipSecretToFreepbx } from "./freepbxSync.js";
-import { openDb, type LineType } from "./db.js";
-import { listIosVoipTokensForLine, upsertIosVoipToken } from "./pushDevices.js";
-import { apnsConfigured, sendIosVoipPush } from "./apnsVoip.js";
+import { openDb, type Household, type LineType } from "./db.js";
+import {
+  deleteIosVoipTokensForLine,
+  deletePushDevice,
+  listIosAlertTokensForLine,
+  listIosVoipTokensForLine,
+  setPushDeviceApnsEnv,
+  upsertIosAlertToken,
+  upsertIosVoipToken,
+} from "./pushDevices.js";
+import {
+  apnsConfigured,
+  apnsEnvName,
+  iosCallKitMode,
+  iosCallKitPushEnabled,
+  isApnsBadDeviceToken,
+  sendIosAlertPush,
+  sendIosVoipPush,
+  shouldSendVoipPush,
+} from "./apnsVoip.js";
 
 /**
  * Remote Download config is only safe if FreePBX already holds this secret.
@@ -112,8 +171,13 @@ import { apnsConfigured, sendIosVoipPush } from "./apnsVoip.js";
 async function ensureFreepbxHasAtaSecret(ata: {
   sip_extension: string;
   sip_password: string;
+  sip_server?: string | null;
+  display_name?: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const sync = await syncAtaSipSecretToFreepbx(ata.sip_extension, ata.sip_password);
+  const sync = await syncAtaSipSecretToFreepbx(ata.sip_extension, ata.sip_password, {
+    sipServer: ata.sip_server,
+    displayName: ata.display_name,
+  });
   if (sync.ok) return { ok: true };
   console.warn(
     `[freepbx-sync] fail ext=${ata.sip_extension} err=${sync.error} (download blocked)`
@@ -121,8 +185,8 @@ async function ensureFreepbxHasAtaSecret(ata: {
   return {
     ok: false,
     error:
-      "Couldn’t sync the SIP password to the phone system. Try again in a minute — " +
-      "don’t upload an old Download until this succeeds, or the adapter won’t register.",
+      "Couldn’t prepare the house-phone line on the phone system yet. Wait a minute and try Download again — " +
+      "don’t upload an old file until this works, or the adapter won’t register.",
   };
 }
 
@@ -142,9 +206,27 @@ function buildIceServers(): RTCIceServerLike[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  if (turnUrls.length && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+  // LAN TURN avoids eero hairpin when both phones are home but host↔host ICE fails
+  // (iOS local-network permission / AP quirks). Safe to advertise alongside public TURN.
+  // Coturn runs on the PhoneHome CT (lab: 10.0.5.106), not the Proxmox host IP.
+  // Wrong LAN TURN → ICE stuck in "checking" / silent calls on home Wi‑Fi.
+  const turnLanUrls = (process.env.TURN_LAN_URLS || "turn:10.0.5.106:3478")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allTurn = [...new Set([...turnUrls, ...turnLanUrls])];
+  // TCP fallback when UDP TURN is blocked (cellular / strict Wi‑Fi).
+  const withTransport: string[] = [];
+  for (const u of allTurn) {
+    withTransport.push(u);
+    if (u.startsWith("turn:") && !u.includes("?transport=")) {
+      withTransport.push(`${u}?transport=tcp`);
+    }
+  }
+  const uniqTurn = [...new Set(withTransport)];
+  if (uniqTurn.length && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
     servers.push({
-      urls: turnUrls,
+      urls: uniqTurn,
       username: process.env.TURN_USERNAME,
       credential: process.env.TURN_CREDENTIAL,
     });
@@ -273,12 +355,12 @@ app.post("/api/auth/login", (req, res) => {
         return res.status(400).json({ error: "Username and password required" });
       }
       const { user, session } = loginWithPassword(db, String(username), String(password));
-      res.cookie("kl_session", session.id, { httpOnly: true, sameSite: "lax", maxAge: 30 * 864e5 });
+      res.cookie("kl_session", session.id, sessionCookieOptions(req));
       return res.json({ user: pub(user), sessionId: session.id });
     }
     if (!code) return res.status(400).json({ error: "Username/password or setup code required" });
     const { user, session } = loginWithSetupCode(db, String(code), displayName);
-    res.cookie("kl_session", session.id, { httpOnly: true, sameSite: "lax", maxAge: 30 * 864e5 });
+    res.cookie("kl_session", session.id, sessionCookieOptions(req));
     res.json({ user: pub(user), sessionId: session.id });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -299,7 +381,7 @@ app.post("/api/auth/register", (req, res) => {
       username: String(username),
       password: String(password),
     });
-    res.cookie("kl_session", result.sessionId, { httpOnly: true, sameSite: "lax", maxAge: 30 * 864e5 });
+    res.cookie("kl_session", result.sessionId, sessionCookieOptions(req));
     res.json({
       user: publicUser(result.user, { isChildOnly: isChildOnlyAccount(db, result.user.id) }),
       sessionId: result.sessionId,
@@ -328,7 +410,7 @@ app.post("/api/auth/set-password", (req, res) => {
 app.post("/api/auth/logout", (req, res) => {
   const sid = sessionId(req);
   if (sid) db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sid);
-  res.clearCookie("kl_session");
+  res.clearCookie("kl_session", sessionCookieOptions(req));
   res.json({ ok: true });
 });
 
@@ -340,7 +422,7 @@ app.post("/api/account/delete", (req, res) => {
     const result = deleteParentAccount(db, user.id, DATA_DIR, { confirm });
     const sid = sessionId(req);
     if (sid) db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sid);
-    res.clearCookie("kl_session");
+    res.clearCookie("kl_session", sessionCookieOptions(req));
     res.json(result);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -393,8 +475,23 @@ app.post("/api/households/:id/lines", (req, res) => {
   if (!userInHousehold(db, req.params.id, user.id)) {
     return res.status(403).json({ error: "Not a member of this household" });
   }
-  const { name, type } = req.body as { name?: string; type?: LineType };
-  const line = addLine(db, req.params.id, user.id, name || "Softphone", type || "softphone");
+  const { name, type, mode, child_label } = req.body as {
+    name?: string;
+    type?: LineType;
+    mode?: "parent" | "child";
+    child_label?: string | null;
+  };
+  if (mode != null && mode !== "parent" && mode !== "child") {
+    return res.status(400).json({ error: "mode must be parent or child" });
+  }
+  const line = addLine(
+    db,
+    req.params.id,
+    user.id,
+    name || (mode === "child" ? "Kid" : "App"),
+    type || "softphone",
+    { mode, child_label }
+  );
   res.json({ line });
 });
 
@@ -676,7 +773,17 @@ app.post("/api/lines/:lineId/guardian-invites", (req, res) => {
     res.json({
       invite,
       shareUrl: `${base}/?guardian=${invite.code}`,
-      shareText: `Become a guardian on our PhoneHome child phone. Sign in, then enter guardian code ${invite.code}.`,
+      shareText: `You're invited as a co-parent on PhoneHome for ${(
+        db.prepare(`SELECT child_label, name FROM lines WHERE id = ?`).get(invite.line_id) as
+          | { child_label: string | null; name: string }
+          | undefined
+      )?.child_label || "our kid"}.
+
+1. Open the link (or scan the QR)
+2. Sign in or create a parent account
+3. If asked, enter code ${invite.code}
+
+${base}/?guardian=${invite.code}`,
     });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -689,6 +796,87 @@ app.post("/api/guardian-invites/redeem", (req, res) => {
   try {
     const { code } = (req.body || {}) as { code?: string };
     const result = redeemGuardianInvite(db, user.id, String(code || ""));
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.post("/api/households/:id/grandparents", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  try {
+    const body = (req.body || {}) as {
+      displayName?: string;
+      username?: string;
+      password?: string;
+      householdName?: string;
+      label?: string;
+      kidLineIds?: string[];
+    };
+    if (!body.displayName || !body.username || !body.password) {
+      return res.status(400).json({ error: "Name, username, and password are required" });
+    }
+    const result = provisionGrandparent(db, user.id, req.params.id, {
+      displayName: String(body.displayName),
+      username: String(body.username),
+      password: String(body.password),
+      householdName: body.householdName ? String(body.householdName) : undefined,
+      label: body.label ? String(body.label) : undefined,
+      kidLineIds: Array.isArray(body.kidLineIds) ? body.kidLineIds.map(String) : [],
+    });
+    res.json({
+      relative: result.relative,
+      username: result.username,
+      password: result.password,
+      line: result.line,
+      household: result.household,
+      flash: `Login ready for ${result.relative.display_name}`,
+    });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.post("/api/households/:id/grandparents/:relativeId/reset-password", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  try {
+    const { password } = (req.body || {}) as { password?: string };
+    if (!password) return res.status(400).json({ error: "password required" });
+    const result = resetProvisionedRelativePassword(
+      db,
+      user.id,
+      req.params.id,
+      req.params.relativeId,
+      String(password)
+    );
+    res.json({ ...result, password: String(password), flash: result.message });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.patch("/api/households/:id/grandparents/:relativeId", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  try {
+    const body = (req.body || {}) as {
+      displayName?: string;
+      username?: string;
+      label?: string;
+      password?: string;
+      kidLineIds?: string[];
+    };
+    const result = updateProvisionedRelativeLogin(db, user.id, req.params.id, req.params.relativeId, {
+      displayName: body.displayName !== undefined ? String(body.displayName) : undefined,
+      username: body.username !== undefined ? String(body.username) : undefined,
+      label: body.label !== undefined ? String(body.label) : undefined,
+      password: body.password !== undefined ? String(body.password) : undefined,
+      kidLineIds: Array.isArray(body.kidLineIds)
+        ? body.kidLineIds.map((id) => String(id))
+        : undefined,
+    });
     res.json(result);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -744,7 +932,7 @@ app.post("/api/households/:id/invites", (req, res) => {
       invite,
       publicBaseUrl: base,
       shareUrl: `${base}/?invite=${invite.code}`,
-      shareText: `Join our PhoneHome (private family phone). Open the link, tap “I was invited,” enter code ${invite.code}. Then we each approve the other so kids can call.`,
+      shareText: `Join our PhoneHome family phone. Open the link (or scan the QR), then enter code ${invite.code}. After that we each approve the other so the kids can call.`,
     });
   } catch (e) {
     res.status(403).json({ error: (e as Error).message });
@@ -782,8 +970,107 @@ app.post("/api/households/:id/allowlist", (req, res) => {
       speedDial,
       favorite,
       alwaysAllow,
+      actorUserId: user.id,
     });
     res.json({ entry });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/** Rename the signed-in parent’s circle (one sphere per parent). */
+app.patch("/api/households/:id/spheres/mine", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  if (isChildOnlyAccount(db, user.id)) {
+    return res.status(403).json({ error: "Only parents have a circle" });
+  }
+  try {
+    const { name } = (req.body || {}) as { name?: string };
+    const sphere = renameSphere(db, user.id, name || "");
+    res.json({ sphere });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/**
+ * Link an existing PhoneHome line into this parent’s circle (same identity —
+ * no duplicate contact). Also ensure household allowlist row when needed.
+ */
+app.post("/api/households/:id/spheres/mine/members", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  if (isChildOnlyAccount(db, user.id)) {
+    return res.status(403).json({ error: "Only parents can edit their circle" });
+  }
+  const { targetLineId, label, alwaysAllow } = (req.body || {}) as {
+    targetLineId?: string;
+    label?: string;
+    alwaysAllow?: boolean;
+  };
+  if (!targetLineId) return res.status(400).json({ error: "targetLineId required" });
+  try {
+    // Invite-first / already-visible only — never browse Gemma’s friends to add.
+    const sphere = linkVisibleContactToParentSphere(db, user.id, targetLineId);
+    const existing = db
+      .prepare(`SELECT * FROM allowlist WHERE household_id = ? AND target_line_id = ?`)
+      .get(req.params.id, targetLineId);
+    let entry = existing;
+    if (!existing) {
+      entry = addAllowlist(db, req.params.id, targetLineId, label || "Contact", {
+        alwaysAllow,
+        actorUserId: user.id,
+      });
+    }
+    res.json({
+      sphere,
+      entry,
+      member_line_ids: listSphereMemberLineIds(db, sphere.id),
+    });
+  } catch (e) {
+    const msg = (e as Error).message || "Could not add to circle";
+    if (/not found/i.test(msg)) return res.status(404).json({ error: "Contact not found" });
+    res.status(400).json({ error: msg });
+  }
+});
+
+/** Remove a line from *this* parent’s circle only — other circles keep the same identity. */
+app.delete("/api/households/:id/spheres/mine/members/:lineId", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  if (isChildOnlyAccount(db, user.id)) {
+    return res.status(403).json({ error: "Only parents can edit their circle" });
+  }
+  const sphere = getSphereByOwner(db, user.id) || ensureSphereForParent(db, user.id);
+  removeLineFromSphere(db, sphere.id, req.params.lineId);
+  res.json({ ok: true, sphere_id: sphere.id, line_id: req.params.lineId });
+});
+
+/** Which parent circles appear on a kid line’s speed dial (union; contacts deduped by line id). */
+app.put("/api/households/:id/lines/:lineId/sphere-access", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  const { sphereIds } = (req.body || {}) as { sphereIds?: string[] };
+  try {
+    const ids = setLineSphereAccess(db, req.params.id, req.params.lineId, sphereIds || []);
+    res.json({
+      line_id: req.params.lineId,
+      sphere_access: ids,
+      spheres: listHouseholdParentSpheres(db, req.params.id),
+    });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -799,6 +1086,275 @@ app.post("/api/households/:id/allowlist/decline", (req, res) => {
     const { targetLineId } = (req.body || {}) as { targetLineId?: string };
     if (!targetLineId) return res.status(400).json({ error: "targetLineId required" });
     res.json(declineAllowlist(db, req.params.id, targetLineId));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/** Parent-only: list FamilyRoom candidates + current approvals. */
+app.get("/api/households/:id/family-room", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  const always = new Set(listFamilyRoomAlwaysAllowedLineIds(db, req.params.id));
+  const approved = new Set([
+    ...always,
+    ...listFamilyRoomMembers(db, req.params.id).map((m) => m.line_id),
+  ]);
+  res.json({
+    members: listFamilyRoomMembers(db, req.params.id),
+    always: [...always],
+    talk_pairs: listFamilyRoomTalkPairs(db, req.params.id),
+    candidates: familyRoomCandidateLines(db, req.params.id).map((c) => ({
+      ...c,
+      approved: approved.has(c.line_id),
+      always: always.has(c.line_id),
+    })),
+    max: MAX_FAMILY_ROOM,
+  });
+});
+
+/** Parent-only: approve a line for FamilyRoom. */
+app.post("/api/households/:id/family-room/members", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  if (isChildOnlyAccount(db, user.id)) {
+    return res.status(403).json({ error: "Only parents can manage TreeHouse" });
+  }
+  const { lineId } = (req.body || {}) as { lineId?: string };
+  if (!lineId) return res.status(400).json({ error: "lineId required" });
+  try {
+    const member = addFamilyRoomMember(db, req.params.id, lineId, user.id);
+    res.json({
+      member,
+      members: listFamilyRoomMembers(db, req.params.id),
+    });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/** Parent-only: revoke FamilyRoom access. */
+app.delete("/api/households/:id/family-room/members/:lineId", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  if (isChildOnlyAccount(db, user.id)) {
+    return res.status(403).json({ error: "Only parents can manage TreeHouse" });
+  }
+  try {
+    removeFamilyRoomMember(db, req.params.id, req.params.lineId, user.id);
+    res.json({ ok: true, members: listFamilyRoomMembers(db, req.params.id) });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/** Parent-only: add undirected talk pair (A↔B hear each other). */
+app.post("/api/households/:id/family-room/talk-pairs", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  if (isChildOnlyAccount(db, user.id)) {
+    return res.status(403).json({ error: "Only parents can manage TreeHouse" });
+  }
+  const { lineA, lineB } = (req.body || {}) as { lineA?: string; lineB?: string };
+  if (!lineA || !lineB) return res.status(400).json({ error: "lineA and lineB required" });
+  try {
+    const pair = addFamilyRoomTalkPair(db, req.params.id, lineA, lineB, user.id);
+    res.json({ pair, talk_pairs: listFamilyRoomTalkPairs(db, req.params.id) });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/** Parent-only: remove undirected talk pair. */
+app.delete("/api/households/:id/family-room/talk-pairs/:lineA/:lineB", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+    return res.status(403).json({ error: "Not authorized for this household" });
+  }
+  if (isChildOnlyAccount(db, user.id)) {
+    return res.status(403).json({ error: "Only parents can manage TreeHouse" });
+  }
+  try {
+    removeFamilyRoomTalkPair(db, req.params.id, req.params.lineA, req.params.lineB, user.id);
+    res.json({ ok: true, talk_pairs: listFamilyRoomTalkPairs(db, req.params.id) });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+// TreeHouse HTTP: /tree-house canonical; /play-room + /family-room kept as aliases.
+function mountTreeHouseHttpAliases(aliasBase: string) {
+  app.get(`/api/households/:id/${aliasBase}`, (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+      return res.status(403).json({ error: "Not authorized for this household" });
+    }
+    const always = new Set(listFamilyRoomAlwaysAllowedLineIds(db, req.params.id));
+    const approved = new Set([
+      ...always,
+      ...listFamilyRoomMembers(db, req.params.id).map((m) => m.line_id),
+    ]);
+    res.json({
+      members: listFamilyRoomMembers(db, req.params.id),
+      always: [...always],
+      talk_pairs: listFamilyRoomTalkPairs(db, req.params.id),
+      candidates: familyRoomCandidateLines(db, req.params.id).map((c) => ({
+        ...c,
+        approved: approved.has(c.line_id),
+        always: always.has(c.line_id),
+      })),
+      max: MAX_FAMILY_ROOM,
+    });
+  });
+  app.post(`/api/households/:id/${aliasBase}/members`, (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+      return res.status(403).json({ error: "Not authorized for this household" });
+    }
+    if (isChildOnlyAccount(db, user.id)) {
+      return res.status(403).json({ error: "Only parents can manage TreeHouse" });
+    }
+    const { lineId } = (req.body || {}) as { lineId?: string };
+    if (!lineId) return res.status(400).json({ error: "lineId required" });
+    try {
+      const member = addFamilyRoomMember(db, req.params.id, lineId, user.id);
+      res.json({ member, members: listFamilyRoomMembers(db, req.params.id) });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+  app.delete(`/api/households/:id/${aliasBase}/members/:lineId`, (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+      return res.status(403).json({ error: "Not authorized for this household" });
+    }
+    if (isChildOnlyAccount(db, user.id)) {
+      return res.status(403).json({ error: "Only parents can manage TreeHouse" });
+    }
+    try {
+      removeFamilyRoomMember(db, req.params.id, req.params.lineId, user.id);
+      res.json({ ok: true, members: listFamilyRoomMembers(db, req.params.id) });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+  app.post(`/api/households/:id/${aliasBase}/talk-pairs`, (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+      return res.status(403).json({ error: "Not authorized for this household" });
+    }
+    if (isChildOnlyAccount(db, user.id)) {
+      return res.status(403).json({ error: "Only parents can manage TreeHouse" });
+    }
+    const { lineA, lineB } = (req.body || {}) as { lineA?: string; lineB?: string };
+    if (!lineA || !lineB) return res.status(400).json({ error: "lineA and lineB required" });
+    try {
+      const pair = addFamilyRoomTalkPair(db, req.params.id, lineA, lineB, user.id);
+      res.json({ pair, talk_pairs: listFamilyRoomTalkPairs(db, req.params.id) });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+  app.delete(`/api/households/:id/${aliasBase}/talk-pairs/:lineA/:lineB`, (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    if (!canManageHouseholdChildState(db, user.id, req.params.id)) {
+      return res.status(403).json({ error: "Not authorized for this household" });
+    }
+    if (isChildOnlyAccount(db, user.id)) {
+      return res.status(403).json({ error: "Only parents can manage TreeHouse" });
+    }
+    try {
+      removeFamilyRoomTalkPair(db, req.params.id, req.params.lineA, req.params.lineB, user.id);
+      res.json({ ok: true, talk_pairs: listFamilyRoomTalkPairs(db, req.params.id) });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+}
+mountTreeHouseHttpAliases("tree-house");
+mountTreeHouseHttpAliases("play-room");
+
+app.patch("/api/user/profile", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  try {
+    const { parent_title, profile_role } = (req.body || {}) as {
+      parent_title?: string | null;
+      profile_role?: string | null;
+    };
+    const updated = updateUserProfile(db, user.id, {
+      parent_title: parent_title as import("./api.js").ParentTitle | "" | null,
+      profile_role: profile_role as "parent" | "grandparent" | "" | null | undefined,
+    });
+    res.json({ user: publicUser(updated, { isChildOnly: isChildOnlyAccount(db, user.id) }) });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/** Household admin: list FamilyRoom candidates + approvals (kids and adults). */
+app.get("/api/households/:id/adult-family-room", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!isHouseholdOwner(db, req.params.id, user.id)) {
+    return res.status(403).json({ error: "Only the household admin can manage FamilyRoom" });
+  }
+  const approved = new Set(listAdultFamilyRoomMembers(db, req.params.id).map((m) => m.line_id));
+  res.json({
+    members: listAdultFamilyRoomMembers(db, req.params.id),
+    always: [],
+    candidates: adultFamilyRoomCandidateLines(db, req.params.id).map((c) => ({
+      ...c,
+      approved: approved.has(c.line_id),
+      always: false,
+    })),
+    max: MAX_FAMILY_ROOM,
+  });
+});
+
+app.post("/api/households/:id/adult-family-room/members", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!isHouseholdOwner(db, req.params.id, user.id)) {
+    return res.status(403).json({ error: "Only the household admin can manage FamilyRoom" });
+  }
+  const { lineId } = (req.body || {}) as { lineId?: string };
+  if (!lineId) return res.status(400).json({ error: "lineId required" });
+  try {
+    const member = addAdultFamilyRoomMember(db, req.params.id, lineId, user.id);
+    res.json({ member, members: listAdultFamilyRoomMembers(db, req.params.id) });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+app.delete("/api/households/:id/adult-family-room/members/:lineId", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!isHouseholdOwner(db, req.params.id, user.id)) {
+    return res.status(403).json({ error: "Only the household admin can manage FamilyRoom" });
+  }
+  try {
+    removeAdultFamilyRoomMember(db, req.params.id, req.params.lineId, user.id);
+    res.json({ ok: true, members: listAdultFamilyRoomMembers(db, req.params.id) });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -1000,43 +1556,24 @@ async function enrichDirectoryPresence(
     })
   );
 
-  const hhCache = new Map<
-    string,
-    {
-      dnd: number;
-      quiet_start: string | null;
-      quiet_end: string | null;
-      quiet_tz: string | null;
-      quiet_days: string | null;
-      skip_holidays: number;
-      schedule_preset: string;
-    }
-  >();
+  const hhCache = new Map<string, Household>();
   for (const row of directory) {
     let hh = hhCache.get(row.household_id);
     if (!hh) {
-      hh = db
-        .prepare(
-          `SELECT dnd, quiet_start, quiet_end, quiet_tz, quiet_days, skip_holidays, schedule_preset FROM households WHERE id = ?`
-        )
-        .get(row.household_id) as
-        | {
-            dnd: number;
-            quiet_start: string | null;
-            quiet_end: string | null;
-            quiet_tz: string | null;
-            quiet_days: string | null;
-            skip_holidays: number;
-            schedule_preset: string;
-          }
+      hh = db.prepare(`SELECT * FROM households WHERE id = ?`).get(row.household_id) as
+        | Household
         | undefined;
       if (!hh) continue;
       hhCache.set(row.household_id, hh);
     }
+    const lineRow = db.prepare(`SELECT mode FROM lines WHERE id = ?`).get(row.id) as
+      | { mode: string | null }
+      | undefined;
     const online = linePresenceOnline({
       softphoneOnline: Boolean(row.online),
       ataRegistered: Boolean(registeredByLine.get(row.id)),
       household: hh,
+      lineMode: lineRow?.mode === "child" ? "child" : "parent",
     });
     row.online = online ? 1 : 0;
   }
@@ -1247,7 +1784,7 @@ app.get("/api/lines/:lineId/ata-status", async (req, res) => {
 });
 
 /** Parent: create/update ATA binding. */
-app.put("/api/households/:id/lines/:lineId/ata", (req, res) => {
+app.put("/api/households/:id/lines/:lineId/ata", async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   if (!canManageLineAta(user.id, req.params.lineId, req.params.id)) {
@@ -1272,14 +1809,36 @@ app.put("/api/households/:id/lines/:lineId/ata", (req, res) => {
       rotate_provision_token: body.rotate_provision_token,
     });
     ataStatusCache.delete(req.params.lineId);
-    // Keep FreePBX in lockstep so a later Download config is REGISTER-ready for remote parents.
-    void syncAtaSipSecretToFreepbx(ata.sip_extension, ata.sip_password).then((r) => {
-      if (!r.ok) console.warn(`[freepbx-sync] upsert fail ext=${ata.sip_extension} err=${r.error}`);
-      else if (!r.skipped) console.log(`[freepbx-sync] ok ext=${ata.sip_extension}`);
-    });
+
+    // Await FreePBX create/secret sync so Save is REGISTER-ready for remote parents.
+    let freepbx: { ok: boolean; skipped?: boolean; created?: boolean; error?: string } = {
+      ok: true,
+      skipped: true,
+    };
+    if (freepbxSyncConfigured()) {
+      const sync = await syncAtaSipSecretToFreepbx(ata.sip_extension, ata.sip_password, {
+        sipServer: ata.sip_server,
+        displayName: ata.display_name,
+      });
+      if (!sync.ok) {
+        console.warn(`[freepbx-sync] upsert fail ext=${ata.sip_extension} err=${sync.error}`);
+        freepbx = { ok: false, error: sync.error };
+      } else {
+        freepbx = { ok: true, skipped: sync.skipped, created: sync.created };
+        if (!sync.skipped) {
+          console.log(
+            `[freepbx-sync] ok ext=${ata.sip_extension}${sync.created ? " created" : ""} mode=${sync.mode || "?"}`
+          );
+        }
+      }
+    }
+
     const base = publicBaseUrl(req);
     res.json({
       ata: publicAta(ata),
+      freepbx_ready: freepbx.ok,
+      freepbx_created: Boolean(freepbx.created),
+      freepbx_error: freepbx.error || null,
       config_server_path:
         normalizeAtaModel(ata.model) === "g100s"
           ? formatFanvilProvisionUrl(base, ata.provision_token)
@@ -1580,6 +2139,34 @@ app.get("/api/bridge/lines/:lineId/voicemails", (req, res) => {
   });
 });
 
+/** ATA/softphone no-answer → leave a message (bridge deposits WAV). */
+app.post("/api/bridge/voicemails", (req, res) => {
+  if (!bridgeSecretOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { fromLineId, toLineId, audioBase64, audioMime } = (req.body || {}) as {
+      fromLineId?: string;
+      toLineId?: string;
+      audioBase64?: string;
+      audioMime?: string;
+    };
+    if (!fromLineId || !toLineId) return res.status(400).json({ error: "fromLineId and toLineId required" });
+    if (!audioBase64) return res.status(400).json({ error: "audioBase64 required" });
+    const vm = leaveVoicemailFromBridge(db, fromLineId, toLineId, {
+      audioBase64,
+      audioMime: audioMime || "audio/wav",
+      dataDir: DATA_DIR,
+    });
+    const unread = db
+      .prepare(`SELECT COUNT(*) AS n FROM voicemails WHERE to_line_id = ? AND listened = 0`)
+      .get(vm.to_line_id) as { n: number };
+    fanoutVoicemailNew(vm.household_id, vm, Number(unread?.n || 1));
+    console.log(`[bridge] voicemail deposit ${fromLineId}→${toLineId} id=${vm.id}`);
+    res.json({ ok: true, voicemail: { id: vm.id, to_line_id: vm.to_line_id } });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
 /** @deprecated Prefer /api/bridge/lines/:lineId/voicemails (per-recipient mailbox). */
 app.get("/api/bridge/households/:id/voicemails", (req, res) => {
   if (!bridgeSecretOk(req)) return res.status(401).json({ error: "Unauthorized" });
@@ -1675,23 +2262,25 @@ app.get("/api/bridge/health", (_req, res) => {
     sipServer: defaultSipServer(),
     bridgeUrl: (process.env.BRIDGE_URL || "http://127.0.0.1:8790").trim(),
     apnsVoipConfigured: apnsConfigured(),
+    iosCallKitMode: iosCallKitMode(),
+    iosCallKitPush: iosCallKitPushEnabled(),
   });
 });
 
-/** iOS PushKit token registration (CallKit wake). */
-app.post("/api/devices/voip-token", (req, res) => {
-  const user = requireUser(req, res);
-  if (!user) return;
-  const body = (req.body || {}) as { lineId?: string; voipToken?: string; platform?: string };
-  const lineId = String(body.lineId || "").trim();
-  const voipToken = String(body.voipToken || "").trim();
-  if (!lineId || !voipToken) return res.status(400).json({ error: "lineId and voipToken required" });
+function authorizeLinePushRegistration(
+  user: { id: string },
+  lineId: string,
+  res: import("express").Response
+): boolean {
   const line = db.prepare(`SELECT id, household_id, owner_user_id, child_user_id FROM lines WHERE id = ?`).get(
     lineId
   ) as
     | { id: string; household_id: string; owner_user_id: string; child_user_id: string | null }
     | undefined;
-  if (!line) return res.status(404).json({ error: "Line not found" });
+  if (!line) {
+    res.status(404).json({ error: "Line not found" });
+    return false;
+  }
   const member = db
     .prepare(`SELECT 1 FROM household_members WHERE household_id = ? AND user_id = ?`)
     .get(line.household_id, user.id);
@@ -1700,7 +2289,22 @@ app.post("/api/devices/voip-token", (req, res) => {
     line.owner_user_id === user.id ||
     line.child_user_id === user.id ||
     canManageChild(db, user.id, lineId);
-  if (!allowed) return res.status(403).json({ error: "Not allowed for this line" });
+  if (!allowed) {
+    res.status(403).json({ error: "Not allowed for this line" });
+    return false;
+  }
+  return true;
+}
+
+/** iOS PushKit token registration (CallKit wake — device opted into lock-screen Answer). */
+app.post("/api/devices/voip-token", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const body = (req.body || {}) as { lineId?: string; voipToken?: string; platform?: string };
+  const lineId = String(body.lineId || "").trim();
+  const voipToken = String(body.voipToken || "").trim();
+  if (!lineId || !voipToken) return res.status(400).json({ error: "lineId and voipToken required" });
+  if (!authorizeLinePushRegistration(user, lineId, res)) return;
   try {
     const row = upsertIosVoipToken(db, { userId: user.id, lineId, voipToken });
     console.log(`[push] ios voip token line=${lineId} user=${user.id} …${row.voip_token.slice(-8)}`);
@@ -1710,14 +2314,51 @@ app.post("/api/devices/voip-token", (req, res) => {
   }
 });
 
-/** Pending softphone offer after VoIP wake (SDP held briefly while CallKit answers). */
+/** Drop VoIP tokens when the iPhone turns Lock-screen Answer off. */
+app.delete("/api/devices/voip-token", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const body = (req.body || {}) as { lineId?: string };
+  const lineId = String(body.lineId || req.query.lineId || "").trim();
+  if (!lineId) return res.status(400).json({ error: "lineId required" });
+  if (!authorizeLinePushRegistration(user, lineId, res)) return;
+  const cleared = deleteIosVoipTokensForLine(db, lineId);
+  console.log(`[push] ios voip tokens cleared line=${lineId} user=${user.id} n=${cleared}`);
+  res.json({ ok: true, cleared });
+});
+
+/**
+ * Standard APNs device token (alert notification → open in-app softphone).
+ * Preferred when CallKit is tabled (default).
+ */
+app.post("/api/devices/apns-token", (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const body = (req.body || {}) as { lineId?: string; apnsToken?: string; platform?: string };
+  const lineId = String(body.lineId || "").trim();
+  const apnsToken = String(body.apnsToken || "").trim();
+  if (!lineId || !apnsToken) return res.status(400).json({ error: "lineId and apnsToken required" });
+  if (!authorizeLinePushRegistration(user, lineId, res)) return;
+  try {
+    const row = upsertIosAlertToken(db, { userId: user.id, lineId, apnsToken });
+    console.log(`[push] ios alert token line=${lineId} user=${user.id} …${row.voip_token.slice(-8)}`);
+    res.json({ ok: true, platform: "ios-alert", lineId });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/** Pending softphone offer after VoIP wake (SDP held briefly while CallKit answers).
+ * Peek only — never take. CallKit WebView remounts must still see the offer on WS hello;
+ * destructive take here raced remounts and left ICE-only reconnects with no SDP. */
 app.get("/api/calls/pending", (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   const lineId = String(req.query.lineId || "").trim();
   if (!lineId) return res.status(400).json({ error: "lineId required" });
-  const pending = takePendingOffer(lineId);
+  const pending = peekPendingOffer(lineId);
   if (!pending) return res.json({ offer: null });
+  console.log(`[call] pending offer peek ${pending.callId} → ${lineId}`);
   res.json({ offer: pending });
 });
 
@@ -1774,6 +2415,110 @@ type PendingOffer = {
 /** lineId → latest inbound offer waiting for CallKit / WS reconnect. */
 const pendingOffers = new Map<string, PendingOffer>();
 
+type PendingIce = {
+  callId?: string;
+  fromLineId: string;
+  toLineId: string;
+  candidate: unknown;
+  expires: number;
+};
+/** Offline peer lineId → trickle ICE held until CallKit/WS comes up. */
+const pendingIceByLine = new Map<string, PendingIce[]>();
+const PENDING_ICE_TTL_MS = 90_000;
+const PENDING_ICE_MAX = 64;
+
+type PendingAnswer = {
+  callId?: string;
+  fromLineId: string;
+  toLineId: string;
+  sdp: unknown;
+  early?: boolean;
+  expires: number;
+};
+/** Caller briefly offline while callee answers — hold answer SDP until caller WS hello. */
+const pendingAnswerByLine = new Map<string, PendingAnswer>();
+const PENDING_ANSWER_TTL_MS = 90_000;
+
+/**
+ * Sticky signaling peers for an active call.
+ * findByLine() prefers FXS bridge over softphone — that steals answer/ICE when the
+ * child line has HT801 claimed. Route answer/ICE/hangup via these sockets instead.
+ */
+type CallPeers = {
+  callId: string;
+  fromLineId: string;
+  toLineId: string;
+  caller: Client;
+  callee: Client | null;
+  createdAt: number;
+};
+const callPeersById = new Map<string, CallPeers>();
+const CALL_PEERS_TTL_MS = 15 * 60_000;
+
+function pruneCallPeers(): void {
+  const now = Date.now();
+  for (const [id, p] of callPeersById) {
+    if (now - p.createdAt > CALL_PEERS_TTL_MS) callPeersById.delete(id);
+  }
+}
+
+function rememberCallPeers(opts: {
+  callId: string;
+  fromLineId: string;
+  toLineId: string;
+  caller: Client;
+  callee: Client | null;
+}): void {
+  pruneCallPeers();
+  callPeersById.set(opts.callId, { ...opts, createdAt: Date.now() });
+}
+
+function updateCallCallee(callId: string, callee: Client): void {
+  const p = callPeersById.get(callId);
+  if (!p) return;
+  p.callee = callee;
+}
+
+function clearCallPeers(callId?: string): void {
+  if (callId) callPeersById.delete(callId);
+}
+
+/** Other party for answer / ICE / hangup — prefer sticky peer sockets over findByLine. */
+function peerClientForSignal(
+  callId: string | undefined,
+  sender: Client,
+  fromLineId: string,
+  toLineId: string
+): Client | undefined {
+  const otherId = sender.lineId === fromLineId ? toLineId : fromLineId;
+  if (callId) {
+    const peers = callPeersById.get(callId);
+    if (peers) {
+      if (sender === peers.caller || sender.lineId === peers.fromLineId) {
+        const cal = peers.callee;
+        if (cal && cal.ws.readyState === cal.ws.OPEN) return cal;
+      }
+      if (sender === peers.callee || sender.lineId === peers.toLineId) {
+        const clr = peers.caller;
+        if (clr && clr.ws.readyState === clr.ws.OPEN) return clr;
+      }
+    }
+  }
+  // Fallback: softphone before bridge so leftover FXS claims don't swallow softphone media.
+  // Exception: FXS-first lines — prefer the bridge claim so soft→ATA ICE isn't eaten by a
+  // softphone still sitting on the kid line during the claim race.
+  let soft: Client | undefined;
+  let bridge: Client | undefined;
+  for (const c of clients) {
+    if (c.lineId !== otherId) continue;
+    if (c.ws?.readyState !== c.ws.OPEN) continue;
+    if (c.isBridge) bridge = c;
+    else soft = c;
+  }
+  if (bridge && getAtaByLineId(db, otherId)) return bridge;
+  return soft || bridge;
+}
+
 function storePendingOffer(offer: Omit<PendingOffer, "expires">, ttlMs = 90_000): void {
   pendingOffers.set(offer.toLineId, { ...offer, expires: Date.now() + ttlMs });
 }
@@ -1799,37 +2544,347 @@ function peekPendingOffer(lineId: string): PendingOffer | null {
   return p;
 }
 
+/** Push buffered SDP to a live softphone socket (peek — keep until answer/hangup). */
+function deliverPendingOfferToClient(client: Client, reason: string): boolean {
+  if (!client.lineId || client.isBridge) return false;
+  if (!client.ws || client.ws.readyState !== client.ws.OPEN) return false;
+  const pending = peekPendingOffer(client.lineId);
+  if (!pending) return false;
+  send(client.ws, {
+    type: "call.offer",
+    callId: pending.callId,
+    fromLineId: pending.fromLineId,
+    toLineId: pending.toLineId,
+    sdp: pending.sdp,
+  });
+  updateCallCallee(pending.callId, client);
+  console.log(`[call] delivered pending offer ${pending.callId} → ${client.lineId} (${reason})`);
+  return true;
+}
+
+/**
+ * CallKit / WebView often connects before the JS handler is ready, or remounts
+ * mid-ring. Re-push the same peeked offer a few times while still pending.
+ * Deduped per line so offer + wake paths don't double-schedule.
+ */
+const pendingOfferRepushArmed = new Set<string>();
+function schedulePendingOfferRepush(lineId: string): void {
+  if (!lineId || pendingOfferRepushArmed.has(lineId)) return;
+  pendingOfferRepushArmed.add(lineId);
+  for (const delayMs of [400, 1200, 2500, 5000]) {
+    setTimeout(() => {
+      const pending = peekPendingOffer(lineId);
+      if (!pending) {
+        pendingOfferRepushArmed.delete(lineId);
+        return;
+      }
+      const client = [...clients].find((c) => c.lineId === lineId && !c.isBridge);
+      if (!client) return;
+      deliverPendingOfferToClient(client, `repush-${delayMs}ms`);
+      if (delayMs >= 5000) pendingOfferRepushArmed.delete(lineId);
+    }, delayMs);
+  }
+}
+
+function bufferPendingIce(toLineId: string, entry: Omit<PendingIce, "expires">): void {
+  if (!toLineId) return;
+  const now = Date.now();
+  const list = (pendingIceByLine.get(toLineId) || []).filter((c) => c.expires >= now);
+  list.push({ ...entry, expires: now + PENDING_ICE_TTL_MS });
+  pendingIceByLine.set(toLineId, list.slice(-PENDING_ICE_MAX));
+}
+
+function flushPendingIce(lineId: string, ws: WebSocket): number {
+  const list = pendingIceByLine.get(lineId);
+  if (!list?.length) return 0;
+  pendingIceByLine.delete(lineId);
+  const now = Date.now();
+  let n = 0;
+  for (const ice of list) {
+    if (ice.expires < now) continue;
+    send(ws, {
+      type: "call.ice",
+      callId: ice.callId,
+      fromLineId: ice.fromLineId,
+      toLineId: ice.toLineId,
+      candidate: ice.candidate,
+    });
+    n += 1;
+  }
+  return n;
+}
+
+function bufferPendingAnswer(toLineId: string, entry: Omit<PendingAnswer, "expires">): void {
+  if (!toLineId) return;
+  pendingAnswerByLine.set(toLineId, { ...entry, expires: Date.now() + PENDING_ANSWER_TTL_MS });
+}
+
+function flushPendingAnswer(lineId: string, ws: WebSocket): boolean {
+  const a = pendingAnswerByLine.get(lineId);
+  if (!a) return false;
+  pendingAnswerByLine.delete(lineId);
+  if (a.expires < Date.now()) return false;
+  send(ws, {
+    type: "call.answer",
+    callId: a.callId,
+    fromLineId: a.fromLineId,
+    toLineId: a.toLineId,
+    sdp: a.sdp,
+    ...(a.early ? { early: true } : {}),
+  });
+  console.log(`[call] flushed buffered answer ${a.callId || "?"} → ${lineId}${a.early ? " early" : ""}`);
+  return true;
+}
+
+function clearPendingSignaling(fromLineId?: string, toLineId?: string): void {
+  if (toLineId) {
+    pendingOffers.delete(toLineId);
+    pendingIceByLine.delete(toLineId);
+    pendingAnswerByLine.delete(toLineId);
+    pendingOfferRepushArmed.delete(toLineId);
+  }
+  if (fromLineId) {
+    pendingIceByLine.delete(fromLineId);
+    pendingAnswerByLine.delete(fromLineId);
+  }
+}
+
 async function wakeIosCallee(opts: {
   toLineId: string;
   fromLineId: string;
   callId: string;
   callerName: string;
 }): Promise<void> {
-  const tokens = listIosVoipTokensForLine(db, opts.toLineId);
-  if (!tokens.length) return;
-  for (const t of tokens.slice(0, 3)) {
-    await sendIosVoipPush(t.voip_token, {
-      callId: opts.callId,
-      handle: opts.fromLineId,
-      callerName: opts.callerName,
-      fromLineId: opts.fromLineId,
-      toLineId: opts.toLineId,
-    });
+  const payload = {
+    callId: opts.callId,
+    handle: opts.fromLineId,
+    callerName: opts.callerName,
+    fromLineId: opts.fromLineId,
+    toLineId: opts.toLineId,
+  };
+  // VoIP if this line registered a CallKit token; otherwise alert APNs.
+  // IOS_CALLKIT=0 is a hub kill switch (alert only).
+  const voipTokens = listIosVoipTokensForLine(db, opts.toLineId);
+  if (shouldSendVoipPush(voipTokens.length > 0)) {
+    for (const t of voipTokens.slice(0, 3)) {
+      const result = await sendIosVoipPush(t.voip_token, payload, t.apns_env);
+      rememberApnsTokenResult(t, result);
+    }
+    return;
+  }
+  const alertTokens = listIosAlertTokensForLine(db, opts.toLineId);
+  if (!alertTokens.length) {
+    console.log(`[push] no ios wake tokens for line=${opts.toLineId} callId=${opts.callId}`);
+    return;
+  }
+  for (const t of alertTokens.slice(0, 3)) {
+    const result = await sendIosAlertPush(
+      t.voip_token,
+      {
+        ...payload,
+        title: "PhoneHome",
+        body: `Call from ${opts.callerName}`,
+      },
+      t.apns_env
+    );
+    rememberApnsTokenResult(t, result);
+  }
+}
+
+function rememberApnsTokenResult(
+  row: { id: string; voip_token: string; apns_env: string | null; line_id: string },
+  result: { ok: boolean; status?: number; reason?: string; production?: boolean }
+): void {
+  if (result.ok && result.production !== undefined) {
+    const env = apnsEnvName(result.production);
+    if (row.apns_env !== env) setPushDeviceApnsEnv(db, row.id, env);
+    return;
+  }
+  if (isApnsBadDeviceToken(result.status, result.reason)) {
+    deletePushDevice(db, row.id);
+    console.warn(
+      `[push] dropped dead ${row.line_id} token=…${String(row.voip_token).slice(-8)} (BadDeviceToken both APNs hosts)`
+    );
   }
 }
 
 type GroupRoom = {
   id: string;
   hostLineId: string;
-  /** Accepted participants */
+  /** Accepted participants (talk/presence members) */
   members: Set<string>;
   /** Still ringing */
   invited: Set<string>;
   createdAt: number;
+  /** When set, this is the household FamilyRoom (Discord-style join). */
+  familyRoomHouseholdId?: string;
+  /** FamilyRoom (# IVR): full mesh talk among admin-approved family (kids + adults). */
+  adultFamilyRoomHouseholdId?: string;
+  /**
+   * Parent listen-only: parentLineId → child they're mirroring.
+   * Parents are not in `members`; they receive the child's filtered mix.
+   */
+  listeners?: Map<string, { childLineId: string; startedAt: number }>;
+  /** FXS / house-phone members — Asterisk mix, no WebRTC mesh. */
+  analogMembers?: Set<string>;
 };
 
 const groupRooms = new Map<string, GroupRoom>();
+/** householdId → active FamilyRoom group room id */
+const familyRoomByHousehold = new Map<string, string>();
+/** householdId → active FamilyRoom (# pad) group room id */
+const adultFamilyRoomByHousehold = new Map<string, string>();
 const MAX_GROUP = 4;
+
+function familyRoomIdForHousehold(householdId: string): string {
+  return `fr_${householdId}`;
+}
+
+function adultFamilyRoomIdForHousehold(householdId: string): string {
+  return `afr_${householdId}`;
+}
+
+function linePublicLabel(lineId: string): string {
+  const row = db
+    .prepare(`SELECT name, child_label, IFNULL(mode, 'parent') AS mode FROM lines WHERE id = ?`)
+    .get(lineId) as { name: string; child_label: string | null; mode: string } | undefined;
+  if (!row) return "Someone";
+  if (row.mode !== "child") return parentDisplayLabel(db, lineId);
+  const label = (row.child_label || row.name || "").trim();
+  return label || "Someone";
+}
+
+function familyRoomPresencePayload(householdId: string) {
+  const roomId = familyRoomByHousehold.get(householdId);
+  const room = roomId ? groupRooms.get(roomId) : undefined;
+  const listeners = room?.listeners
+    ? [...room.listeners.entries()].map(([parentLineId, meta]) => ({
+        parentLineId,
+        childLineId: meta.childLineId,
+        childName: linePublicLabel(meta.childLineId),
+      }))
+    : [];
+  return {
+    type: "treehouse.presence" as const,
+    householdId,
+    roomId: room?.id || null,
+    members: room ? [...room.members] : [],
+    listeners,
+    talkPairs: listFamilyRoomTalkPairs(db, householdId).map((p) => [p.line_a, p.line_b]),
+    playRoom: true,
+    familyRoom: true,
+    treeHouse: true,
+  };
+}
+
+function fanoutFamilyRoomPresence(householdId: string) {
+  const msg = familyRoomPresencePayload(householdId);
+  const recipients = new Set([
+    ...listFamilyRoomAlwaysAllowedLineIds(db, householdId),
+    ...listFamilyRoomMembers(db, householdId).map((m) => m.line_id),
+  ]);
+  // Household softphones still see presence bubbles (pad chrome) before kid approve.
+  const hhLines = db
+    .prepare(`SELECT id FROM lines WHERE household_id = ?`)
+    .all(householdId) as { id: string }[];
+  for (const row of hhLines) recipients.add(row.id);
+  const room = familyRoomByHousehold.get(householdId)
+    ? groupRooms.get(familyRoomByHousehold.get(householdId)!)
+    : undefined;
+  if (room?.listeners) {
+    for (const parentId of room.listeners.keys()) recipients.add(parentId);
+  }
+  for (const lineId of recipients) {
+    const c = findByLine(lineId);
+    if (!c || c.isBridge) continue;
+    // Dual/triple emit so cached clients on familyroom.* / playroom.* keep working.
+    send(c.ws, msg);
+    send(c.ws, { ...msg, type: "playroom.presence" });
+    send(c.ws, { ...msg, type: "familyroom.presence" });
+  }
+}
+
+function fanoutAdultFamilyRoomPresence(householdId: string) {
+  const roomId = adultFamilyRoomByHousehold.get(householdId);
+  const room = roomId ? groupRooms.get(roomId) : undefined;
+  const members = room ? roomMemberList(room) : [];
+  const msg = {
+    type: "adultfamily.presence" as const,
+    householdId,
+    roomId: room?.id || null,
+    members,
+    adultFamilyRoom: true,
+  };
+  const recipients = new Set<string>();
+  const hhLines = db
+    .prepare(`SELECT id FROM lines WHERE household_id = ?`)
+    .all(householdId) as { id: string }[];
+  for (const row of hhLines) recipients.add(row.id);
+  for (const m of listAdultFamilyRoomMembers(db, householdId)) recipients.add(m.line_id);
+  for (const lineId of recipients) {
+    const c = findByLine(lineId);
+    if (!c || c.isBridge) continue;
+    send(c.ws, msg);
+  }
+}
+
+/** Softphone TTS cue — never logs call content. */
+function sendFamilyRoomAnnounce(lineId: string, text: string, roomId: string, kind: string) {
+  const c = findByLine(lineId);
+  if (!c || c.isBridge) return;
+  const payload = {
+    type: "treehouse.announce" as const,
+    roomId,
+    kind,
+    text,
+    playRoom: true,
+    familyRoom: true,
+    treeHouse: true,
+  };
+  send(c.ws, payload);
+  send(c.ws, { ...payload, type: "playroom.announce" });
+  send(c.ws, { ...payload, type: "familyroom.announce" });
+}
+
+function fanoutFamilyRoomAnnounce(
+  room: GroupRoom,
+  text: string,
+  kind: string,
+  recipientIds: Iterable<string>
+) {
+  const seen = new Set<string>();
+  for (const lineId of recipientIds) {
+    if (!lineId || seen.has(lineId)) continue;
+    seen.add(lineId);
+    sendFamilyRoomAnnounce(lineId, text, room.id, kind);
+  }
+}
+
+function enterAnnounceRecipients(room: GroupRoom, householdId: string, entrantId: string): string[] {
+  const out: string[] = [];
+  for (const m of room.members) {
+    if (m === entrantId) continue;
+    if (canTalkInFamilyRoom(db, householdId, entrantId, m)) out.push(m);
+  }
+  // Parent listeners mirroring a talk-peer of the entrant hear the same enter cue.
+  if (room.listeners) {
+    for (const [parentId, meta] of room.listeners) {
+      if (out.includes(meta.childLineId)) out.push(parentId);
+    }
+  }
+  return out;
+}
+
+function familyRoomListenerTargets(
+  room: GroupRoom,
+  householdId: string,
+  childLineId: string
+): string[] {
+  const members = [...room.members];
+  const peers = familyRoomTalkPeers(db, householdId, childLineId, members);
+  const targets = new Set<string>([childLineId, ...peers]);
+  return [...targets];
+}
 
 function send(ws: WebSocket, msg: unknown) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -1845,6 +2900,29 @@ function findByLine(lineId: string): Client | undefined {
     else soft = c;
   }
   return bridge || soft;
+}
+
+function findSoftphoneByLine(lineId: string): Client | undefined {
+  for (const c of clients) {
+    if (c.lineId === lineId && !c.isBridge) return c;
+  }
+  return undefined;
+}
+
+function findBridgeByLine(lineId: string): Client | undefined {
+  for (const c of clients) {
+    if (c.lineId === lineId && c.isBridge) return c;
+  }
+  return undefined;
+}
+
+/** TreeHouse / group mesh SDP. Never steal listen-in or kid mesh to an ATA claim. */
+function findGroupSignalingClient(lineId: string, room?: GroupRoom | null): Client | undefined {
+  const role = groupSignalingRole({
+    destIsListener: Boolean(room?.listeners?.has(lineId)),
+    destIsAnalogMember: Boolean(room?.analogMembers?.has(lineId)),
+  });
+  return role === "bridge" ? findBridgeByLine(lineId) : findSoftphoneByLine(lineId);
 }
 
 /**
@@ -1897,7 +2975,7 @@ function fanoutGroup(room: GroupRoom, msg: unknown, exceptLineId?: string) {
   const targets = new Set([...room.members, ...room.invited]);
   for (const lineId of targets) {
     if (exceptLineId && lineId === exceptLineId) continue;
-    const c = findByLine(lineId);
+    const c = findGroupSignalingClient(lineId, room) || findByLine(lineId);
     if (c) send(c.ws, msg);
   }
 }
@@ -1905,8 +2983,40 @@ function fanoutGroup(room: GroupRoom, msg: unknown, exceptLineId?: string) {
 function endGroupRoom(roomId: string, reason: string) {
   const room = groupRooms.get(roomId);
   if (!room) return;
-  fanoutGroup(room, { type: "group.ended", roomId, reason });
+  const frHh = room.familyRoomHouseholdId;
+  const afrHh = room.adultFamilyRoomHouseholdId;
+  fanoutGroup(room, {
+    type: "group.ended",
+    roomId,
+    reason,
+    familyRoom: Boolean(frHh),
+    playRoom: Boolean(frHh),
+    adultFamilyRoom: Boolean(afrHh),
+  });
+  // Notify parent listeners separately (they are not in members).
+  if (room.listeners) {
+    for (const parentId of room.listeners.keys()) {
+      const c = findByLine(parentId);
+      if (c) {
+        send(c.ws, {
+          type: "group.ended",
+          roomId,
+          reason,
+          familyRoom: true,
+          playRoom: true,
+        });
+      }
+    }
+  }
   groupRooms.delete(roomId);
+  if (frHh && familyRoomByHousehold.get(frHh) === roomId) {
+    familyRoomByHousehold.delete(frHh);
+    fanoutFamilyRoomPresence(frHh);
+  }
+  if (afrHh && adultFamilyRoomByHousehold.get(afrHh) === roomId) {
+    adultFamilyRoomByHousehold.delete(afrHh);
+    fanoutAdultFamilyRoomPresence(afrHh);
+  }
   console.log(`[group] ended ${roomId}: ${reason}`);
 }
 
@@ -1915,6 +3025,314 @@ function householdIdForLine(lineId: string): string | null {
     | { household_id: string }
     | undefined;
   return row?.household_id || null;
+}
+
+/**
+ * Join TreeHouse for a line (softphone WS or analog bridge).
+ * Softphone mesh signaling is skipped when `opts.analog` — FXS uses Asterisk mixing;
+ * softphones still get presence + enter announce.
+ */
+function joinTreeHouseLine(
+  lineId: string,
+  opts: { analog?: boolean; notifyJoiner?: (payload: Record<string, unknown>) => void } = {}
+):
+  | {
+      ok: true;
+      roomId: string;
+      householdId: string;
+      hostLineId: string;
+      members: string[];
+      talkPeers: string[];
+      alreadyIn?: boolean;
+      analog?: boolean;
+    }
+  | { ok: false; error: string } {
+  const householdId = householdIdForLine(lineId);
+  if (!householdId) return { ok: false, error: "Unknown line" };
+  if (!canJoinFamilyRoom(db, householdId, lineId)) {
+    return { ok: false, error: "A parent must approve you for TreeHouse first" };
+  }
+  const hh = db.prepare(`SELECT kill_switch FROM households WHERE id = ?`).get(householdId) as
+    | { kill_switch: number }
+    | undefined;
+  if (hh?.kill_switch) return { ok: false, error: "Timeout is on" };
+
+  let roomId = familyRoomByHousehold.get(householdId);
+  let room = roomId ? groupRooms.get(roomId) : undefined;
+  if (!room) {
+    roomId = familyRoomIdForHousehold(householdId);
+    room = {
+      id: roomId,
+      hostLineId: lineId,
+      members: new Set(),
+      invited: new Set(),
+      createdAt: Date.now(),
+      familyRoomHouseholdId: householdId,
+      listeners: new Map(),
+      analogMembers: new Set(),
+    };
+    groupRooms.set(roomId, room);
+    familyRoomByHousehold.set(householdId, roomId);
+  }
+  if (!room.listeners) room.listeners = new Map();
+  if (!room.analogMembers) room.analogMembers = new Set();
+  if (opts.analog) room.analogMembers.add(lineId);
+
+  const listenersPayload = () =>
+    [...room!.listeners!.entries()].map(([parentLineId, meta]) => ({
+      parentLineId,
+      childLineId: meta.childLineId,
+      childName: linePublicLabel(meta.childLineId),
+    }));
+
+  if (room.members.has(lineId)) {
+    const members = roomMemberList(room);
+    const talkPeers = familyRoomTalkPeers(db, householdId, lineId, members);
+    const payload = {
+      roomId: room.id,
+      householdId,
+      hostLineId: room.hostLineId,
+      members,
+      talkPeers,
+      listeners: listenersPayload(),
+      alreadyIn: true,
+      analog: Boolean(opts.analog),
+    };
+    opts.notifyJoiner?.(payload);
+    fanoutFamilyRoomPresence(householdId);
+    return { ok: true, ...payload };
+  }
+  if (room.members.size >= MAX_FAMILY_ROOM) {
+    return { ok: false, error: `TreeHouse is full (${MAX_FAMILY_ROOM} max)` };
+  }
+  room.members.add(lineId);
+  const members = roomMemberList(room);
+  const talkPeers = familyRoomTalkPeers(db, householdId, lineId, members);
+  const joinedPayload = {
+    roomId: room.id,
+    householdId,
+    hostLineId: room.hostLineId,
+    members,
+    talkPeers,
+    listeners: listenersPayload(),
+    analog: Boolean(opts.analog),
+  };
+  opts.notifyJoiner?.(joinedPayload);
+
+  const peerJoined = {
+    type: "group.peer-joined" as const,
+    roomId: room.id,
+    lineId,
+    hostLineId: room.hostLineId,
+    members,
+    invited: [],
+    talkPeers,
+    familyRoom: true,
+    playRoom: true,
+    analog: Boolean(opts.analog),
+  };
+  // Softphone mesh: only notify talk peers when joiner is a softphone (analog has no mesh SDP).
+  if (!opts.analog) {
+    for (const peerId of talkPeers) {
+      const c = findByLine(peerId);
+      if (c) send(c.ws, peerJoined);
+    }
+  }
+  const enterName = linePublicLabel(lineId);
+  fanoutFamilyRoomAnnounce(
+    room,
+    opts.analog
+      ? `${enterName} has joined the TreeHouse on the house phone`
+      : `${enterName} has joined the TreeHouse`,
+    "enter",
+    enterAnnounceRecipients(room, householdId, lineId)
+  );
+  fanoutFamilyRoomPresence(householdId);
+  console.log(
+    `[treehouse] join ${room.id} ${lineId} members=${members.length} talkPeers=${talkPeers.length}${
+      opts.analog ? " analog" : ""
+    }`
+  );
+  return { ok: true, ...joinedPayload };
+}
+
+function leaveTreeHouseLine(lineId: string): { ok: true; left: boolean } | { ok: false; error: string } {
+  const householdId = householdIdForLine(lineId);
+  if (!householdId) return { ok: false, error: "Unknown line" };
+  const roomId = familyRoomByHousehold.get(householdId);
+  const room = roomId ? groupRooms.get(roomId) : undefined;
+  if (!room) {
+    fanoutFamilyRoomPresence(householdId);
+    return { ok: true, left: false };
+  }
+  if (room.listeners?.has(lineId)) {
+    room.listeners.delete(lineId);
+    fanoutFamilyRoomPresence(householdId);
+    return { ok: true, left: true };
+  }
+  if (!room.members.has(lineId)) {
+    fanoutFamilyRoomPresence(householdId);
+    return { ok: true, left: false };
+  }
+  room.members.delete(lineId);
+  room.analogMembers?.delete(lineId);
+  if (room.listeners) {
+    for (const [parentId, meta] of [...room.listeners.entries()]) {
+      if (meta.childLineId === lineId) {
+        room.listeners.delete(parentId);
+        const pc = findSoftphoneByLine(parentId) || findByLine(parentId);
+        if (pc && !pc.isBridge) {
+          const stop = {
+            type: "treehouse.listen.stopped" as const,
+            roomId: room.id,
+            reason: "child-left",
+            playRoom: true,
+            familyRoom: true,
+            treeHouse: true,
+          };
+          send(pc.ws, stop);
+          send(pc.ws, { ...stop, type: "playroom.listen.stopped" });
+          send(pc.ws, { ...stop, type: "familyroom.listen.stopped" });
+        }
+      }
+    }
+  }
+  if (room.members.size === 0) {
+    endGroupRoom(room.id, "TreeHouse empty");
+    return { ok: true, left: true };
+  }
+  if (lineId === room.hostLineId) {
+    room.hostLineId = [...room.members][0];
+  }
+  fanoutGroup(room, {
+    type: "group.peer-left",
+    roomId: room.id,
+    lineId,
+    members: roomMemberList(room),
+    invited: [],
+    familyRoom: true,
+    playRoom: true,
+  });
+  fanoutFamilyRoomPresence(householdId);
+  console.log(`[treehouse] leave ${room.id} ${lineId}`);
+  return { ok: true, left: true };
+}
+
+function joinAdultFamilyRoomLine(
+  lineId: string,
+  householdId: string
+):
+  | {
+      ok: true;
+      roomId: string;
+      householdId: string;
+      hostLineId: string;
+      members: string[];
+      talkPeers: string[];
+      alreadyIn?: boolean;
+    }
+  | { ok: false; error: string } {
+  const lineHh = householdIdForLine(lineId);
+  if (!lineHh) return { ok: false, error: "Unknown line" };
+  if (householdId !== lineHh) {
+    const approved = canJoinAdultFamilyRoom(db, householdId, lineId);
+    if (!approved) {
+      return { ok: false, error: "Ask the household admin to approve you for FamilyRoom" };
+    }
+  } else if (!canJoinAdultFamilyRoom(db, householdId, lineId)) {
+    return { ok: false, error: "Ask the household admin to approve you for FamilyRoom" };
+  }
+  const hh = db.prepare(`SELECT kill_switch FROM households WHERE id = ?`).get(householdId) as
+    | { kill_switch: number }
+    | undefined;
+  if (hh?.kill_switch) return { ok: false, error: "Timeout is on" };
+
+  let roomId = adultFamilyRoomByHousehold.get(householdId);
+  let room = roomId ? groupRooms.get(roomId) : undefined;
+  if (!room) {
+    roomId = adultFamilyRoomIdForHousehold(householdId);
+    room = {
+      id: roomId,
+      hostLineId: lineId,
+      members: new Set(),
+      invited: new Set(),
+      createdAt: Date.now(),
+      adultFamilyRoomHouseholdId: householdId,
+    };
+    groupRooms.set(roomId, room);
+    adultFamilyRoomByHousehold.set(householdId, roomId);
+  }
+
+  if (room.members.has(lineId)) {
+    const members = roomMemberList(room);
+    return {
+      ok: true,
+      roomId: room.id,
+      householdId,
+      hostLineId: room.hostLineId,
+      members,
+      talkPeers: members.filter((m) => m !== lineId),
+      alreadyIn: true,
+    };
+  }
+  if (room.members.size >= MAX_FAMILY_ROOM) {
+    return { ok: false, error: `FamilyRoom is full (${MAX_FAMILY_ROOM} max)` };
+  }
+  room.members.add(lineId);
+  const members = roomMemberList(room);
+  const talkPeers = members.filter((m) => m !== lineId);
+  const peerJoined = {
+    type: "group.peer-joined" as const,
+    roomId: room.id,
+    lineId,
+    hostLineId: room.hostLineId,
+    members,
+    invited: [],
+    talkPeers,
+    adultFamilyRoom: true,
+  };
+  for (const peerId of talkPeers) {
+    const c = findByLine(peerId);
+    if (c) send(c.ws, peerJoined);
+  }
+  console.log(`[adultfamily] join ${room.id} ${lineId} members=${members.length}`);
+  fanoutAdultFamilyRoomPresence(householdId);
+  return {
+    ok: true,
+    roomId: room.id,
+    householdId,
+    hostLineId: room.hostLineId,
+    members,
+    talkPeers,
+  };
+}
+
+function leaveAdultFamilyRoomLine(lineId: string): { ok: true; left: boolean } | { ok: false; error: string } {
+  const householdId = householdIdForLine(lineId);
+  if (!householdId) return { ok: false, error: "Unknown line" };
+  const roomId = adultFamilyRoomByHousehold.get(householdId);
+  if (!roomId) return { ok: true, left: false };
+  const room = groupRooms.get(roomId);
+  if (!room || !room.members.has(lineId)) return { ok: true, left: false };
+  room.members.delete(lineId);
+  if (room.members.size === 0) {
+    endGroupRoom(room.id, "FamilyRoom empty");
+    return { ok: true, left: true };
+  }
+  if (lineId === room.hostLineId) {
+    room.hostLineId = [...room.members][0];
+  }
+  fanoutGroup(room, {
+    type: "group.peer-left",
+    roomId: room.id,
+    lineId,
+    members: roomMemberList(room),
+    invited: [],
+    adultFamilyRoom: true,
+  });
+  fanoutAdultFamilyRoomPresence(householdId);
+  console.log(`[adultfamily] leave ${room.id} ${lineId}`);
+  return { ok: true, left: true };
 }
 
 function fanoutPresenceToHousehold(householdId: string, exceptLineId?: string) {
@@ -2035,19 +3453,34 @@ wss.on("connection", (ws) => {
       console.log(
         `[ws] hello line=${client.lineId} user=${user.display_name}${client.isBridge ? " (bridge)" : ""}`
       );
-      // After CallKit wake, deliver any SDP that arrived while the app was suspended.
+      // After CallKit wake, deliver any SDP + buffered trickle ICE from while suspended.
+      // Server-driven push — do not rely on client polling alone.
       if (client.lineId && !client.isBridge) {
-        const pending = peekPendingOffer(client.lineId);
-        if (pending) {
-          send(ws, {
-            type: "call.offer",
-            callId: pending.callId,
-            fromLineId: pending.fromLineId,
-            toLineId: pending.toLineId,
-            sdp: pending.sdp,
-          });
-          console.log(`[call] delivered pending offer ${pending.callId} → ${client.lineId}`);
+        const hadOffer = deliverPendingOfferToClient(client, "ws-hello");
+        if (hadOffer) schedulePendingOfferRepush(client.lineId);
+        const iced = flushPendingIce(client.lineId, ws);
+        if (iced) {
+          console.log(
+            `[call] flushed ${iced} buffered ICE → ${client.lineId}${hadOffer ? "" : " (WARNING: no pending SDP)"}`
+          );
         }
+        // Caller reconnected — refresh sticky peer + deliver buffered answer.
+        for (const [cid, peers] of callPeersById) {
+          if (peers.fromLineId === client.lineId) peers.caller = client;
+          if (peers.toLineId === client.lineId) peers.callee = client;
+          void cid;
+        }
+        flushPendingAnswer(client.lineId, ws);
+      } else if (client.lineId && client.isBridge) {
+        // Soft→ATA: early trickle often buffers before /claim WS hello — deliver to bridge.
+        const iced = flushPendingIce(client.lineId, ws);
+        if (iced) {
+          console.log(`[call] flushed ${iced} buffered ICE → bridge ${client.lineId}`);
+        }
+      }
+      if (client.lineId && !client.isBridge) {
+        const hid = householdIdForLine(client.lineId);
+        if (hid) send(ws, familyRoomPresencePayload(hid));
       }
       return;
     }
@@ -2071,14 +3504,24 @@ wss.on("connection", (ws) => {
       const call = logCall(db, fromLineId, toLineId, "ringing");
       const ata = getAtaByLineId(db, toLineId);
 
-      // Same line has softphone + analog: default inbound to the FXS when it’s
-      // registered/callable. Softphone stays for outbound; softphone must not steal the claim.
+      // Store SDP immediately — before ATA await — so CallKit WS hello during the
+      // SIP status round-trip still peeks a real offer (ICE-only reconnects otherwise).
+      storePendingOffer({
+        callId: call.id,
+        fromLineId,
+        toLineId,
+        sdp: msg.sdp,
+      });
+
+      // Same line has softphone + analog: default inbound to the FXS unless we
+      // are sure the ATA is offline. Inconclusive checks (reload blip) must still
+      // try FXS — skipping to VoIP-only leaves the landline silent.
       void (async () => {
         try {
           let usedAta = false;
           if (ata) {
             const sip = await fetchBridgeSipStatus(ata.sip_extension);
-            if (sip.callable || sip.registered) {
+            if (shouldAttemptFxsInbound(sip)) {
               try {
                 await claimBridgeCallee({
                   lineId: toLineId,
@@ -2093,15 +3536,22 @@ wss.on("connection", (ws) => {
               }
             } else {
               console.log(
-                `[call] ATA ${ata.sip_extension} not registered (${sip.state || sip.reason || "offline"}); ringing softphone`
+                `[call] ATA ${ata.sip_extension} confirmed offline (${sip.state || sip.reason || "offline"}); ringing softphone`
               );
               await releaseBridgeCallee(toLineId);
             }
           }
 
           const target = findByLine(toLineId);
-          const iosTokens = !usedAta ? listIosVoipTokensForLine(db, toLineId) : [];
-          if (!target && !iosTokens.length) {
+          const voipTokens = !usedAta ? listIosVoipTokensForLine(db, toLineId) : [];
+          const useVoipWake = shouldSendVoipPush(voipTokens.length > 0);
+          const iosWakeTokens = !usedAta
+            ? useVoipWake
+              ? voipTokens
+              : listIosAlertTokensForLine(db, toLineId)
+            : [];
+          if (!target && !iosWakeTokens.length) {
+            clearPendingSignaling(fromLineId, toLineId);
             endCallLog(db, call.id, "offline");
             console.log(`[call] offline ${call.id} ${fromLineId}→${toLineId}`);
             send(ws, {
@@ -2113,18 +3563,18 @@ wss.on("connection", (ws) => {
             return;
           }
 
-          storePendingOffer({
-            callId: call.id,
-            fromLineId,
-            toLineId,
-            sdp: msg.sdp,
-          });
-
           if (target) {
             // If we claimed FXS but findByLine somehow returned a softphone, re-prefer bridge.
             if (usedAta && !target.isBridge) {
               const bridge = [...clients].find((c) => c.isBridge && c.lineId === toLineId);
               if (bridge) {
+                rememberCallPeers({
+                  callId: call.id,
+                  fromLineId,
+                  toLineId,
+                  caller: client,
+                  callee: bridge,
+                });
                 send(bridge.ws, {
                   type: "call.offer",
                   callId: call.id,
@@ -2133,6 +3583,7 @@ wss.on("connection", (ws) => {
                   sdp: msg.sdp,
                 });
               } else {
+                clearPendingSignaling(fromLineId, toLineId);
                 endCallLog(db, call.id, "offline");
                 send(ws, {
                   type: "call.rejected",
@@ -2141,6 +3592,13 @@ wss.on("connection", (ws) => {
                 return;
               }
             } else {
+              rememberCallPeers({
+                callId: call.id,
+                fromLineId,
+                toLineId,
+                caller: client,
+                callee: target,
+              });
               send(target.ws, {
                 type: "call.offer",
                 callId: call.id,
@@ -2148,31 +3606,46 @@ wss.on("connection", (ws) => {
                 toLineId,
                 sdp: msg.sdp,
               });
+              if (!target.isBridge) schedulePendingOfferRepush(toLineId);
             }
+          } else {
+            // CallKit wake — caller known; callee attaches on WS hello / pending deliver.
+            rememberCallPeers({
+              callId: call.id,
+              fromLineId,
+              toLineId,
+              caller: client,
+              callee: null,
+            });
           }
 
           // Softphone / iOS CallKit path — FXS-first skips wake so the wall phone owns the ring.
           if (!usedAta) {
-            const fromLine = db
-              .prepare(`SELECT name, child_label FROM lines WHERE id = ?`)
-              .get(fromLineId) as { name: string; child_label: string | null } | undefined;
-            const callerName =
-              (fromLine?.child_label || fromLine?.name || "Family").trim().slice(0, 64) || "Family";
+            const callerName = linePublicLabel(fromLineId).slice(0, 64) || "Family";
             void wakeIosCallee({
               toLineId,
               fromLineId,
               callId: call.id,
               callerName,
             });
+            schedulePendingOfferRepush(toLineId);
+          } else {
+            // Analog owns inbound — don't leave softphone CallKit with a peeked offer.
+            pendingOffers.delete(toLineId);
           }
           send(ws, { type: "call.ringing", callId: call.id });
           publishLiveCall(call.id, fromLineId, toLineId, "ringing");
           console.log(
             `[call] ringing ${call.id} ${fromLineId}→${toLineId}${usedAta ? ` (FXS ${ata?.sip_extension})` : ""}${
-              !target && iosTokens.length ? " (iOS VoIP wake)" : ""
+              !target && iosWakeTokens.length
+                ? useVoipWake
+                  ? " (iOS VoIP wake)"
+                  : " (iOS alert wake)"
+                : ""
             }`
           );
         } catch (e) {
+          clearPendingSignaling(fromLineId, toLineId);
           endCallLog(db, call.id, "offline");
           console.error(`[call] offer failed ${call.id}:`, e);
           send(ws, { type: "call.rejected", reason: "Call failed to connect" });
@@ -2181,34 +3654,143 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    if (type === "call.answer" || type === "call.ice" || type === "call.hangup" || type === "call.hold") {
+    if (
+      type === "call.answer" ||
+      type === "call.ice" ||
+      type === "call.hangup" ||
+      type === "call.hold" ||
+      type === "call.accepted" ||
+      type === "call.ringing" ||
+      type === "call.fxs-up"
+    ) {
       const fromLineId = String(msg.fromLineId || "");
       const toLineId = String(msg.toLineId || "");
+      const callId = msg.callId ? String(msg.callId) : undefined;
       const otherId = client.lineId === fromLineId ? toLineId : fromLineId;
-      const target = findByLine(otherId);
+      // Soft→ATA race: caller trickle ICE often arrives before callId + before FXS claim.
+      // Never deliver those candidates to a softphone still on the kid line — buffer for bridge.
+      if (type === "call.ice" && otherId && getAtaByLineId(db, otherId)) {
+        const bridge = [...clients].find(
+          (c) => c.isBridge && c.lineId === otherId && c.ws?.readyState === c.ws.OPEN
+        );
+        if (bridge) {
+          send(bridge.ws, msg);
+          console.log(`[call] relay call.ice ${callId || "?"} → ${otherId} (bridge)`);
+        } else {
+          bufferPendingIce(otherId, {
+            callId,
+            fromLineId,
+            toLineId,
+            candidate: msg.candidate,
+          });
+          console.log(`[call] buffered ICE → ${otherId} (awaiting FXS claim)`);
+        }
+        return;
+      }
+      const target = peerClientForSignal(callId, client, fromLineId, toLineId);
       if (!target) {
         console.log(`[call] ${type} no peer for ${otherId} (from ${client.lineId})`);
-        if (type === "call.answer") {
-          send(ws, { type: "call.rejected", reason: "Caller disconnected before answer" });
+        if (type === "call.ice") {
+          // CallKit wake / brief offline: hold trickle until the peer's WS is up.
+          bufferPendingIce(otherId, {
+            callId,
+            fromLineId,
+            toLineId,
+            candidate: msg.candidate,
+          });
         }
+        if (type === "call.answer") {
+          // Don't reject — caller may reconnect a moment later (same as ICE buffer).
+          bufferPendingAnswer(otherId, {
+            callId,
+            fromLineId,
+            toLineId,
+            sdp: msg.sdp,
+            early: Boolean(msg.early),
+          });
+          console.log(`[call] buffered answer ${msg.callId || "?"} → ${otherId}`);
+        }
+        // call.accepted without a peer: bridge usually already holds the offer WS;
+        // real call.answer will still stop FXS ringback via answerFxsEarly.
       } else {
         send(target.ws, msg);
+        if (
+          type === "call.answer" ||
+          type === "call.ice" ||
+          type === "call.accepted" ||
+          type === "call.fxs-up" ||
+          type === "call.ringing"
+        ) {
+          console.log(
+            `[call] relay ${type} ${callId || "?"} → ${target.lineId}${target.isBridge ? " (bridge)" : " (soft)"}${
+              type === "call.answer" && msg.early ? " early" : ""
+            }`
+          );
+        }
       }
       if (type === "call.hangup" && msg.callId) {
         const reason = String(msg.reason || "");
         // Ring timeout / no-answer → missed (caller then enters leave-a-message).
         endCallLog(db, String(msg.callId), reason === "no-answer" ? "missed" : "ended");
         endLiveCall(String(msg.callId), fromLineId, toLineId);
+        clearPendingSignaling(fromLineId, toLineId);
+        clearCallPeers(String(msg.callId));
         console.log(`[call] hangup ${msg.callId}${reason ? ` (${reason})` : ""}`);
         // Drop FXS claim so a softphone on the same line can take inbound again if the ATA goes away.
         if (toLineId && getAtaByLineId(db, toLineId)) void releaseBridgeCallee(toLineId);
         if (fromLineId && getAtaByLineId(db, fromLineId)) void releaseBridgeCallee(fromLineId);
       }
       if (type === "call.answer" && msg.callId) {
+        const hasPeer = Boolean(target);
+        // Soft→ATA early answer is SDP/ICE only — landline still ringing.
+        if (!msg.early) {
+          markCallAnswered(db, String(msg.callId));
+          publishLiveCall(String(msg.callId), fromLineId, toLineId, "active");
+        } else {
+          publishLiveCall(String(msg.callId), fromLineId, toLineId, "ringing");
+        }
+        // Drop buffered offer/ICE so a later WS hello doesn't re-ring.
+        // Keep buffered answer when the caller is briefly offline (flushed on their hello).
+        if (toLineId) {
+          pendingOffers.delete(toLineId);
+          pendingOfferRepushArmed.delete(toLineId);
+          pendingIceByLine.delete(toLineId);
+        }
+        if (fromLineId) {
+          pendingIceByLine.delete(fromLineId);
+        }
+        if (hasPeer) {
+          pendingAnswerByLine.delete(fromLineId);
+          pendingAnswerByLine.delete(toLineId);
+        }
+        console.log(
+          `[call] answered ${msg.callId} peer=${hasPeer ? otherId : "NONE"} sdp=${msg.sdp ? "yes" : "no"} via=${
+            target?.isBridge ? "bridge" : target ? "soft" : "none"
+          }${msg.early ? " early" : ""}`
+        );
+      }
+      if (type === "call.fxs-up" && msg.callId) {
         markCallAnswered(db, String(msg.callId));
         publishLiveCall(String(msg.callId), fromLineId, toLineId, "active");
-        console.log(`[call] answered ${msg.callId}`);
+        console.log(`[call] fxs-up ${msg.callId}`);
       }
+      return;
+    }
+
+    // Softphone → hub media diagnostics (no SDP / keys / candidates).
+    if (type === "call.media") {
+      const callId = msg.callId ? String(msg.callId) : "?";
+      const ice = String(msg.ice || "");
+      const conn = String(msg.conn || "");
+      const senders = Number(msg.senders || 0);
+      const receivers = Number(msg.receivers || 0);
+      const remoteTracks = Number(msg.remoteTracks || 0);
+      const dirs = typeof msg.dirs === "string" ? msg.dirs.slice(0, 80) : "";
+      console.log(
+        `[media] ${callId} line=${client.lineId || "?"} ice=${ice} conn=${conn} send=${senders} recv=${receivers} remoteTracks=${remoteTracks}${
+          dirs ? ` dirs=${dirs}` : ""
+        }`
+      );
       return;
     }
 
@@ -2289,6 +3871,304 @@ wss.on("connection", (ws) => {
       if (type === "voicemail.monitor.stop") {
         console.log(`[vm-monitor] stop ${fromLineId}↔${toLineId}`);
       }
+      return;
+    }
+
+    // —— TreeHouse (pad #1; aliases playroom.* / familyroom.* for older clients) ——
+    const playRoomWsType =
+      typeof type === "string" && type.startsWith("familyroom.")
+        ? `treehouse.${type.slice("familyroom.".length)}`
+        : typeof type === "string" && type.startsWith("playroom.")
+          ? `treehouse.${type.slice("playroom.".length)}`
+          : type;
+    if (
+      playRoomWsType === "treehouse.join" ||
+      playRoomWsType === "treehouse.leave" ||
+      playRoomWsType === "treehouse.listen.start" ||
+      playRoomWsType === "treehouse.listen.stop"
+    ) {
+      const sendPlayErr = (error: string) => {
+        const payload = { error, playRoom: true, familyRoom: true, treeHouse: true };
+        send(ws, { type: "treehouse.error", ...payload });
+        send(ws, { type: "playroom.error", ...payload });
+        send(ws, { type: "familyroom.error", ...payload });
+      };
+      const sendPlayJoined = (payload: Record<string, unknown>) => {
+        const body = { ...payload, playRoom: true, familyRoom: true, treeHouse: true };
+        send(ws, { type: "treehouse.joined", ...body });
+        send(ws, { type: "playroom.joined", ...body });
+        send(ws, { type: "familyroom.joined", ...body });
+      };
+
+      if (playRoomWsType === "treehouse.join") {
+        const lineId = String(msg.lineId || client.lineId || "");
+        if (!lineId || lineId !== client.lineId) {
+          sendPlayErr("Bad line");
+          return;
+        }
+        const householdId = householdIdForLine(lineId);
+        if (!householdId) {
+          sendPlayErr("Unknown line");
+          return;
+        }
+        if (!canJoinFamilyRoom(db, householdId, lineId)) {
+          const joinLine = db.prepare(`SELECT IFNULL(mode, 'parent') AS mode FROM lines WHERE id = ?`).get(
+            lineId
+          ) as { mode: string } | undefined;
+          const uid = client.userId;
+          const parentOfHouse =
+            typeof uid === "string" &&
+            uid.length > 0 &&
+            !isChildOnlyAccount(db, uid) &&
+            canManageHouseholdChildState(db, uid, householdId) &&
+            (joinLine?.mode || "parent") !== "child";
+          sendPlayErr(
+            parentOfHouse
+              ? "Parents use Listen only — tap TreeHouse or Parent → TreeHouse (no join approve needed)"
+              : "A parent must approve you for TreeHouse first"
+          );
+          return;
+        }
+        const result = joinTreeHouseLine(lineId, {
+          notifyJoiner: (payload) => {
+            sendPlayJoined(payload);
+            if (!payload.alreadyIn) {
+              send(ws, {
+                type: "group.peer-joined",
+                roomId: payload.roomId,
+                lineId,
+                hostLineId: payload.hostLineId,
+                members: payload.members,
+                invited: [],
+                talkPeers: payload.talkPeers,
+                familyRoom: true,
+                playRoom: true,
+              });
+            }
+          },
+        });
+        if (!result.ok) {
+          sendPlayErr(result.error);
+          return;
+        }
+        return;
+      }
+
+      if (playRoomWsType === "treehouse.leave") {
+        const lineId = String(msg.lineId || client.lineId || "");
+        const householdId = householdIdForLine(lineId);
+        if (!householdId || lineId !== client.lineId) return;
+        const roomId = familyRoomByHousehold.get(householdId);
+        const room = roomId ? groupRooms.get(roomId) : undefined;
+        if (!room) {
+          fanoutFamilyRoomPresence(householdId);
+          return;
+        }
+        // Parent listen-only leave
+        if (room.listeners?.has(lineId)) {
+          room.listeners.delete(lineId);
+          fanoutFamilyRoomPresence(householdId);
+          send(ws, {
+            type: "treehouse.listen.stopped",
+            roomId: room.id,
+            playRoom: true,
+            familyRoom: true,
+            treeHouse: true,
+          });
+          send(ws, {
+            type: "playroom.listen.stopped",
+            roomId: room.id,
+            playRoom: true,
+            familyRoom: true,
+            treeHouse: true,
+          });
+          send(ws, {
+            type: "familyroom.listen.stopped",
+            roomId: room.id,
+            playRoom: true,
+            familyRoom: true,
+            treeHouse: true,
+          });
+          console.log(`[treehouse] listen stop ${room.id} ${lineId}`);
+          return;
+        }
+        leaveTreeHouseLine(lineId);
+        return;
+      }
+
+      if (playRoomWsType === "treehouse.listen.start") {
+        const parentLineId = String(msg.parentLineId || client.lineId || "");
+        const childLineId = String(msg.childLineId || "");
+        if (!parentLineId || parentLineId !== client.lineId || !childLineId) {
+          sendPlayErr("Bad listen session");
+          return;
+        }
+        if (!client.userId || isChildOnlyAccount(db, client.userId)) {
+          sendPlayErr("Only parents can listen");
+          return;
+        }
+        const householdId = householdIdForLine(childLineId);
+        if (!householdId || !canManageHouseholdChildState(db, client.userId, householdId)) {
+          sendPlayErr("Not authorized for this household");
+          return;
+        }
+        const childLine = db.prepare(`SELECT * FROM lines WHERE id = ?`).get(childLineId) as
+          | { household_id: string; mode?: string }
+          | undefined;
+        if (!childLine || childLine.household_id !== householdId) {
+          sendPlayErr("Unknown child line");
+          return;
+        }
+        if ((childLine.mode || "parent") !== "child") {
+          sendPlayErr("Listen-only mirrors a kid line");
+          return;
+        }
+        const roomId = familyRoomByHousehold.get(householdId);
+        const room = roomId ? groupRooms.get(roomId) : undefined;
+        if (!room || !room.members.has(childLineId)) {
+          sendPlayErr("That kid isn’t in TreeHouse right now");
+          return;
+        }
+        if (!room.listeners) room.listeners = new Map();
+        if (room.members.has(parentLineId)) {
+          sendPlayErr("Leave TreeHouse talk before listening");
+          return;
+        }
+        room.listeners.set(parentLineId, { childLineId, startedAt: Date.now() });
+        const listenTargets = familyRoomListenerTargets(room, householdId, childLineId);
+        const analogTargets = listenTargets.filter((id) => room.analogMembers?.has(id));
+        const childName = linePublicLabel(childLineId);
+        const announceText = `${childName}’s parent is listening`;
+        // Room-wide honesty for kids only: all TreeHouse members hear the cue.
+        // Parent listeners (including the starter) must not get their own disclosure TTS.
+        fanoutFamilyRoomAnnounce(room, announceText, "parent-listen", room.members);
+        const listenPayload = {
+          roomId: room.id,
+          householdId,
+          parentLineId,
+          childLineId,
+          childName,
+          listenTargets,
+          analogTargets,
+          members: roomMemberList(room),
+          playRoom: true,
+          familyRoom: true,
+          treeHouse: true,
+        };
+        send(ws, { type: "treehouse.listen.started", ...listenPayload });
+        send(ws, { type: "playroom.listen.started", ...listenPayload });
+        send(ws, { type: "familyroom.listen.started", ...listenPayload });
+        // Softphone talk peers + child offer to the parent. Analog kids cannot —
+        // parent offers recvonly and the bridge answers via ExternalMedia.
+        for (const targetId of listenTargets) {
+          if (room.analogMembers?.has(targetId)) continue;
+          const c = findSoftphoneByLine(targetId);
+          if (!c) continue;
+          send(c.ws, {
+            type: "group.peer-joined",
+            roomId: room.id,
+            lineId: parentLineId,
+            hostLineId: room.hostLineId,
+            members: roomMemberList(room),
+            invited: [],
+            listener: true,
+            listenForChildLineId: childLineId,
+            familyRoom: true,
+            playRoom: true,
+          });
+        }
+        fanoutFamilyRoomPresence(householdId);
+        console.log(
+          `[treehouse] listen start room=${room.id} parent=${parentLineId} child=${childLineId}`
+        );
+        return;
+      }
+
+      if (playRoomWsType === "treehouse.listen.stop") {
+        const parentLineId = String(msg.parentLineId || client.lineId || "");
+        if (!parentLineId || parentLineId !== client.lineId) return;
+        const householdId =
+          householdIdForLine(parentLineId) ||
+          [...familyRoomByHousehold.keys()].find((hid) => {
+            const rid = familyRoomByHousehold.get(hid);
+            const r = rid ? groupRooms.get(rid) : undefined;
+            return Boolean(r?.listeners?.has(parentLineId));
+          });
+        if (!householdId) return;
+        const roomId = familyRoomByHousehold.get(householdId);
+        const room = roomId ? groupRooms.get(roomId) : undefined;
+        if (!room?.listeners?.has(parentLineId)) return;
+        room.listeners.delete(parentLineId);
+        fanoutGroup(room, {
+          type: "group.peer-left",
+          roomId: room.id,
+          lineId: parentLineId,
+          members: roomMemberList(room),
+          invited: [],
+          listener: true,
+          familyRoom: true,
+          playRoom: true,
+        });
+        send(ws, {
+          type: "treehouse.listen.stopped",
+          roomId: room.id,
+          playRoom: true,
+          familyRoom: true,
+          treeHouse: true,
+        });
+        send(ws, {
+          type: "playroom.listen.stopped",
+          roomId: room.id,
+          playRoom: true,
+          familyRoom: true,
+          treeHouse: true,
+        });
+        send(ws, {
+          type: "familyroom.listen.stopped",
+          roomId: room.id,
+          playRoom: true,
+          familyRoom: true,
+          treeHouse: true,
+        });
+        fanoutFamilyRoomPresence(householdId);
+        console.log(`[treehouse] listen stop ${room.id} ${parentLineId}`);
+        return;
+      }
+      return;
+    }
+
+    // —— FamilyRoom (# IVR; full mesh of admin-approved family) ——
+    if (type === "adultfamily.join" || type === "adultfamily.leave") {
+      const lineId = String(msg.lineId || client.lineId || "");
+      if (!lineId || lineId !== client.lineId) {
+        send(ws, { type: "adultfamily.error", error: "Bad line" });
+        return;
+      }
+      if (type === "adultfamily.leave") {
+        leaveAdultFamilyRoomLine(lineId);
+        send(ws, { type: "adultfamily.left", lineId });
+        return;
+      }
+      const householdId = String(msg.householdId || householdIdForLine(lineId) || "");
+      if (!householdId) {
+        send(ws, { type: "adultfamily.error", error: "Unknown household" });
+        return;
+      }
+      const result = joinAdultFamilyRoomLine(lineId, householdId);
+      if (!result.ok) {
+        send(ws, { type: "adultfamily.error", error: result.error });
+        return;
+      }
+      send(ws, {
+        type: "adultfamily.joined",
+        roomId: result.roomId,
+        householdId: result.householdId,
+        hostLineId: result.hostLineId,
+        members: result.members,
+        talkPeers: result.talkPeers,
+        adultFamilyRoom: true,
+        alreadyIn: Boolean(result.alreadyIn),
+      });
       return;
     }
 
@@ -2416,6 +4296,32 @@ wss.on("connection", (ws) => {
       if (!room || lineId !== client.lineId) return;
       room.members.delete(lineId);
       room.invited.delete(lineId);
+      // TreeHouse / FamilyRoom: host leaving does not kick everyone — room lives until empty.
+      if (room.familyRoomHouseholdId || room.adultFamilyRoomHouseholdId) {
+        if (room.members.size === 0) {
+          endGroupRoom(
+            roomId,
+            room.adultFamilyRoomHouseholdId ? "FamilyRoom empty" : "TreeHouse empty"
+          );
+          return;
+        }
+        if (lineId === room.hostLineId) {
+          room.hostLineId = [...room.members][0];
+        }
+        fanoutGroup(room, {
+          type: "group.peer-left",
+          roomId,
+          lineId,
+          members: roomMemberList(room),
+          invited: [...room.invited],
+          familyRoom: Boolean(room.familyRoomHouseholdId),
+          adultFamilyRoom: Boolean(room.adultFamilyRoomHouseholdId),
+        });
+        if (room.familyRoomHouseholdId) {
+          fanoutFamilyRoomPresence(room.familyRoomHouseholdId);
+        }
+        return;
+      }
       if (lineId === room.hostLineId || room.members.size === 0) {
         endGroupRoom(roomId, lineId === room.hostLineId ? "Host ended the group call" : "Call ended");
         return;
@@ -2434,8 +4340,40 @@ wss.on("connection", (ws) => {
     }
 
     if (type === "group.offer" || type === "group.answer" || type === "group.ice") {
+      const fromLineId = String(msg.fromLineId || client.lineId || "");
       const toLineId = String(msg.toLineId || "");
-      const target = findByLine(toLineId);
+      if (!fromLineId || !toLineId) return;
+      // TreeHouse: only relay mesh signaling on symmetric talk edges (or parent listen path).
+      // FamilyRoom: full mesh between all admin-approved members (kids + adults).
+      const room =
+        [...groupRooms.values()].find(
+          (r) =>
+            r.id === String(msg.roomId || "") &&
+            (Boolean(r.familyRoomHouseholdId) || Boolean(r.adultFamilyRoomHouseholdId)) &&
+            (r.members.has(fromLineId) ||
+              r.listeners?.has(fromLineId) ||
+              r.members.has(toLineId) ||
+              r.listeners?.has(toLineId))
+        ) || null;
+      if (room?.familyRoomHouseholdId && !room.adultFamilyRoomHouseholdId) {
+        const hh = room.familyRoomHouseholdId;
+        const fromListener = room.listeners?.get(fromLineId);
+        const toListener = room.listeners?.get(toLineId);
+        let allowed = canTalkInFamilyRoom(db, hh, fromLineId, toLineId);
+        if (!allowed && fromListener) {
+          const targets = familyRoomListenerTargets(room, hh, fromListener.childLineId);
+          allowed = targets.includes(toLineId);
+        }
+        if (!allowed && toListener) {
+          const targets = familyRoomListenerTargets(room, hh, toListener.childLineId);
+          allowed = targets.includes(fromLineId);
+        }
+        if (!allowed) {
+          console.log(`[treehouse] drop ${type} ${fromLineId}→${toLineId} (no talk edge)`);
+          return;
+        }
+      }
+      const target = findGroupSignalingClient(toLineId, room) || findByLine(toLineId);
       if (target) send(target.ws, msg);
       else console.log(`[group] ${type} no peer ${toLineId}`);
       return;
@@ -2457,6 +4395,7 @@ wss.on("connection", (ws) => {
         for (const row of open) {
           endCallLog(db, row.id, "missed");
           endLiveCall(row.id, row.from_line_id, row.to_line_id);
+          clearPendingSignaling(row.from_line_id, row.to_line_id);
           const caller = findByLine(row.from_line_id);
           if (caller) {
             send(caller.ws, {
@@ -2503,6 +4442,28 @@ wss.on("connection", (ws) => {
           if (!room.members.has(client.lineId) && !room.invited.has(client.lineId)) continue;
           room.members.delete(client.lineId);
           room.invited.delete(client.lineId);
+          if (room.familyRoomHouseholdId || room.adultFamilyRoomHouseholdId) {
+            if (room.members.size === 0) {
+              endGroupRoom(room.id, "Someone disconnected");
+            } else {
+              if (client.lineId === room.hostLineId) {
+                room.hostLineId = [...room.members][0];
+              }
+              fanoutGroup(room, {
+                type: "group.peer-left",
+                roomId: room.id,
+                lineId: client.lineId,
+                members: roomMemberList(room),
+                invited: [...room.invited],
+                familyRoom: Boolean(room.familyRoomHouseholdId),
+                adultFamilyRoom: Boolean(room.adultFamilyRoomHouseholdId),
+              });
+              if (room.familyRoomHouseholdId) {
+                fanoutFamilyRoomPresence(room.familyRoomHouseholdId);
+              }
+            }
+            continue;
+          }
           if (client.lineId === room.hostLineId || room.members.size === 0) {
             endGroupRoom(room.id, "Someone disconnected");
           } else {
@@ -2525,6 +4486,7 @@ setInterval(() => {
     const expired = expireStaleRings(db, RING_TIMEOUT_MS);
     for (const row of expired) {
       endLiveCall(row.id, row.from_line_id, row.to_line_id);
+      clearPendingSignaling(row.from_line_id, row.to_line_id);
       const caller = findByLine(row.from_line_id);
       if (caller) {
         send(caller.ws, {
@@ -2568,6 +4530,36 @@ setInterval(() => {
     console.error("[call] maintenance tick failed", e);
   }
 }, 5_000);
+
+/** Analog FXS: join / leave TreeHouse (pad #1) without WebRTC mesh. */
+app.post("/api/bridge/treehouse/join", (req, res) => {
+  if (!bridgeSecretOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  const { lineId, sipExtension } = (req.body || {}) as { lineId?: string; sipExtension?: string };
+  let id = String(lineId || "").trim();
+  if (!id && sipExtension) {
+    const ata = getAtaBySipExtension(db, String(sipExtension));
+    id = ata?.line_id || "";
+  }
+  if (!id) return res.status(400).json({ ok: false, error: "lineId or sipExtension required" });
+  const result = joinTreeHouseLine(id, { analog: true });
+  if (!result.ok) return res.status(400).json(result);
+  res.json(result);
+});
+
+app.post("/api/bridge/treehouse/leave", (req, res) => {
+  if (!bridgeSecretOk(req)) return res.status(401).json({ error: "Unauthorized" });
+  const { lineId, sipExtension } = (req.body || {}) as { lineId?: string; sipExtension?: string };
+  let id = String(lineId || "").trim();
+  if (!id && sipExtension) {
+    const ata = getAtaBySipExtension(db, String(sipExtension));
+    id = ata?.line_id || "";
+  }
+  if (!id) return res.status(400).json({ ok: false, error: "lineId or sipExtension required" });
+  const result = leaveTreeHouseLine(id);
+  if (!result.ok) return res.status(400).json(result);
+  res.json(result);
+});
+
 server.listen(PORT, () => {
   console.log("");
   console.log(`PhoneHome → http://127.0.0.1:${PORT}`);

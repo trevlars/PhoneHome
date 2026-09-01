@@ -53,7 +53,9 @@ This is an engineering / product commitment, not legal advice. Treat counsel as 
 
 ## Parent-facing promise (copy north star)
 
-> PhoneHome is built so family calls stay private. Softphone calls use encrypted WebRTC. Analog adapters use encrypted SIP and SRTP. We don’t keep your call audio. Parents set who kids can reach — that’s safety, not selling data.
+> PhoneHome is built so family calls stay private. Calls in the app use encrypted WebRTC. Analog adapters use encrypted SIP and SRTP. We don’t keep your call audio. Parents set who kids can reach — that’s safety, not selling data.
+
+The **iOS app** may store your username and password in the **on-device Keychain** (`AfterFirstUnlockThisDeviceOnly` — not iCloud, not our servers) so Face ID can sign you in. Sign-out keeps that saved login on the phone; **Forget saved sign-in**, deleting the account, or deleting the app removes it. Passwords are never written to logs.
 
 Refine with counsel before marketing sites go live.
 

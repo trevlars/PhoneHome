@@ -1,32 +1,23 @@
-# Future: parental listen-in (not Stage 1)
+# Parental listen-in
 
-**Status:** Non-goal for Stage 1. Spec only — do not implement until child mode, live call visibility, and parent PIN gating are solid in production.
+**Status:** TreeHouse **listen-only** is shipping (softphone + analog FXS mix). Classic 1:1 parallel-pickup listen-in remains a later path.
 
-**Privacy pillar:** Any listen-in design must satisfy [`privacy-security.md`](./privacy-security.md) — audited, household-policy, never silent adult spyware, no call-audio archive by default. Legal review before ship.
+**Privacy pillar:** Any listen-in design must satisfy [`privacy-security.md`](./privacy-security.md) — audited, household-policy, never silent adult spyware, no call-audio archive by default. Legal review before broader 1:1 listen-in.
 
-## Product idea
+## TreeHouse listen-only (shipped)
 
-Landline-style **parallel pickup**: a parent on another household softphone can silently join a child’s active call as **receive-only** (hear both sides, no mic injected unless they “pick up” later). Hidden from the child’s UI beyond normal “parent can see activity” expectations.
+- Parent-only, same household; toggle in **Parent → TreeHouse**.
+- Receive-only WebRTC: parent hears the **child’s filtered mix** (same talk peers the child hears), not a secret full-room god mix.
+- Analog kid: parent hears the household FXS TreeHouse mix (recvonly ExternalMedia on the analog bridge). Softphone talk peers still mesh separately.
+- **Never silent:** on start, TTS to **everyone currently in TreeHouse**: “{Child}’s parent is listening”. Analog mix gets the same Flite phrase. Pad shows a distinct parent-listening chip.
+- Does not inject parent mic. Stop listening leaves without endangering kid mesh.
+- No call content logged — only presence / listen start-stop style metadata in server logs (`[treehouse] listen start …`).
 
-## Constraints
+## Future: 1:1 parallel pickup (not Stage 1)
 
-- **Parent-only, PIN-gated** — same household owner/parent role; verify parent PIN before arming listen-in.
-- **Never exposed to other families** — same household mesh only.
-- **Audit** — log listen-in start/stop on the household activity feed (who, which child line, when). Optional on-device parent confirmation.
-- **Consent framing** — household policy / onboarding copy that parents may monitor calls on child devices; not silent spyware for adult peers.
+Landline-style join of a child’s active **1:1** call as receive-only. Still requires child mode, live call visibility, and parent PIN gating before design/ship. Constraints from the original sketch still apply: parent-only, PIN-gated, never exposed across families, audit trail, consent framing.
 
-## Tech sketch (later)
+## Related
 
-1. **Hidden receive-only mesh peer (MVP candidate)**  
-   Parent softphone joins the existing 1:1 (or group) WebRTC mesh as a third peer with mic muted / no send tracks; subscribe to both remote streams. Works on current mesh without an SFU; scales poorly past ~3–4.
-
-2. **SFU path (Stage 2+)**  
-   If mesh hold/listen-in gets fragile, route child calls through a selective-forwarding unit so parent can subscribe as a viewer without renegotiating the kid’s peer connection.
-
-## Prerequisites (ship first)
-
-- Child mode + parent PIN exit  
-- Live “who is the child talking to” presence for household parents  
-- Unified parent panel  
-
-Only after those should listen-in be designed end-to-end.
+- [`family-mesh.md`](./family-mesh.md) — TreeHouse model
+- [`threat-model.md`](./threat-model.md) — silent surveillance threat row

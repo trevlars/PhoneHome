@@ -10,9 +10,11 @@
 | Passive SIP scanners on public IP | TLS on **5061** (not cleartext 5060); strong ext passwords; fail2ban; narrow RTP |
 | Server / FreePBX operator | Softphone media not stored; no audio archive by default. FXS bridge **does** terminate media — harden that host |
 | Stolen ATA / Hub | Physical access ≈ landline risk; rotate SIP secret; change admin password on setup |
+| Stolen / unlocked iPhone | Session + saved password live in the **device Keychain** (not iCloud). Face ID is required to read the password. Treat a stolen unlocked phone like a stolen house key. |
 | Invited family abuse | Per-line allowlist; revoke; quiet hours; kill switch |
+| Bad-actor adult harvesting kids’ friends | **Parent circles** (one per parent); invite-first add; no global kid directory; directory/presence scoped to **viewer’s own circle** (not co-members of a host’s circle); kids cannot approve/add contacts |
 | Soft-hub phone away | Explicit offline state |
-| Silent surveillance feature creep | Listen-in is future/opt-in/audited only (`listen-in-future.md`) |
+| Silent surveillance feature creep | TreeHouse parent listen-only is **announced room-wide** + child-mirrored mix (`docs/family-mesh.md`, `listen-in-future.md`). No silent god-mix. 1:1 parallel pickup still future/opt-in/audited |
 | Weak or factory ATA passwords | Push-provision sets strong admin + generated SIP secret |
 | Self-signed / unvalidated SIP TLS | **Mitigated:** Let’s Encrypt on SIP FQDN + ATA cert validate on. LAN-IP-only configs still skip validate (documented escape hatch) |
 | ATA admin push over self-signed HTTPS | **Accepted, scoped:** one-tap setup skips cert validation for RFC1918 hosts only (`ht801Remote.ts`); LAN attacker during setup could capture admin + SIP secrets. Manual "Download config" avoids it |
