@@ -1,62 +1,89 @@
 # Download Mothership
 
-**Mothership** = the always-on PhoneHome server. These downloads are for parents who want **install and forget** — no Git, no separate Node.js install.
+**Mothership** = the always-on PhoneHome server. Download a bundle — no Git, no Node.js install.
 
-## Get a release
+**Releases:** [github.com/trevlars/PhoneHome/releases](https://github.com/trevlars/PhoneHome/releases)
 
-1. Open **[GitHub Releases](https://github.com/trevlars/PhoneHome/releases)** (tag `v0.1.0` or newer).
-2. Download the file for your computer:
+## macOS (Apple Silicon)
 
-| Your computer | Download |
-| --- | --- |
-| Mac (M1/M2/M3/M4) | `phonehome-mothership-v*-darwin-arm64.tar.gz` |
-| Mac (Intel) | Build from source — see [Developer / git path](#developer--git-path) below |
-| Linux PC / NUC (64-bit) | `phonehome-mothership-v*-linux-x64.tar.gz` |
-| Raspberry Pi / ARM Linux | `phonehome-mothership-v*-linux-arm64.tar.gz` |
-| Windows 10/11 | `phonehome-mothership-v*-win-x64.zip` |
+This is the annoying part on Mac — here's the exact sequence:
 
-Each bundle includes **Node.js**, the hub, bridge, and web UI — built and ready to run.
+### 1. Download & unzip
 
-## Install
+- Download `phonehome-mothership-*-darwin-arm64.zip` from Releases
+- **Double-click the `.zip`** in Downloads — Finder creates a folder `phonehome-mothership`
+- Open that folder
 
-### macOS
+> **Don't** try to run anything inside the `.zip` without unzipping first.
+
+### 2. Run the installer
+
+Double-click **`Install PhoneHome Mothership.command`**
+
+If macOS says *"can't be opened"* or *"unidentified developer"*:
+
+1. **Right-click** (or Control-click) the file
+2. Choose **Open**
+3. Click **Open** in the dialog
+
+Still blocked? **System Settings → Privacy & Security** → scroll down → **Open Anyway**
+
+The installer clears macOS quarantine automatically, but Gatekeeper may still ask once.
+
+### 3. Terminal — two questions
+
+- **HTTPS URL** — paste your public URL, or press **Enter** to skip (add later)
+- **Analog landline?** — press **Enter** for No (softphones only)
+
+Browser opens **http://127.0.0.1:8787** when finished. Use the setup code on that page.
+
+### HTTPS for phones (when ready)
+
+In Terminal:
 
 ```bash
-tar -xzf phonehome-mothership-v*-darwin-arm64.tar.gz
-cd phonehome-mothership
+brew install cloudflared
+cloudflared tunnel --url http://127.0.0.1:8787
 ```
 
-Double-click **`Install PhoneHome Mothership.command`**, or run `./install-mothership.sh`.
-
-### Linux
+Copy the `https://….trycloudflare.com` URL, then:
 
 ```bash
-tar -xzf phonehome-mothership-v*-linux-x64.tar.gz
+nano ~/.phonehome/phonehome.env
+# Set PUBLIC_BASE_URL=https://your-url
+launchctl kickstart -k gui/$(id -u)/com.phonehome.server
+```
+
+Parents open that HTTPS URL on their phones.
+
+---
+
+## Linux
+
+```bash
+unzip phonehome-mothership-*-linux-x64.zip
 cd phonehome-mothership
 ./install-mothership.sh
-sudo loginctl enable-linger "$USER"   # keep running after logout
+sudo loginctl enable-linger "$USER"
 ```
 
-### Windows
+## Windows
 
-Unzip, then in PowerShell:
+Unzip, then double-click **`install-mothership.ps1`** (or right-click → Run with PowerShell).
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\install-mothership.ps1
-```
+---
 
-## After install
+## Pick the right download
 
-1. Set a **public HTTPS URL** during setup (e.g. [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) → `https://….trycloudflare.com`).
-2. Open that URL on your phone → enter the **Mothership setup code** (also in `~/.phonehome` / `%USERPROFILE%\.phonehome` logs on first boot).
-3. Create your **Pod** (household), invite cousins, add **Circles**.
+| Computer | File |
+| --- | --- |
+| Mac (M1/M2/M3/M4) | `*-darwin-arm64.zip` |
+| Mac (Intel) | Build from source — [git path](#from-source) |
+| Linux PC / NUC | `*-linux-x64.zip` or `.tar.gz` |
+| Raspberry Pi / ARM | `*-linux-arm64.zip` or `.tar.gz` |
+| Windows | `*-win-x64.zip` |
 
-Full stack (analog HT801, TURN, FreePBX): **[`self-host.md`](./self-host.md)**.
-
-## Developer / git path
-
-If you are hacking on PhoneHome or need the latest `master` without waiting for a release:
+## From source
 
 ```bash
 git clone https://github.com/trevlars/PhoneHome.git
@@ -64,12 +91,4 @@ cd PhoneHome && npm install && npm run build
 ./deploy/phonehome-init.sh && ./deploy/install-service.sh
 ```
 
-## Building bundles yourself
-
-```bash
-npm ci && npm run build
-./deploy/build-mothership-bundle.sh
-# → dist/phonehome-mothership-v0.1.0-<platform>.tar.gz|.zip
-```
-
-CI builds all five platforms on every `v*` tag (see `.github/workflows/mothership-release.yml`).
+Full stack (analog, TURN, FreePBX): [`self-host.md`](./self-host.md).

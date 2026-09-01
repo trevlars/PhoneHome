@@ -1,0 +1,35 @@
+PhoneHome Mothership — START HERE
+==================================
+
+macOS
+-----
+1. Unzip this folder (double-click the .zip from GitHub).
+2. Open the folder "phonehome-mothership".
+3. Double-click:  Install PhoneHome Mothership.command
+
+   If macOS says it can't be opened:
+   • Right-click the file → Open → Open again
+   • Or: System Settings → Privacy & Security → Open Anyway
+
+4. Answer the 2 questions in Terminal (HTTPS URL optional for now).
+5. Your browser opens http://127.0.0.1:8787 — use the setup code shown there.
+
+Linux
+-----
+  cd phonehome-mothership
+  ./install-mothership.sh
+
+Windows
+-------
+  Right-click install-mothership.ps1 → Run with PowerShell
+  (If blocked: Set-ExecutionPolicy -Scope Process Bypass)
+
+Need HTTPS for phones?
+----------------------
+  cloudflared tunnel --url http://127.0.0.1:8787
+  Then edit ~/.phonehome/phonehome.env (Mac/Linux)
+  or %USERPROFILE%\.phonehome\phonehome.env (Windows)
+  Set PUBLIC_BASE_URL=https://your-url
+  Restart the service (re-run the installer, or see INSTALL.md).
+
+More help: INSTALL.md in this folder.

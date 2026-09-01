@@ -111,15 +111,15 @@ else
 fi
 
 cp "$ROOT/deploy/mothership-bundle/INSTALL.md" "$BUNDLE/INSTALL.md"
+cp "$ROOT/deploy/mothership-bundle/START HERE.txt" "$BUNDLE/START HERE.txt"
 cp "$ROOT/deploy/mothership-bundle/install-mothership.sh" "$BUNDLE/install-mothership.sh"
-chmod +x "$BUNDLE/install-mothership.sh" "$BUNDLE/deploy/"*.sh 2>/dev/null || true
+cp "$ROOT/deploy/mothership-bundle/phonehome-bundle-init.sh" "$BUNDLE/deploy/mothership-bundle/phonehome-bundle-init.sh"
+cp "$ROOT/deploy/mothership-bundle/phonehome-bundle-init.ps1" "$BUNDLE/deploy/mothership-bundle/phonehome-bundle-init.ps1"
+chmod +x "$BUNDLE/install-mothership.sh" "$BUNDLE/deploy/mothership-bundle/"*.sh 2>/dev/null || true
 
 if [[ "$PLATFORM" == "darwin-arm64" || "$PLATFORM" == "darwin-x64" ]]; then
-  cat >"$BUNDLE/Install PhoneHome Mothership.command" <<'CMD'
-#!/bin/bash
-cd "$(dirname "$0")"
-./install-mothership.sh
-CMD
+  cp "$ROOT/deploy/mothership-bundle/Install PhoneHome Mothership.command" \
+    "$BUNDLE/Install PhoneHome Mothership.command"
   chmod +x "$BUNDLE/Install PhoneHome Mothership.command"
 fi
 
@@ -128,8 +128,8 @@ if [[ "$PLATFORM" == "win-x64" ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
-if [[ "$PLATFORM" == "win-x64" ]]; then
-  # Git Bash on Windows: tar -a writes zip without needing zip(1) or PowerShell paths.
+if [[ "$PLATFORM" == "win-x64" || "$PLATFORM" == darwin-* ]]; then
+  # .zip — Finder-friendly on Mac; Git Bash tar -a on Windows.
   (cd "$STAGE" && tar -acf "$OUT_DIR/${ARCHIVE_BASE}.zip" phonehome-mothership)
   echo "==> Wrote $OUT_DIR/${ARCHIVE_BASE}.zip"
 else

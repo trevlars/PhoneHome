@@ -1,60 +1,54 @@
 # Install PhoneHome Mothership (download bundle)
 
-You downloaded a **Mothership** — the always-on PhoneHome server. No Git required; Node.js is included in this folder.
+## macOS — 3 steps
 
-## Quick start
+1. **Unzip** the `.zip` from [GitHub Releases](https://github.com/trevlars/PhoneHome/releases)  
+   (Double-click the download. You get a folder named `phonehome-mothership`.)
 
-### macOS
+2. **Open that folder** and double-click **`Install PhoneHome Mothership.command`**
 
-1. Unzip the `.tar.gz`
-2. Double-click **`Install PhoneHome Mothership.command`**  
-   — or in Terminal: `./install-mothership.sh`
-3. Follow prompts (HTTPS URL, FreePBX if analog)
-4. Open your **PUBLIC_BASE_URL** on a phone → Mothership setup code → create your **Pod**
+   macOS may block it the first time:
+   - **Right-click** the file → **Open** → **Open** again  
+   - Or: **System Settings → Privacy & Security → Open Anyway**
 
-### Linux
+3. **Terminal opens** — answer 2 questions (HTTPS URL is optional; you can add it later).  
+   Browser opens **http://127.0.0.1:8787** when done.
+
+**Setup code** is on that page (also in `~/.phonehome/HOST_CODE.txt`).
+
+### Add HTTPS later (for phones)
 
 ```bash
-tar -xzf phonehome-mothership-v*.tar.gz
-cd phonehome-mothership
-./install-mothership.sh
+cloudflared tunnel --url http://127.0.0.1:8787
+# Copy the https://….trycloudflare.com URL
+nano ~/.phonehome/phonehome.env   # set PUBLIC_BASE_URL=...
+launchctl kickstart -k gui/$(id -u)/com.phonehome.server
 ```
 
-Enable linger so it stays up after logout:
+## Linux
 
 ```bash
+unzip phonehome-mothership-*.zip   # or tar -xzf for .tar.gz
+cd phonehome-mothership
+./install-mothership.sh
 sudo loginctl enable-linger "$USER"
 ```
 
-### Windows
+## Windows
 
 1. Unzip the `.zip`
-2. Right-click **PowerShell → Run as Administrator** (optional; user task works too)
-3. `cd` to the folder, then:
+2. Double-click **`install-mothership.ps1`**  
+   If blocked: right-click → **Run with PowerShell**
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\install-mothership.ps1
-```
+## Files
 
-## What gets installed
-
-- Background service (LaunchAgent / systemd / Scheduled Task)
-- Hub + bridge via `deploy/phonehome-supervisor.mjs`
-- Config in `%USERPROFILE%\.phonehome` (Windows) or `~/.phonehome` (Mac/Linux)
-
-## HTTPS required
-
-Phones need **https://** for microphone access. Easiest: [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) pointing at port 8787, then set that URL in setup.
+| File | Purpose |
+| --- | --- |
+| `START HERE.txt` | Plain-English steps |
+| `Install PhoneHome Mothership.command` | macOS installer |
+| `install-mothership.sh` / `.ps1` | Linux / Windows installer |
+| `~/.phonehome/` | Config and logs after install |
 
 ## Analog (HT801)
 
-See `docs/self-host.md` and run `./deploy/setup-analog.sh` after install.
-
-## Terms
-
-- **Mothership** = this server  
-- **Pod** = your family on it  
-- **Circle** = each parent’s approved contacts  
-
-Full glossary: `docs/glossary.md`
+Say **yes** when asked about a house phone adapter, then see `docs/self-host.md`.

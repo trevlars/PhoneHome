@@ -68,7 +68,7 @@ jobs:
 
             | OS | File |
             | --- | --- |
-            | **macOS (Apple Silicon)** | `*-darwin-arm64.tar.gz` — double-click `Install PhoneHome Mothership.command` |
+            | **macOS (Apple Silicon)** | `*-darwin-arm64.zip` — unzip, double-click `Install PhoneHome Mothership.command` |
             | **macOS (Intel)** | Build from source (`docs/download-mothership.md`) |
             | **Linux x64** | `*-linux-x64.tar.gz` — `./install-mothership.sh` |
             | **Linux ARM64** | `*-linux-arm64.tar.gz` |
