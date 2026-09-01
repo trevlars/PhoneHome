@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { sessionCookieOptions } from "./sessionCookie.js";
+import { freepbxSyncConfigured, syncAtaSipSecretToFreepbx } from "./freepbxSync.js";
 import { groupSignalingRole } from "./treehouseListen.js";
 import {
   addAllowlist,
