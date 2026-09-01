@@ -10,7 +10,7 @@
 | Your computer | Download |
 | --- | --- |
 | Mac (M1/M2/M3/M4) | `phonehome-mothership-v*-darwin-arm64.tar.gz` |
-| Mac (Intel) | `phonehome-mothership-v*-darwin-x64.tar.gz` |
+| Mac (Intel) | Build from source — see [Developer / git path](#developer--git-path) below |
 | Linux PC / NUC (64-bit) | `phonehome-mothership-v*-linux-x64.tar.gz` |
 | Raspberry Pi / ARM Linux | `phonehome-mothership-v*-linux-arm64.tar.gz` |
 | Windows 10/11 | `phonehome-mothership-v*-win-x64.zip` |

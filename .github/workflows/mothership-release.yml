@@ -22,8 +22,7 @@ jobs:
             runner: ubuntu-24.04-arm
           - platform: darwin-arm64
             runner: macos-latest
-          - platform: darwin-x64
-            runner: macos-13
+          # Intel Mac: scarce macos-13 runners; use git clone or Rosetta not supported for native deps.
           - platform: win-x64
             runner: windows-latest
     steps:
@@ -70,7 +69,7 @@ jobs:
             | OS | File |
             | --- | --- |
             | **macOS (Apple Silicon)** | `*-darwin-arm64.tar.gz` — double-click `Install PhoneHome Mothership.command` |
-            | **macOS (Intel)** | `*-darwin-x64.tar.gz` |
+            | **macOS (Intel)** | Build from source (`docs/download-mothership.md`) |
             | **Linux x64** | `*-linux-x64.tar.gz` — `./install-mothership.sh` |
             | **Linux ARM64** | `*-linux-arm64.tar.gz` |
             | **Windows** | `*-win-x64.zip` — `install-mothership.ps1` |
