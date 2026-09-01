@@ -129,12 +129,8 @@ fi
 
 mkdir -p "$OUT_DIR"
 if [[ "$PLATFORM" == "win-x64" ]]; then
-  if command -v zip >/dev/null 2>&1; then
-    (cd "$STAGE" && zip -qr "$OUT_DIR/${ARCHIVE_BASE}.zip" phonehome-mothership)
-  else
-    powershell.exe -NoProfile -Command \
-      "Compress-Archive -Path '$STAGE/phonehome-mothership' -DestinationPath '$OUT_DIR/${ARCHIVE_BASE}.zip' -Force"
-  fi
+  # Git Bash on Windows: tar -a writes zip without needing zip(1) or PowerShell paths.
+  (cd "$STAGE" && tar -acf "$OUT_DIR/${ARCHIVE_BASE}.zip" phonehome-mothership)
   echo "==> Wrote $OUT_DIR/${ARCHIVE_BASE}.zip"
 else
   tar -czf "$OUT_DIR/${ARCHIVE_BASE}.tar.gz" -C "$STAGE" phonehome-mothership
