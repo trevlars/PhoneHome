@@ -32,3 +32,6 @@ macos/PhoneHomeMothership.xcodeproj/
 macos/Mothership/Resources/node/
 macos/Mothership/Resources/mothership/
 
+
+# Python tooling (web/scripts/generate-icons.py)
+__pycache__/

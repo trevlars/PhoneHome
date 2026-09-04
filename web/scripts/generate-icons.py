@@ -1,16 +1,34 @@
 #!/usr/bin/env python3
-"""Generate PhoneHome app icons from Illustrator SVG glyphs (rotary phone + UFO)."""
+"""Generate PhoneHome app icons from the Illustrator SVG originals.
+
+Sources (web/src):
+  rotary-phone-source.svg  desk phone -> web favicons / PWA icons, iOS AppIcon (+ theme alternates)
+  ufo.svg                  UFO        -> macOS Mothership AppIcon + menu bar template icon
+
+Also rewrites web/src/rotary-phone.svg (the runtime CSS mask glyph) as a square-cropped
+*vector* copy of the source so the in-app mark stays crisp at any size.
+
+SVG rasterizer, first available wins:
+  cairosvg (pip install cairosvg pillow)  ->  rsvg-convert (librsvg)  ->  AppKit via `swift` (macOS)
+Quick Look (qlmanage) is deliberately not used: it flattens SVGs onto opaque white.
+
+Run from anywhere:  python3 web/scripts/generate-icons.py
+"""
 
 from __future__ import annotations
 
+import io
 import json
+import shutil
 import struct
 import subprocess
+import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB_SRC = ROOT / "web" / "src"
@@ -18,8 +36,46 @@ WEB_PUBLIC = ROOT / "web" / "public"
 IOS_ASSETS = ROOT / "mobile" / "ios" / "App" / "App" / "Assets.xcassets"
 MAC_ASSETS = ROOT / "macos" / "Mothership" / "App" / "Assets.xcassets"
 
-PHONE_GLYPH = WEB_SRC / "rotary-phone.svg"
-UFO_GLYPH = WEB_SRC / "ufo.svg"
+PHONE_SRC = WEB_SRC / "rotary-phone-source.svg"
+UFO_SRC = WEB_SRC / "ufo.svg"
+PHONE_MASK_SVG = "rotary-phone.svg"
+
+SVG_NS = "http://www.w3.org/2000/svg"
+SHAPE_TAGS = {"path", "polygon", "polyline", "rect", "circle", "ellipse", "line"}
+SKIP_TAGS = {"defs", "style", "metadata", "title", "desc"}
+DROP_ATTRS = {"class", "style", "fill", "id"}
+
+RASTER_SIDE = 2048
+
+# Glyph width as a fraction of its plate. The phone value reproduces the shipped iOS icon.
+PHONE_GLYPH_RATIO = 0.78
+UFO_GLYPH_RATIO = 0.72
+# icon.svg is declared "maskable": keep the mark inside the 80% safe circle.
+SVG_ICON_GLYPH_RATIO = 0.64
+# Square-crop framing of rotary-phone.svg; app.css mask-size (118%) was tuned for this.
+PHONE_MASK_FILL = 0.926
+# The full UFO scene is unreadable at 18pt: the menu bar glyph is just the saucer, i.e. the
+# top band of the artwork (fractions of the source viewBox, above where the beam starts).
+MENUBAR_SOURCE_BAND = (0.0, 0.0, 1.0, 0.505)
+
+# macOS does not mask app icons: the rounded plate is drawn at Apple's 824pt size on a
+# 1024 canvas, with transparent margins and a soft shadow.
+MAC_CANVAS = 1024
+MAC_PLATE = 824
+MAC_RADIUS_RATIO = 0.225
+
+MAC_ICON_SIZES: list[tuple[str, str, int]] = [
+    ("16x16", "1x", 16),
+    ("16x16", "2x", 32),
+    ("32x32", "1x", 32),
+    ("32x32", "2x", 64),
+    ("128x128", "1x", 128),
+    ("128x128", "2x", 256),
+    ("256x256", "1x", 256),
+    ("256x256", "2x", 512),
+    ("512x512", "1x", 512),
+    ("512x512", "2x", 1024),
+]
 
 # bg0/bg1/glyph mirror web/src/app.js + app.css theme tokens.
 THEME_PALETTES: dict[str, dict[str, str]] = {
@@ -47,120 +103,239 @@ THEME_PALETTES: dict[str, dict[str, str]] = {
     "highContrastDark": {"bg0": "#000000", "bg1": "#101010", "glyph": "#ffffff"},
 }
 
-MAC_ICON_SIZES: list[tuple[str, int, str]] = [
-    ("16x16", 16, "icon_16x16.png"),
-    ("16x16", 32, "icon_16x16@2x.png"),
-    ("32x32", 32, "icon_32x32.png"),
-    ("32x32", 64, "icon_32x32@2x.png"),
-    ("128x128", 128, "icon_128x128.png"),
-    ("128x128", 256, "icon_128x128@2x.png"),
-    ("256x256", 256, "icon_256x256.png"),
-    ("256x256", 512, "icon_256x256@2x.png"),
-    ("512x512", 512, "icon_512x512.png"),
-    ("512x512", 1024, "icon_512x512@2x.png"),
-]
+RGB = tuple[int, int, int]
 
 
-def hex_rgb(color: str) -> tuple[int, int, int]:
+def hex_rgb(color: str) -> RGB:
     color = color.lstrip("#")
-    return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))
+    return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
-def lerp(a: int, b: int, t: float) -> int:
-    return int(round(a + (b - a) * t))
+def rgb_hex(rgb: RGB) -> str:
+    return "#%02x%02x%02x" % rgb
 
 
-def mix_rgb(c1: tuple[int, int, int], c2: tuple[int, int, int], t: float) -> tuple[int, int, int]:
-    return (lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t))
+def mix_rgb(c1: RGB, c2: RGB, t: float) -> RGB:
+    return tuple(int(round(a + (b - a) * t)) for a, b in zip(c1, c2))  # type: ignore[return-value]
 
 
-def rounded_mask(size: int, radius: float) -> Image.Image:
-    mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=radius, fill=255)
-    return mask
+# --------------------------------------------------------------------------- SVG input
 
 
-def rasterize_svg(svg_path: Path, size: int) -> Image.Image:
-    """Rasterize an SVG via macOS Quick Look (qlmanage)."""
+def svg_viewbox(path: Path) -> tuple[float, float, float, float]:
+    root = ET.parse(path).getroot()
+    vb = root.get("viewBox")
+    if vb:
+        x, y, w, h = (float(v) for v in vb.replace(",", " ").split())
+        return x, y, w, h
+    w = float(root.get("width", "1024").rstrip("px"))
+    h = float(root.get("height", "1024").rstrip("px"))
+    return 0.0, 0.0, w, h
+
+
+SWIFT_RASTERIZER = r"""
+import AppKit
+let args = CommandLine.arguments
+let src = args[1], w = Int(args[2])!, h = Int(args[3])!, out = args[4]
+guard let image = NSImage(contentsOfFile: src) else { exit(2) }
+let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8,
+    samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+    bytesPerRow: 0, bitsPerPixel: 0)!
+NSGraphicsContext.saveGraphicsState()
+NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+image.draw(in: NSRect(x: 0, y: 0, width: w, height: h), from: .zero, operation: .copy, fraction: 1)
+NSGraphicsContext.restoreGraphicsState()
+try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: out))
+"""
+
+
+def rasterize_svg(path: Path, max_side: int) -> Image.Image:
+    """Render an SVG to RGBA on a transparent background, fitted inside max_side."""
+    _, _, vb_w, vb_h = svg_viewbox(path)
+    scale = max_side / max(vb_w, vb_h)
+    width = max(1, round(vb_w * scale))
+    height = max(1, round(vb_h * scale))
+
+    try:
+        import cairosvg  # type: ignore
+    except ImportError:
+        cairosvg = None
+    if cairosvg is not None:
+        png = cairosvg.svg2png(url=str(path), output_width=width, output_height=height)
+        return Image.open(io.BytesIO(png)).convert("RGBA")
+
     with tempfile.TemporaryDirectory() as tmp:
-        out_dir = Path(tmp)
-        result = subprocess.run(
-            ["qlmanage", "-t", "-s", str(size), "-o", str(out_dir), str(svg_path)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"qlmanage failed for {svg_path}: {result.stderr.strip()}")
-        png_path = out_dir / f"{svg_path.name}.png"
-        if not png_path.exists():
-            raise FileNotFoundError(f"qlmanage produced no PNG for {svg_path}")
-        with Image.open(png_path) as img:
+        out = Path(tmp) / "glyph.png"
+        if shutil.which("rsvg-convert"):
+            subprocess.run(
+                ["rsvg-convert", "-w", str(width), "-h", str(height), "-o", str(out), str(path)],
+                check=True,
+            )
+        elif sys.platform == "darwin" and shutil.which("swift"):
+            script = Path(tmp) / "rasterize.swift"
+            script.write_text(SWIFT_RASTERIZER)
+            subprocess.run(
+                ["swift", str(script), str(path), str(width), str(height), str(out)],
+                check=True,
+                capture_output=True,
+            )
+        else:
+            raise SystemExit(
+                "No SVG rasterizer found. Run: pip3 install cairosvg pillow "
+                "(or install librsvg for rsvg-convert)."
+            )
+        with Image.open(out) as img:
             return img.convert("RGBA")
 
 
-@lru_cache(maxsize=16)
-def load_glyph(svg_path: str, size: int) -> Image.Image:
+def ink_mask(img: Image.Image) -> Image.Image:
+    """Shape coverage as an L mask, for black or white ink on transparent (or white)."""
+    alpha = img.getchannel("A")
+    lo, _ = alpha.getextrema()
+    if lo < 128:
+        return alpha
+    return ImageChops.invert(img.convert("L"))
+
+
+@lru_cache(maxsize=None)
+def source_mask(svg_path: str) -> Image.Image:
     path = Path(svg_path)
     if not path.exists():
-        raise FileNotFoundError(path)
-    if path.suffix.lower() == ".svg":
-        return rasterize_svg(path, size)
-    with Image.open(path) as img:
-        rgba = img.convert("RGBA")
-        if rgba.size != (size, size):
-            rgba = rgba.resize((size, size), Image.Resampling.LANCZOS)
-        return rgba
+        raise SystemExit(f"Missing glyph source: {path}")
+    return ink_mask(rasterize_svg(path, RASTER_SIDE))
 
 
-def glyph_alpha(glyph: Image.Image) -> Image.Image:
-    """Ink mask for black or white source glyphs."""
-    r, g, b, a = glyph.split()
-    lum = Image.merge("RGB", (r, g, b)).convert("L")
-    return Image.composite(lum, a, a)
-
-
-def render_icon(theme_id: str, glyph_src: Path, size: int = 1024) -> Image.Image:
-    palette = THEME_PALETTES[theme_id]
-    bg0 = hex_rgb(palette["bg0"])
-    bg1 = hex_rgb(palette["bg1"])
-    glyph_rgb = hex_rgb(palette["glyph"])
-
-    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    px = canvas.load()
-    for y in range(size):
-        t = y / max(size - 1, 1)
-        row = mix_rgb(bg0, bg1, t * 0.55 + 0.2)
-        for x in range(size):
-            px[x, y] = (*row, 255)
-
-    vig = Image.new("L", (size, size), 0)
-    vdraw = ImageDraw.Draw(vig)
-    vdraw.ellipse((-size * 0.15, -size * 0.2, size * 1.15, size * 1.05), fill=210)
-    vig = vig.filter(ImageFilter.GaussianBlur(radius=size * 0.08))
-    canvas = Image.composite(
-        Image.new("RGBA", (size, size), (0, 0, 0, 70)),
-        canvas,
-        vig,
-    )
-
-    glyph = load_glyph(str(glyph_src), max(size, 1024))
-    glyph_size = int(size * 0.62)
-    glyph = glyph.resize((glyph_size, glyph_size), Image.Resampling.LANCZOS)
-    alpha = glyph_alpha(glyph)
-    colored = Image.new("RGBA", (glyph_size, glyph_size), (*glyph_rgb, 0))
-    colored.putalpha(alpha)
-    highlight = Image.new("RGBA", (glyph_size, glyph_size), (255, 255, 255, 0))
-    highlight.putalpha(alpha.point(lambda a: int(a * 0.18)))
-    colored = Image.alpha_composite(colored, highlight)
-
-    offset = ((size - glyph_size) // 2, int((size - glyph_size) * 0.48))
-    canvas.alpha_composite(colored, offset)
-
-    mask = rounded_mask(size, size * 0.223)
-    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    out.paste(canvas, mask=mask)
+def square_fit(mask: Image.Image, size: int, fill: float) -> Image.Image:
+    """Crop to the drawn bbox and center it on a size x size canvas at fill of the side."""
+    bbox = mask.getbbox()
+    if not bbox:
+        raise ValueError("glyph mask is empty")
+    mask = mask.crop(bbox)
+    w, h = mask.size
+    scale = size * fill / max(w, h)
+    new = (max(1, round(w * scale)), max(1, round(h * scale)))
+    mask = mask.resize(new, Image.Resampling.LANCZOS)
+    out = Image.new("L", (size, size), 0)
+    out.paste(mask, ((size - new[0]) // 2, (size - new[1]) // 2))
     return out
+
+
+def glyph_mask(svg_path: Path, size: int, fill: float) -> Image.Image:
+    return square_fit(source_mask(str(svg_path)), size, fill)
+
+
+def square_viewbox(svg_path: Path, fill: float) -> tuple[float, float, float]:
+    """(x, y, side) of a square viewBox centered on the drawn art, in SVG user units."""
+    vx, vy, vw, vh = svg_viewbox(svg_path)
+    mask = source_mask(str(svg_path))
+    bbox = mask.getbbox()
+    if not bbox:
+        raise ValueError("glyph mask is empty")
+    scale = mask.width / vw
+    x0, y0 = vx + bbox[0] / scale, vy + bbox[1] / scale
+    x1, y1 = vx + bbox[2] / scale, vy + bbox[3] / scale
+    side = max(x1 - x0, y1 - y0) / fill
+    return (x0 + x1) / 2 - side / 2, (y0 + y1) / 2 - side / 2, side
+
+
+# --------------------------------------------------------------------------- plate rendering
+
+
+def plate_colors(theme_id: str) -> tuple[RGB, RGB, RGB]:
+    palette = THEME_PALETTES[theme_id]
+    bg1 = hex_rgb(palette["bg1"])
+    glyph = hex_rgb(palette["glyph"])
+    top = mix_rgb(bg1, glyph, 0.04)
+    bottom = mix_rgb(bg1, glyph, 0.24)
+    return top, bottom, glyph
+
+
+def vertical_gradient(size: int, top: RGB, bottom: RGB, ease: float = 1.6) -> Image.Image:
+    column = Image.new("RGB", (1, size))
+    px = column.load()
+    for y in range(size):
+        t = (y / max(size - 1, 1)) ** ease
+        px[0, y] = mix_rgb(top, bottom, t)
+    return column.resize((size, size), Image.Resampling.BILINEAR).convert("RGBA")
+
+
+def rounded_mask(size: int, radius: float, inset: float = 0.0) -> Image.Image:
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (inset, inset, size - 1 - inset, size - 1 - inset), radius=max(0.0, radius - inset), fill=255
+    )
+    return mask
+
+
+def solid_layer(size: int, rgb: RGB, mask: Image.Image, opacity: float) -> Image.Image:
+    layer = Image.new("RGBA", (size, size), (*rgb, 0))
+    layer.putalpha(mask.point(lambda a: int(a * opacity)))
+    return layer
+
+
+def render_plate(theme_id: str, size: int, radius: float | None = None) -> Image.Image:
+    """Gradient plate with soft highlight and a thin inset border in the glyph colour."""
+    top, bottom, glyph = plate_colors(theme_id)
+    plate = vertical_gradient(size, top, bottom)
+
+    highlight = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(highlight).ellipse(
+        (-size * 0.25, -size * 0.35, size * 0.95, size * 0.75), fill=255
+    )
+    highlight = highlight.filter(ImageFilter.GaussianBlur(radius=size * 0.12))
+    plate.alpha_composite(solid_layer(size, (255, 255, 255), highlight, 0.10))
+
+    inset = size * 0.024
+    width = max(1, round(size * 0.002))
+    border = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(border)
+    box = (inset, inset, size - 1 - inset, size - 1 - inset)
+    if radius is None:
+        draw.rectangle(box, outline=255, width=width)
+    else:
+        draw.rounded_rectangle(box, radius=max(0.0, radius - inset), outline=255, width=width)
+    plate.alpha_composite(solid_layer(size, glyph, border, 0.45))
+
+    if radius is not None:
+        clipped = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        clipped.paste(plate, mask=rounded_mask(size, radius))
+        plate = clipped
+    return plate
+
+
+def draw_glyph(plate: Image.Image, mask: Image.Image, glyph: RGB) -> None:
+    size = plate.width
+    shadow = ImageChops.offset(mask, 0, int(size * 0.008)).filter(
+        ImageFilter.GaussianBlur(radius=size * 0.01)
+    )
+    plate.alpha_composite(solid_layer(size, (0, 0, 0), shadow, 0.45))
+    plate.alpha_composite(solid_layer(size, glyph, mask, 1.0))
+
+
+def render_square_icon(theme_id: str, glyph_src: Path, ratio: float, size: int = 1024) -> Image.Image:
+    """Full-bleed square icon (iOS and PWA icons are masked by the OS)."""
+    plate = render_plate(theme_id, size)
+    draw_glyph(plate, glyph_mask(glyph_src, size, ratio), plate_colors(theme_id)[2])
+    return plate
+
+
+def render_mac_icon(theme_id: str, glyph_src: Path, ratio: float) -> Image.Image:
+    """macOS app icon: rounded 824pt plate on a transparent 1024 canvas with a soft shadow."""
+    radius = MAC_PLATE * MAC_RADIUS_RATIO
+    plate = render_plate(theme_id, MAC_PLATE, radius=radius)
+    draw_glyph(plate, glyph_mask(glyph_src, MAC_PLATE, ratio), plate_colors(theme_id)[2])
+
+    offset = (MAC_CANVAS - MAC_PLATE) // 2
+    canvas = Image.new("RGBA", (MAC_CANVAS, MAC_CANVAS), (0, 0, 0, 0))
+    shadow_shape = Image.new("L", (MAC_CANVAS, MAC_CANVAS), 0)
+    shadow_shape.paste(rounded_mask(MAC_PLATE, radius), (offset, offset + 10))
+    shadow_shape = shadow_shape.filter(ImageFilter.GaussianBlur(radius=12))
+    canvas.alpha_composite(solid_layer(MAC_CANVAS, (0, 0, 0), shadow_shape, 0.30))
+    canvas.alpha_composite(plate, (offset, offset))
+    return canvas
+
+
+# --------------------------------------------------------------------------- writers
 
 
 def write_png(path: Path, image: Image.Image) -> None:
@@ -168,9 +343,18 @@ def write_png(path: Path, image: Image.Image) -> None:
     image.save(path, format="PNG", optimize=True)
 
 
+def write_web_png(name: str, image: Image.Image) -> None:
+    write_png(WEB_SRC / name, image)
+    write_png(WEB_PUBLIC / name, image)
+
+
+def resized(image: Image.Image, size: int) -> Image.Image:
+    return image.resize((size, size), Image.Resampling.LANCZOS)
+
+
 def write_ico(path: Path, image: Image.Image) -> None:
     """Minimal single-size ICO writer (32x32)."""
-    img = image.convert("RGBA").resize((32, 32), Image.Resampling.LANCZOS)
+    img = resized(image.convert("RGBA"), 32)
     w, h = img.size
     rgba = img.tobytes()
     bgra = bytearray()
@@ -185,34 +369,102 @@ def write_ico(path: Path, image: Image.Image) -> None:
     path.write_bytes(icon_dir + entry + bmp)
 
 
-def write_icon_svg(path: Path) -> None:
-    p = THEME_PALETTES["modern"]
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PhoneHome">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="{p["bg1"]}"/>
-      <stop offset="100%" stop-color="{p["bg0"]}"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="114" fill="url(#bg)"/>
-  <image href="/icon-512.png" x="96" y="88" width="320" height="320" preserveAspectRatio="xMidYMid meet"/>
-</svg>
-'''
-    path.write_text(svg, encoding="utf-8")
+def clean_attrs(attrs: dict[str, str]) -> dict[str, str]:
+    return {k: v for k, v in attrs.items() if k not in DROP_ATTRS}
 
 
-def appiconset_contents(filename: str) -> dict:
-    return {
-        "images": [
-            {
-                "filename": filename,
-                "idiom": "universal",
-                "platform": "ios",
-                "size": "1024x1024",
-            }
-        ],
-        "info": {"author": "xcode", "version": 1},
-    }
+def copy_shapes(src_el: ET.Element, dst_parent: ET.Element) -> None:
+    for child in src_el:
+        tag = child.tag.split("}")[-1]
+        if tag in SKIP_TAGS:
+            continue
+        if tag == "g":
+            group = ET.SubElement(dst_parent, f"{{{SVG_NS}}}g", clean_attrs(child.attrib))
+            copy_shapes(child, group)
+        elif tag in SHAPE_TAGS:
+            ET.SubElement(dst_parent, f"{{{SVG_NS}}}{tag}", clean_attrs(child.attrib))
+
+
+def svg_text(svg: ET.Element) -> str:
+    ET.register_namespace("", SVG_NS)
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(svg, encoding="unicode") + "\n"
+
+
+def write_mask_svg(src: Path, name: str, fill: float, label: str) -> None:
+    """Square-cropped black vector copy of src for CSS mask-image use."""
+    x, y, side = square_viewbox(src, fill)
+    svg = ET.Element(
+        f"{{{SVG_NS}}}svg",
+        {"viewBox": f"{x:.2f} {y:.2f} {side:.2f} {side:.2f}", "role": "img", "aria-label": label},
+    )
+    group = ET.SubElement(svg, f"{{{SVG_NS}}}g", {"fill": "#000"})
+    copy_shapes(ET.parse(src).getroot(), group)
+    text = svg_text(svg)
+    (WEB_SRC / name).write_text(text, encoding="utf-8")
+    (WEB_PUBLIC / name).write_text(text, encoding="utf-8")
+
+
+def write_icon_svg(src: Path, theme_id: str, ratio: float) -> None:
+    """Vector favicon / maskable PWA icon: gradient plate + glyph paths."""
+    top, bottom, glyph = plate_colors(theme_id)
+    size = 512
+    x, y, side = square_viewbox(src, 1.0)
+    scale = size * ratio / side
+    tx = size / 2 - (x + side / 2) * scale
+    ty = size / 2 - (y + side / 2) * scale
+
+    svg = ET.Element(
+        f"{{{SVG_NS}}}svg",
+        {"viewBox": f"0 0 {size} {size}", "role": "img", "aria-label": "PhoneHome"},
+    )
+    defs = ET.SubElement(svg, f"{{{SVG_NS}}}defs")
+    grad = ET.SubElement(
+        defs, f"{{{SVG_NS}}}linearGradient", {"id": "bg", "x1": "0", "y1": "0", "x2": "0", "y2": "1"}
+    )
+    ET.SubElement(grad, f"{{{SVG_NS}}}stop", {"offset": "0", "stop-color": rgb_hex(top)})
+    ET.SubElement(grad, f"{{{SVG_NS}}}stop", {"offset": "1", "stop-color": rgb_hex(bottom)})
+    filt = ET.SubElement(defs, f"{{{SVG_NS}}}filter", {"id": "shadow", "x": "-10%", "y": "-10%", "width": "120%", "height": "130%"})
+    ET.SubElement(
+        filt,
+        f"{{{SVG_NS}}}feDropShadow",
+        {"dx": "0", "dy": "4", "stdDeviation": "5", "flood-color": "#000", "flood-opacity": "0.45"},
+    )
+    ET.SubElement(svg, f"{{{SVG_NS}}}rect", {"width": str(size), "height": str(size), "fill": "url(#bg)"})
+    inset = round(size * 0.024, 1)
+    ET.SubElement(
+        svg,
+        f"{{{SVG_NS}}}rect",
+        {
+            "x": str(inset),
+            "y": str(inset),
+            "width": str(round(size - 2 * inset, 1)),
+            "height": str(round(size - 2 * inset, 1)),
+            "fill": "none",
+            "stroke": rgb_hex(glyph),
+            "stroke-opacity": "0.45",
+            "stroke-width": "1",
+        },
+    )
+    group = ET.SubElement(
+        svg,
+        f"{{{SVG_NS}}}g",
+        {
+            "fill": rgb_hex(glyph),
+            "filter": "url(#shadow)",
+            "transform": f"translate({tx:.3f} {ty:.3f}) scale({scale:.5f})",
+        },
+    )
+    copy_shapes(ET.parse(src).getroot(), group)
+    text = svg_text(svg)
+    (WEB_SRC / "icon.svg").write_text(text, encoding="utf-8")
+    (WEB_PUBLIC / "icon.svg").write_text(text, encoding="utf-8")
+
+
+def write_contents(folder: Path, images: list[dict], properties: dict | None = None) -> None:
+    contents: dict = {"images": images, "info": {"author": "xcode", "version": 1}}
+    if properties:
+        contents["properties"] = properties
+    (folder / "Contents.json").write_text(json.dumps(contents, indent=2) + "\n", encoding="utf-8")
 
 
 def write_ios_iconset(name: str, image: Image.Image) -> None:
@@ -220,101 +472,75 @@ def write_ios_iconset(name: str, image: Image.Image) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     fname = "AppIcon-512@2x.png"
     write_png(folder / fname, image)
-    (folder / "Contents.json").write_text(
-        json.dumps(appiconset_contents(fname), indent=2) + "\n",
-        encoding="utf-8",
+    write_contents(
+        folder,
+        [{"filename": fname, "idiom": "universal", "platform": "ios", "size": "1024x1024"}],
     )
 
 
 def write_mac_iconset(image: Image.Image) -> None:
     folder = MAC_ASSETS / "AppIcon.appiconset"
     folder.mkdir(parents=True, exist_ok=True)
-    entries: list[dict] = []
-    for logical_size, px, filename in MAC_ICON_SIZES:
-        scale = "2x" if px > int(logical_size.split("x")[0]) else "1x"
-        write_png(folder / filename, image.resize((px, px), Image.Resampling.LANCZOS))
-        entries.append(
-            {
-                "filename": filename,
-                "idiom": "mac",
-                "scale": scale,
-                "size": logical_size,
-            }
-        )
-    (folder / "Contents.json").write_text(
-        json.dumps({"images": entries, "info": {"author": "xcode", "version": 1}}, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    images: list[dict] = []
+    for logical, scale, px in MAC_ICON_SIZES:
+        fname = f"icon_{logical}{'@2x' if scale == '2x' else ''}.png"
+        write_png(folder / fname, resized(image, px))
+        images.append({"filename": fname, "idiom": "mac", "scale": scale, "size": logical})
+    write_contents(folder, images)
 
 
 def write_menubar_iconset(glyph_src: Path) -> None:
-    """Template-style menu bar glyph (black ink, alpha mask)."""
+    """18pt template image (black ink + alpha) for the MenuBarExtra label."""
     folder = MAC_ASSETS / "MenuBarIcon.imageset"
     folder.mkdir(parents=True, exist_ok=True)
+    full = source_mask(str(glyph_src))
+    fx0, fy0, fx1, fy1 = MENUBAR_SOURCE_BAND
+    saucer = full.crop(
+        (round(full.width * fx0), round(full.height * fy0), round(full.width * fx1), round(full.height * fy1))
+    )
     images: list[dict] = []
     for scale, px, suffix in (("1x", 18, ""), ("2x", 36, "@2x")):
-        glyph = load_glyph(str(glyph_src), px * 8)
-        glyph = glyph.resize((px, px), Image.Resampling.LANCZOS)
-        alpha = glyph_alpha(glyph)
-        ink = Image.new("RGBA", (px, px), (0, 0, 0, 255))
-        ink.putalpha(alpha)
+        mask = square_fit(saucer, px, 0.94)
         fname = f"MenuBarIcon{suffix}.png"
-        write_png(folder / fname, ink)
-        images.append({"filename": fname, "idiom": "universal", "scale": scale})
-    (folder / "Contents.json").write_text(
-        json.dumps(
-            {
-                "images": images,
-                "info": {"author": "xcode", "version": 1},
-                "properties": {"template-rendering-intent": "template"},
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+        write_png(folder / fname, solid_layer(px, (0, 0, 0), mask, 1.0))
+        images.append({"filename": fname, "idiom": "mac", "scale": scale})
+    write_contents(folder, images, {"template-rendering-intent": "template"})
+
+
+# --------------------------------------------------------------------------- main
 
 
 def main() -> None:
-    if not PHONE_GLYPH.exists():
-        raise SystemExit(f"Missing phone glyph: {PHONE_GLYPH}")
-    if not UFO_GLYPH.exists():
-        raise SystemExit(f"Missing UFO glyph: {UFO_GLYPH}")
+    for src in (PHONE_SRC, UFO_SRC):
+        if not src.exists():
+            raise SystemExit(f"Missing glyph source: {src}")
 
-    icons: dict[str, Image.Image] = {}
-    for theme_id in THEME_PALETTES:
-        icons[theme_id] = render_icon(theme_id, PHONE_GLYPH, 1024)
-
+    icons = {
+        theme_id: render_square_icon(theme_id, PHONE_SRC, PHONE_GLYPH_RATIO) for theme_id in THEME_PALETTES
+    }
     modern = icons["modern"]
 
-    write_png(WEB_SRC / "icon-1024.png", modern)
-    write_png(WEB_PUBLIC / "icon-1024.png", modern)
-    write_png(WEB_SRC / "icon-512.png", modern.resize((512, 512), Image.Resampling.LANCZOS))
-    write_png(WEB_PUBLIC / "icon-512.png", modern.resize((512, 512), Image.Resampling.LANCZOS))
-    write_png(WEB_SRC / "apple-touch-icon.png", modern.resize((180, 180), Image.Resampling.LANCZOS))
-    write_png(WEB_PUBLIC / "apple-touch-icon.png", modern.resize((180, 180), Image.Resampling.LANCZOS))
-    write_png(WEB_SRC / "favicon-32.png", modern.resize((32, 32), Image.Resampling.LANCZOS))
-    write_png(WEB_PUBLIC / "favicon-32.png", modern.resize((32, 32), Image.Resampling.LANCZOS))
-    write_png(WEB_SRC / "favicon-16.png", modern.resize((16, 16), Image.Resampling.LANCZOS))
-    write_png(WEB_PUBLIC / "favicon-16.png", modern.resize((16, 16), Image.Resampling.LANCZOS))
+    write_web_png("icon-1024.png", modern)
+    write_web_png("icon-512.png", resized(modern, 512))
+    write_web_png("apple-touch-icon.png", resized(modern, 180))
+    write_web_png("favicon-32.png", resized(modern, 32))
+    write_web_png("favicon-16.png", resized(modern, 16))
     write_ico(WEB_SRC / "favicon.ico", modern)
     write_ico(WEB_PUBLIC / "favicon.ico", modern)
-    write_icon_svg(WEB_SRC / "icon.svg")
-    write_icon_svg(WEB_PUBLIC / "icon.svg")
+    write_icon_svg(PHONE_SRC, "modern", SVG_ICON_GLYPH_RATIO)
+    write_mask_svg(PHONE_SRC, PHONE_MASK_SVG, PHONE_MASK_FILL, "rotary phone")
 
     write_ios_iconset("AppIcon.appiconset", modern)
     for theme_id, image in icons.items():
-        if theme_id == "modern":
-            continue
-        write_ios_iconset(f"AppIcon-{theme_id}.appiconset", image)
+        if theme_id != "modern":
+            write_ios_iconset(f"AppIcon-{theme_id}.appiconset", image)
 
-    mothership = render_icon("modern", UFO_GLYPH, 1024)
-    write_mac_iconset(mothership)
-    write_menubar_iconset(UFO_GLYPH)
+    write_mac_iconset(render_mac_icon("modern", UFO_SRC, UFO_GLYPH_RATIO))
+    write_menubar_iconset(UFO_SRC)
 
     print(
-        f"Generated {len(icons)} phone icon variants, web favicons, "
-        "macOS Mothership AppIcon + MenuBarIcon"
+        f"Generated {len(icons)} phone icon variants, web favicons + icon.svg, "
+        f"{PHONE_MASK_SVG} vector mask, macOS Mothership AppIcon + MenuBarIcon"
     )
 
 
