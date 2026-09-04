@@ -5,7 +5,7 @@ struct MothershipApp: App {
     @StateObject private var engine = MothershipEngine()
 
     var body: some Scene {
-        MenuBarExtra("PhoneHome Mothership", systemImage: engine.isRunning ? "phone.connection.fill" : "phone.connection") {
+        MenuBarExtra {
             Text(engine.statusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -30,6 +30,8 @@ struct MothershipApp: App {
             ))
             Divider()
             Button("Quit PhoneHome Mothership") { NSApp.terminate(nil) }
+        } label: {
+            Image("MenuBarIcon")
         }
         .menuBarExtraStyle(.menu)
 
