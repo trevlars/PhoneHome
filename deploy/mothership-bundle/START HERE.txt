@@ -3,6 +3,10 @@ PhoneHome Mothership — START HERE
 
 macOS
 -----
+Easier: the same GitHub release has "PhoneHome-Mothership-*-macos.dmg" —
+open it, drag PhoneHome Mothership to Applications, launch (UFO icon in
+the menu bar). Use this zip only if you prefer a Terminal install.
+
 1. Unzip this folder (double-click the .zip from GitHub).
 2. Open the folder "phonehome-mothership".
 3. Double-click:  Install PhoneHome Mothership.command

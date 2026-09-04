@@ -31,11 +31,11 @@ Each family (or friend group) joins as its own **Pod** on one Mothership. Cousin
 
 **No Git or Node.js required.** See **[`docs/download-mothership.md`](./download-mothership.md)** for per-OS archives from [GitHub Releases](https://github.com/trevlars/PhoneHome/releases).
 
-| OS | After unzip |
+| OS | Install |
 | --- | --- |
-| **macOS** | Double-click `Install PhoneHome Mothership.command` |
-| **Linux** | `./install-mothership.sh` |
-| **Windows** | `.\install-mothership.ps1` |
+| **macOS** | Open `PhoneHome-Mothership-*-macos.dmg` → drag to Applications (or zip: `Install PhoneHome Mothership.command`) |
+| **Linux** | `tar -xzf`, then `./install-mothership.sh` |
+| **Windows** | Unzip, then `.\install-mothership.ps1` |
 
 Each bundle includes Node.js, hub, bridge, and web UI.
 

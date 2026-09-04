@@ -8,10 +8,10 @@ Download **`PhoneHome-Mothership-*-macos.dmg`** from [GitHub Releases](https://g
 
 1. Open the DMG
 2. Drag **PhoneHome Mothership** to **Applications**
-3. Launch it — look for the **phone icon** in the menu bar (top right)
+3. Launch it — look for the **UFO icon** in the menu bar (top right)
 4. **Preferences** → optional HTTPS URL → **Save & restart**
 
-Signed builds install like any normal Mac app — no Terminal, no quarantine hacks, no `.command` scripts.
+If macOS says it can’t verify the developer, **right-click the app → Open** (one time only). Releases built with our Developer ID are notarized and skip that prompt.
 
 Full details: [`macos-mothership.md`](./macos-mothership.md)
 
@@ -29,7 +29,7 @@ Paste the `https://….trycloudflare.com` URL in the app’s Preferences.
 ## Linux
 
 ```bash
-unzip phonehome-mothership-*-linux-x64.zip
+tar -xzf phonehome-mothership-*-linux-x64.tar.gz   # or *-linux-arm64.tar.gz on a Pi
 cd phonehome-mothership
 ./install-mothership.sh
 sudo loginctl enable-linger "$USER"
@@ -37,7 +37,7 @@ sudo loginctl enable-linger "$USER"
 
 ## Windows
 
-Unzip, then run **`install-mothership.ps1`**.
+Unzip `*-win-x64.zip`, then run **`install-mothership.ps1`**.
 
 ---
 
@@ -45,11 +45,13 @@ Unzip, then run **`install-mothership.ps1`**.
 
 | Computer | File |
 | --- | --- |
-| **Mac (Apple Silicon)** | `PhoneHome-Mothership-*-macos.dmg` |
+| **Mac (Apple Silicon)** | `PhoneHome-Mothership-*-macos.dmg` (menu bar app) — or `*-darwin-arm64.zip` + `Install PhoneHome Mothership.command` |
 | Mac (Intel) | Coming soon — build from source |
-| Linux PC / NUC | `*-linux-x64.zip` |
-| Raspberry Pi / ARM | `*-linux-arm64.zip` |
+| Linux PC / NUC | `*-linux-x64.tar.gz` |
+| Raspberry Pi / ARM | `*-linux-arm64.tar.gz` |
 | Windows | `*-win-x64.zip` |
+
+Every bundle includes Node.js 22 — nothing else to install.
 
 ## From source
 

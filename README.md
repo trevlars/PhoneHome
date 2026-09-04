@@ -162,8 +162,8 @@ Doctrine, threats, and contributor rules:
 
 **No Git or Node.js required.**
 
-1. Download your OS bundle from **[GitHub Releases](https://github.com/trevlars/PhoneHome/releases)**.
-2. Run the installer (`Install PhoneHome Mothership.command` on Mac, `install-mothership.sh` on Linux, `install-mothership.ps1` on Windows).
+1. Download your OS build from **[GitHub Releases](https://github.com/trevlars/PhoneHome/releases)**.
+2. Install it — Mac: open the DMG, drag **PhoneHome Mothership** to Applications, launch (UFO icon in the menu bar). Linux: `./install-mothership.sh`. Windows: `install-mothership.ps1`.
 3. Set a **public HTTPS URL** during setup (Cloudflare quick tunnel is the fastest path).
 4. Open that URL on your phone → enter the **Mothership setup code** → create your Pod → invite family.
 
@@ -173,10 +173,10 @@ Doctrine, threats, and contributor rules:
 
 Full guide: **[`docs/download-mothership.md`](docs/download-mothership.md)** · **[`docs/self-host.md`](docs/self-host.md)**
 
-| OS | Archive |
+| OS | Download |
 | --- | --- |
-| Mac (Apple Silicon) | `phonehome-mothership-v*-darwin-arm64.tar.gz` |
-| Mac (Intel) | `phonehome-mothership-v*-darwin-x64.tar.gz` |
+| Mac (Apple Silicon) | `PhoneHome-Mothership-*-macos.dmg` (menu bar app) · or `phonehome-mothership-v*-darwin-arm64.zip` |
+| Mac (Intel) | Build from source (below) |
 | Linux x64 | `phonehome-mothership-v*-linux-x64.tar.gz` |
 | Linux ARM64 (Pi) | `phonehome-mothership-v*-linux-arm64.tar.gz` |
 | Windows | `phonehome-mothership-v*-win-x64.zip` |

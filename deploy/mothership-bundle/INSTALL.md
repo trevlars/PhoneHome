@@ -1,5 +1,8 @@
 # Install PhoneHome Mothership (download bundle)
 
+> **Mac users:** the easier path is the **`PhoneHome-Mothership-*-macos.dmg`** menu bar app from the same
+> release — drag to Applications and launch. Use this zip bundle only if you prefer a Terminal install.
+
 ## macOS — 3 steps
 
 1. **Unzip** the `.zip` from [GitHub Releases](https://github.com/trevlars/PhoneHome/releases)  
@@ -28,7 +31,7 @@ launchctl kickstart -k gui/$(id -u)/com.phonehome.server
 ## Linux
 
 ```bash
-unzip phonehome-mothership-*.zip   # or tar -xzf for .tar.gz
+tar -xzf phonehome-mothership-*-linux-*.tar.gz
 cd phonehome-mothership
 ./install-mothership.sh
 sudo loginctl enable-linger "$USER"
