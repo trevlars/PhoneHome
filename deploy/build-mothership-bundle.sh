@@ -5,11 +5,19 @@
 # Usage:
 #   ./deploy/build-mothership-bundle.sh
 #   MOTHERSHIP_PLATFORM=linux-x64 ./deploy/build-mothership-bundle.sh
+#
+# Version: MOTHERSHIP_VERSION > git tag vX.Y.Z (GitHub Actions) > package.json.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-VERSION="$(node -p "require('./package.json').version")"
+VERSION="${MOTHERSHIP_VERSION:-}"
+if [[ -z "$VERSION" && "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" == v* ]]; then
+  VERSION="${GITHUB_REF_NAME#v}"
+fi
+if [[ -z "$VERSION" ]]; then
+  VERSION="$(node -p "require('./package.json').version")"
+fi
 NODE_VERSION="${NODE_VERSION:-22.14.0}"
 OUT_DIR="${OUT_DIR:-$ROOT/dist}"
 PLATFORM="${MOTHERSHIP_PLATFORM:-}"

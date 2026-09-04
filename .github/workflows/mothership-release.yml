@@ -26,9 +26,9 @@ jobs:
           - platform: win-x64
             runner: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -68,10 +68,10 @@ jobs:
 
             | OS | File |
             | --- | --- |
-            | **macOS (Apple Silicon)** | `*-darwin-arm64.zip` — unzip, double-click `Install PhoneHome Mothership.command` |
+            | **macOS (Apple Silicon)** | **`PhoneHome-Mothership-*-macos.dmg`** menu bar app (see below) · or `*-darwin-arm64.zip` + `Install PhoneHome Mothership.command` |
             | **macOS (Intel)** | Build from source (`docs/download-mothership.md`) |
             | **Linux x64** | `*-linux-x64.tar.gz` — `./install-mothership.sh` |
-            | **Linux ARM64** | `*-linux-arm64.tar.gz` |
+            | **Linux ARM64 (Raspberry Pi)** | `*-linux-arm64.tar.gz` — `./install-mothership.sh` |
             | **Windows** | `*-win-x64.zip` — `install-mothership.ps1` |
 
             No separate Node.js install required — each bundle includes Node 22.
