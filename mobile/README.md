@@ -2,9 +2,13 @@
 
 Native shell around the existing softphone for **CallKit + PushKit**. **Free** on the App Store (Safari softphone still works).
 
+## App Store
+
+**[PhoneHome: The Landline Reborn](https://apps.apple.com/app/id6804245868)** — install from the App Store, open **PhoneHome**, and paste your Mothership HTTPS URL (or a full invite / Grandma share link).
+
 ## TestFlight (iPhone, iPad, Apple silicon Mac)
 
-**[Join the beta](https://testflight.apple.com/join/4SWCTNec)** — install from TestFlight, open **PhoneHome**, and paste your Mothership HTTPS URL (or a full invite / Grandma share link).
+**[Join the beta](https://testflight.apple.com/join/4SWCTNec)** — extra builds before they hit the store.
 
 Push tester notes after editing copy:
 

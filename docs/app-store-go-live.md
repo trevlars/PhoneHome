@@ -1,6 +1,6 @@
 # App Store go-live (PhoneHome)
 
-Bundle ID: `app.phonehome.ios` · App Store title: **PhoneHome: Family Calling** · App name: **PhoneHome**
+Bundle ID: `app.phonehome.ios` · App Store title: **PhoneHome: The Landline Reborn** · App name: **PhoneHome**
 **Price: Free** (web softphone works in Safari; iOS adds CallKit + Face ID).
 
 **Live listing:** https://apps.apple.com/app/id6804245868 (seller name on the page is still the Apple Developer legal name until Apple updates it — see **Developer display name** below).

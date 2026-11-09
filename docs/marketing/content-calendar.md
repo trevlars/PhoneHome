@@ -2,7 +2,7 @@
 
 Organic social calendar for Instagram, Facebook, and TikTok. Cross-post Reels to IG + FB. Captions in [`social-playbook.md`](social-playbook.md); scripts in [`video-scripts.md`](video-scripts.md).
 
-**Primary CTA:** https://phonehome.pages.dev + TestFlight https://testflight.apple.com/join/4SWCTNec in pinned comment.
+**Primary CTA:** https://phonehome.pages.dev + App Store https://apps.apple.com/app/id6804245868 in pinned comment.
 
 ## Week 1 — Introduce PhoneHome
 

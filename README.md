@@ -18,8 +18,8 @@ One **Mothership** (always-on server) hosts many **Pods** (families). Each paren
 | --- | --- |
 | **Repo** | [github.com/trevlars/PhoneHome](https://github.com/trevlars/PhoneHome) |
 | **License** | Proprietary. Source is published for security review; not open source. See [LICENSE](LICENSE). |
-| **Status** | Stage 1 shipped — softphones + analog HT801 lab path; [iOS TestFlight](https://testflight.apple.com/join/4SWCTNec) · App Store go-live: [`docs/app-store-go-live.md`](docs/app-store-go-live.md) (**free**) |
-| **Releases** | [Mothership download bundles](https://github.com/trevlars/PhoneHome/releases) (macOS / Linux / Windows) · [iOS / iPad / Apple silicon Mac (TestFlight)](https://testflight.apple.com/join/4SWCTNec) |
+| **Status** | Stage 1 shipped — softphones + analog HT801 lab path; [iOS App Store](https://apps.apple.com/app/id6804245868) (**free**) · [TestFlight](https://testflight.apple.com/join/4SWCTNec) · [`docs/app-store-go-live.md`](docs/app-store-go-live.md) |
+| **Releases** | [Mothership downloads](https://phonehome.pages.dev/downloads.html) · [GitHub Releases](https://github.com/trevlars/PhoneHome/releases/latest) (macOS / Linux / Windows) · [iOS App Store](https://apps.apple.com/app/id6804245868) |
 
 > **Naming:** Product and GitHub repo are **PhoneHome**. Lab deploy paths (`/opt/kids-landline`, `kids-landline.service`, CT hostname) are legacy host names and stay as-is so production boxes don't break.
 
@@ -108,7 +108,7 @@ Most parents **join** someone else's Mothership as a new Pod. You only run a Mot
 - **Self-host Mothership** — **HAOS add-on**, Docker / Unraid, Mac / Linux / Windows service, or **Proxmox VE** LXC
 - **30-day free trial** → **$25/year** host license ([`/trial`](web/src/trial.html) · [`/buy`](web/src/buy.html) · [`docs/host-license.md`](docs/host-license.md))
 - **Vs Tin Can (stack cost, late 2026):** Tin Can handset ~$135 + Party Line ~$9.99/mo (~$100–$120/yr); PhoneHome softphone free, or ~$40 HT801 + ~$10–$40 analog + **$25/yr** software (year-1 analog ≈ $75–$105)
-- **[Download bundles](https://github.com/trevlars/PhoneHome/releases)** — trial packages; paid updates while licensed ([`/downloads`](web/src/downloads.html))
+- **[Download bundles](https://phonehome.pages.dev/downloads.html)** — trial packages; paid updates while licensed · [GitHub Releases](https://github.com/trevlars/PhoneHome/releases/latest)
 - **HTTPS + TURN** guides — Cloudflare Tunnel, Caddy, coturn
 - **HT801 analog path** — FreePBX sync, one-tap provision, SIP TLS + SRTP forced
 - **Invite card PDF** — [`deploy/invite-card.html`](deploy/invite-card.html) for printing QR + code for relatives
@@ -119,7 +119,7 @@ Most parents **join** someone else's Mothership as a new Pod. You only run a Mot
 
 ### In progress
 
-- **iOS native app** (free — [TestFlight](https://testflight.apple.com/join/4SWCTNec); App Store checklist [`docs/app-store-go-live.md`](docs/app-store-go-live.md)) — Capacitor + CallKit/PushKit. Connect accepts Mothership HTTPS or full share links. See [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
+- **iOS native app** (free — [App Store](https://apps.apple.com/app/id6804245868); [TestFlight](https://testflight.apple.com/join/4SWCTNec) for betas) — Capacitor + CallKit/PushKit. Connect accepts Mothership HTTPS or full share links. See [`docs/native-ios-callkit.md`](docs/native-ios-callkit.md).
 - **Host license** — 30-day trial, then **$25/year** for self-hosted Mothership (HAOS/Docker). Free iOS app. See [`docs/host-license.md`](docs/host-license.md).
 - **Mothership peering** — friend-intro households that later host their own box. See [`docs/family-mesh.md`](docs/family-mesh.md) and [`docs/migrate-mothership.md`](docs/migrate-mothership.md).
 
@@ -222,7 +222,7 @@ Lab runbook: [`lab/README.md`](lab/README.md) · smoke checklist: [`lab/SMOKE.md
 
 ## iOS app
 
-**Try the beta:** [TestFlight — iPhone, iPad, and Apple silicon Mac](https://testflight.apple.com/join/4SWCTNec)
+**Get the free iPhone app:** [App Store](https://apps.apple.com/app/id6804245868) · [TestFlight](https://testflight.apple.com/join/4SWCTNec) (beta)
 
 <p align="center">
   <img src="docs/screenshots/01-splash.png" width="260" alt="PhoneHome on iOS — same softphone UI as the PWA" />
@@ -316,7 +316,10 @@ npm run app-store:screenshots  # App Store / TestFlight frames only
 | Channel | Link |
 | --- | --- |
 | **Website** | [phonehome.pages.dev](https://phonehome.pages.dev) |
-| **TestFlight** | [Join beta](https://testflight.apple.com/join/4SWCTNec) |
+| **App Store** | [PhoneHome: The Landline Reborn](https://apps.apple.com/app/id6804245868) |
+| **Downloads** | [Mothership installers](https://phonehome.pages.dev/downloads.html) · [GitHub Releases](https://github.com/trevlars/PhoneHome/releases/latest) |
+| **Source** | [github.com/trevlars/PhoneHome](https://github.com/trevlars/PhoneHome) (read-only audit; not open source) |
+| **TestFlight** | [Beta builds](https://testflight.apple.com/join/4SWCTNec) |
 | **Reddit** | [r/PhoneHome](https://reddit.com/r/PhoneHome) |
 | **GitHub Discussions** | [Q&A & ideas](https://github.com/trevlars/PhoneHome/discussions) |
 | **Discord** | [discord.gg/QWmCcnJn2Q](https://discord.gg/QWmCcnJn2Q) |

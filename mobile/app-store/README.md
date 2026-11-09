@@ -4,7 +4,9 @@ Generated screenshots and copy for **App Store Connect** — iPhone 6.7″, iPad
 
 **Price:** Free · **Go-live checklist:** [`docs/app-store-go-live.md`](../../docs/app-store-go-live.md)
 
+**Live listing:** https://apps.apple.com/app/id6804245868
 **TestFlight public link:** https://testflight.apple.com/join/4SWCTNec
+**Copyright:** `2026 Trevor Larsen Marketing LLC` (proprietary; source-available for security review, not open source)
 
 ## Regenerate screenshots
 
@@ -48,7 +50,7 @@ Set `ASC_REVIEW_DEMO_PASSWORD` in `asc.env` so the review demo password is uploa
 Lanes live in `mobile/fastlane/`. `upload_all` runs metadata then screenshots separately (fastlane quirk on first App Store version).
 The upload lane sends the 6.7″ iPhone and 12.9″ iPad sets. Designed-for-iPhone/iPad availability on Apple silicon inherits the iOS listing; `mac/` is not a valid screenshot set for the iOS App Store version.
 
-**User-facing brand:** `PhoneHome`. The App Store title is `PhoneHome: Family Calling` because the exact global title `PhoneHome` is unavailable. The installed app, Home Screen label, and CallKit UI all use `PhoneHome` via `CFBundleDisplayName` in `Info.plist`. Bundle ID: `app.phonehome.ios`.
+**User-facing brand:** `PhoneHome`. The App Store title is `PhoneHome: The Landline Reborn` because the exact global title `PhoneHome` is unavailable. The installed app, Home Screen label, and CallKit UI all use `PhoneHome` via `CFBundleDisplayName` in `Info.plist`. Bundle ID: `app.phonehome.ios`. Seller: Trevor Larsen Marketing LLC.
 
 ## Manual upload in App Store Connect
 

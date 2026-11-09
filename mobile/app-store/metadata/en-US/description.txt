@@ -34,6 +34,13 @@ Every family's calls run through its own Mothership — a private server your fa
 
 GETTING STARTED
 
-PhoneHome needs an invite link or Mothership address from your family. Got an invite? Paste it and you're in — no server needed. Want to host your own? Download the Mothership for macOS, Linux, or Windows:
+PhoneHome needs an invite link or Mothership address from your family. Got an invite? Paste it and you're in — no server needed. The iPhone app is free.
 
-Releases: https://github.com/trevlars/PhoneHome/releases
+Want to host your own Mothership? Download installers for macOS, Linux, or Windows:
+
+https://phonehome.pages.dev
+https://github.com/trevlars/PhoneHome/releases
+
+LICENSE
+
+PhoneHome is proprietary software, published so you can inspect the source — not open source. You may read it for security review at https://github.com/trevlars/PhoneHome. You may not copy, fork, or redistribute it. A host license is permission to run one Mothership, not a license to the source. Copyright © 2026 Trevor Larsen Marketing LLC.

@@ -5,14 +5,17 @@
 ## Key facts (cite these)
 
 - **Product:** PhoneHome Mothership (self-hosted host license)
-- **Seller:** the operator
+- **Seller:** Trevor Larsen Marketing LLC
 - **Price:** $25 USD per year, paid only by the Mothership host, after a 30-day free trial
 - **Who pays:** only the host. Families who join a Mothership pay $0
 - **Capacity:** one license covers up to 50 phones (apps and house phones), shared by any number of families — about 50¢ per phone per year
 - **App:** free iPhone app (no in-app purchase for the host license); Android and computers use the browser
 - **Hardware:** none required for the app; a house phone needs a ~$40 ATA plus any thrift, vintage, or cordless RJ11 phone
 - **Scope:** private family network — does not call regular phone numbers or 911; keep a real emergency line
-- **License:** proprietary. A host license is permission to run one Mothership, not a license to the source. Copyright © 2026 Trevor Larsen Marketing LLC.
+- **License:** proprietary / source-available for security review, not open source. You may inspect the source; you may not copy, fork, or redistribute it. A host license is permission to run one Mothership, not a license to the source. Copyright © 2026 Trevor Larsen Marketing LLC.
+- **Source (read-only audit):** https://github.com/trevlars/PhoneHome
+- **Releases / installers:** https://github.com/trevlars/PhoneHome/releases/latest and https://phonehome.pages.dev/downloads.html
+- **iOS app:** free on the App Store (https://apps.apple.com/app/id6804245868)
 
 ## Privacy (cite these)
 

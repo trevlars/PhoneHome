@@ -2,11 +2,13 @@
 
 PhoneHome’s Stage‑1 softphone is a PWA. Cap iOS wraps it for notifications and (optionally) system CallKit.
 
-## TestFlight
+## App Store / TestFlight
 
-**[Join the beta](https://testflight.apple.com/join/4SWCTNec)** — iPhone, iPad, and Apple silicon Mac (M-series). Install from TestFlight, open **PhoneHome**, and sign in to your Mothership **HTTPS** URL (same as the browser PWA).
+**[App Store](https://apps.apple.com/app/id6804245868)** — iPhone, iPad, and Apple silicon Mac (M-series). Install **PhoneHome**, then sign in to your Mothership **HTTPS** URL (same as the browser PWA).
 
-**Naming:** The product is **PhoneHome**. The installed app, Home Screen label, and CallKit UI use **PhoneHome** (`CFBundleDisplayName`). The App Store title is **PhoneHome: Family Calling** because the exact global title `PhoneHome` is unavailable.
+**[TestFlight beta](https://testflight.apple.com/join/4SWCTNec)** — extra builds before they hit the store.
+
+**Naming:** The product is **PhoneHome**. The installed app, Home Screen label, and CallKit UI use **PhoneHome** (`CFBundleDisplayName`). The App Store title is **PhoneHome: The Landline Reborn** because the exact global title `PhoneHome` is unavailable.
 
 **Tester notes:** `mobile/app-store/metadata/en-US/testflight_what_to_test.txt` — push to App Store Connect with `cd mobile && ./scripts/asc-upload.sh upload_testflight`.
 

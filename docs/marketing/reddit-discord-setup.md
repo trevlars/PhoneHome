@@ -51,7 +51,7 @@ PhoneHome is the home phone, reborn — a private, encrypted calling network for
 • Calls are encrypted and never recorded
 
 **Ways to use it**
-• Free iPhone app (TestFlight): https://testflight.apple.com/join/4SWCTNec
+• Free iPhone app: https://apps.apple.com/app/id6804245868
 • Browser softphone on any Mothership HTTPS URL
 • Real house phone via Grandstream HT801 adapter
 
@@ -185,7 +185,8 @@ Welcome to PhoneHome.
 
 FAQ: https://phonehome.pages.dev
 GitHub Discussions: https://github.com/trevlars/PhoneHome/discussions
-TestFlight: https://testflight.apple.com/join/4SWCTNec
+App Store: https://apps.apple.com/app/id6804245868
+TestFlight (beta): https://testflight.apple.com/join/4SWCTNec
 ```
 
 ### #faq pinned links

@@ -47,8 +47,10 @@ Free iPhone app. Optional real house phone via a small adapter. One Mothership s
 Not a carrier. Does not call regular phone numbers or 911. Keep a real emergency line.
 
 Website: https://phonehome.pages.dev
-TestFlight: https://testflight.apple.com/join/4SWCTNec
-Source: https://github.com/trevlars/PhoneHome
+App Store (free iPhone app): https://apps.apple.com/app/id6804245868
+Downloads: https://phonehome.pages.dev/downloads.html
+Releases: https://github.com/trevlars/PhoneHome/releases/latest
+Source (inspect, not open source): https://github.com/trevlars/PhoneHome
 ```
 
 ## Hashtag sets
@@ -62,7 +64,7 @@ Source: https://github.com/trevlars/PhoneHome
 ### Self-host / tech (Reddit, optional IG)
 
 ```
-#selfhosted #homelab #privacy #degoogle #opensource #familytech
+#selfhosted #homelab #privacy #degoogle #familytech #sourceavailable
 ```
 
 Use 5–10 hashtags per post; rotate to avoid spam flags.
@@ -71,7 +73,7 @@ Use 5–10 hashtags per post; rotate to avoid spam flags.
 
 | Do | Don't |
 | -- | ----- |
-| TestFlight, free trial, private family server | "Counsel-approved" legal terms |
+| App Store, free iPhone app, private family server | "Open source" or AGPL — PhoneHome is proprietary |
 | Encryption-first, no ads, no recording | PSTN, 911, or carrier replacement |
 | Competitor compare with disclaimer | Promise managed-pilot features as GA |
 | Honest "not emergency service" posts | Kid photos without release confirmation |

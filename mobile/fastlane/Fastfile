@@ -126,6 +126,7 @@ platform :ios do
   lane :upload_metadata do
     inject_review_demo_password!
     api_key = asc_api_key_hash
+    edit_live = ENV["DELIVER_EDIT_LIVE"] == "1"
     deliver(
       api_key: api_key,
       app_identifier: "app.phonehome.ios",
@@ -138,7 +139,10 @@ platform :ios do
       skip_metadata: false,
       force: true,
       submit_for_review: false,
-      precheck_include_in_app_purchases: false
+      precheck_include_in_app_purchases: false,
+      # DELIVER_EDIT_LIVE=1 patches the Ready-for-Sale listing (copy/copyright) without a new binary.
+      edit_live: edit_live,
+      skip_app_version_update: edit_live
     )
     set_price_free
   end
