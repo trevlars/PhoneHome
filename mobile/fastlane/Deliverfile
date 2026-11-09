@@ -1,0 +1,18 @@
+# PhoneHome App Store listing — metadata + screenshots only (no IPA upload).
+
+app_identifier("app.phonehome.ios")
+metadata_path("app-store/metadata")
+screenshots_path("app-store/screenshots-deliver")
+app_rating_config_path("app-store/age_rating.json")
+
+# price_tier omitted here — ASC API rejects deliver's availableInNewTerritories.
+# Use lane :set_price_free instead (wired into upload_metadata).
+primary_category("SOCIAL_NETWORKING")
+secondary_category("LIFESTYLE")
+
+skip_binary_upload(true)
+skip_app_version_update(false)
+force(true)
+submit_for_review(false)
+run_precheck_before_submit(false)
+precheck_include_in_app_purchases(false)

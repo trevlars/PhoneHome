@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PhoneHome — The home phone, reborn</title>
+    <meta
+      name="description"
+      content="A private phone for your kids, parents, and the people you trust. Free iPhone app, or a real house phone. Host the Mothership for $25 a year after a 30-day trial. Families who join pay nothing."
+    />
+    <meta
+      name="keywords"
+      content="PhoneHome, family phone, kid phone, self-hosted, house phone, HT801, private calling, Mothership"
+    />
+    <meta name="author" content="the operator" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#07110d" />
+    <link rel="canonical" href="https://phonehome.pages.dev/" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PhoneHome" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://phonehome.pages.dev/" />
+    <meta property="og:title" content="PhoneHome — The home phone, reborn" />
+    <meta
+      property="og:description"
+      content="Private family calling. The free app, or a real house phone. One Mothership — $25/year after a 30-day trial. Everyone who joins pays nothing."
+    />
+    <meta property="og:image" content="https://phonehome.pages.dev/assets/landing/kid-landline.jpg" />
+    <meta property="og:image:alt" content="A child talking on a house phone" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PhoneHome — The home phone, reborn" />
+    <meta
+      name="twitter:description"
+      content="Private family calling. The free app, or a real house phone. $25/year to host. Joiners pay nothing."
+    />
+    <meta name="twitter:image" content="https://phonehome.pages.dev/assets/landing/kid-landline.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,560;0,9..144,680;1,9..144,560&family=Sora:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/landing.css?v=4" />
+    <script>
+      document.documentElement.classList.add("js");
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": "https://phonehome.pages.dev/#org",
+        "name": "PhoneHome",
+        "legalName": "the operator",
+        "url": "https://phonehome.pages.dev/",
+        "logo": "https://phonehome.pages.dev/icon-512.png",
+        "email": "support@example.com",
+        "sameAs": [
+          "https://discord.gg/QWmCcnJn2Q",
+          "https://github.com/trevlars/PhoneHome",
+          "https://github.com/trevlars/PhoneHome/discussions"
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "PhoneHome",
+        "applicationCategory": "CommunicationApplication",
+        "operatingSystem": "iOS, Android, macOS, Windows, Linux, Home Assistant OS, Docker",
+        "url": "https://phonehome.pages.dev/",
+        "downloadUrl": "https://github.com/trevlars/PhoneHome/releases/latest",
+        "offers": {
+          "@type": "Offer",
+          "price": "25.00",
+          "priceCurrency": "USD",
+          "description": "$25/year after a 30-day free trial. Only the Mothership host pays. Up to 50 phones."
+        },
+        "publisher": { "@type": "Organization", "name": "the operator" }
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Who pays for PhoneHome?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Only the person who hosts the Mothership. It’s free for 30 days from first boot, then $25 a year for up to 50 phones. Kids, grandparents, and other families who join pay nothing."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What do I install?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "If you’re joining a family, get the free iPhone app or use a browser and open their invite. If you’re hosting, install the Mothership on a Mac, Windows PC, Linux machine, Raspberry Pi, Home Assistant, or Docker. The trial starts on first boot."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do kids need a special phone?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. They can use the app, or any regular RJ11 house phone plugged into a Grandstream HT801 adapter, about $40. Corded, cordless, and thrift-store phones all work. It is not a substitute for 911."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Where do calls and contacts live?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "On your Mothership. PhoneHome sells the license and runs a push relay so iPhones can ring. It does not keep call audio, contacts, or call history. There is no call recording, no ads, and no location tracking."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can it call regular phone numbers?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. PhoneHome is a private family network. It does not call the public phone network or 911. Keep a real cell or landline for emergencies."
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#call">Skip to content</a>
+    <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="i-phone" viewBox="0 0 24 24">
+        <path fill="currentColor" d="M7.2 3.2h2.8l1.1 2.7-1.7.8a9.2 9.2 0 0 0 4.6 4.6l.8-1.7 2.7 1.1v2.8c0 .9-.7 1.7-1.6 1.8A13.4 13.4 0 0 1 5.4 4.8c.1-.9.9-1.6 1.8-1.6Z" />
+      </symbol>
+      <symbol id="i-list" viewBox="0 0 24 24">
+        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5 7h14M5 12h14M5 17h9" />
+      </symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M6 6.5h12v8.2H9.2L6 18z" />
+      </symbol>
+      <symbol id="i-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="9" r="3.1" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M6.2 19.2c1.2-2.4 3.2-3.5 5.8-3.5s4.6 1.1 5.8 3.5" />
+      </symbol>
+      <symbol id="i-tree" viewBox="0 0 24 24">
+        <path fill="currentColor" d="M11 21.2h2V18h-2v3.2ZM12 17.6c-3.4 0-5.6-2.4-5.6-2.4s1.7-.5 2.3-2.6-1.6-4.2.4-5.2C8.8 5.2 10.2 3.6 12 3.6s3.2 1.6 2.9 3.8c2 .9 2.1 3.1.4 5.2s2.3 2.6 2.3 2.6-2.2 2.4-5.6 2.4Z" />
+      </symbol>
+      <symbol id="i-house" viewBox="0 0 24 24">
+        <path fill="currentColor" d="M12 3.6 3.8 11v9.2h6.1v-5.2h4.2v5.2h6.1V11L12 3.6Z" />
+      </symbol>
+      <symbol id="i-signal" viewBox="0 0 18 14">
+        <rect x="0" y="8" width="3" height="6" rx=".6" />
+        <rect x="5" y="5" width="3" height="9" rx=".6" />
+        <rect x="10" y="2" width="3" height="12" rx=".6" />
+        <rect x="15" y="0" width="3" height="14" rx=".6" opacity=".35" />
+      </symbol>
+      <symbol id="i-batt" viewBox="0 0 26 14">
+        <rect x=".8" y="1.6" width="20" height="10.8" rx="2" fill="none" stroke="currentColor" stroke-width="1.4" />
+        <rect x="2.6" y="3.4" width="13" height="7.2" rx="1" />
+        <rect x="22.2" y="4.6" width="2.2" height="4.8" rx=".6" />
+      </symbol>
+    </svg>
+
+    <header class="nav">
+      <a class="logo" href="/">
+        <span class="logo-mark" aria-hidden="true"><span class="logo-ring"></span><span class="logo-ring delay"></span><span class="nav-phone"></span></span>
+        <span class="logo-type">Phone<em>Home</em></span>
+      </a>
+      <nav class="nav-links" id="nav-panel" aria-label="Primary">
+        <a href="#call">The app</a>
+        <a href="#house">House phone</a>
+        <a href="#phones">The phones</a>
+        <a href="#parents">Parents</a>
+        <a href="#pricing">Pricing</a>
+        <a href="/compare.html">Compare</a>
+      </nav>
+      <div class="nav-cta">
+        <a class="btn btn-ghost" href="/trial.html"><span class="ufo" aria-hidden="true"></span><span class="wide">Start a Mothership</span><span class="narrow">Start</span></a>
+        <a class="btn btn-gold" href="https://apps.apple.com/app/id6804245868" rel="noopener"><img class="mark" src="/icon.svg" alt="" width="18" height="18" /><span class="nav-cta-label">Get the app</span></a>
+      </div>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-panel">
+        <span class="sr">Menu</span>
+        <span></span>
+      </button>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="kicker"><span class="dot" aria-hidden="true"></span> Private family calling</p>
+          <h1 id="hero-title">The home phone,<br /><em>reborn.</em></h1>
+          <p class="lede">
+            A phone for your kids, your parents, and the people you actually trust. Tap a face in the
+            app, or pick up a real house phone. You decide who can call.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-gold btn-lg" href="https://apps.apple.com/app/id6804245868" rel="noopener">
+              <img class="mark" src="/icon.svg" alt="" width="22" height="22" />
+              Get the iPhone app
+            </a>
+            <a class="btn btn-ghost btn-lg" href="/trial.html"><span class="ufo" aria-hidden="true"></span>Start a Mothership</a>
+          </div>
+        </div>
+
+        <div class="stage-slot">
+          <div class="stage-sizer" aria-hidden="true"></div>
+          <div class="stage-scaler" aria-hidden="true">
+            <div class="piece piece-rotary">
+              <div class="piece-bob">
+                <img class="rotary" src="/assets/landing/rotary.svg" alt="" width="800" height="800" />
+              </div>
+            </div>
+
+            <div class="piece piece-back" data-depth="0.7">
+              <div class="piece-bob">
+                <div class="iphone" style="--screen-w: 200px">
+                  <span class="iphone-silent"></span>
+                  <span class="iphone-side vol"></span>
+                  <span class="iphone-side"></span>
+                  <div class="screen">
+                    <img class="shot" src="/assets/landing/shot-parent.webp?v=4" alt="" width="864" height="1872" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="piece piece-kid" data-depth="0.45">
+              <div class="piece-bob">
+                <figure class="kid-card">
+                  <img src="/assets/landing/kid-landline.jpg" alt="" width="1400" height="933" />
+                  <figcaption>A real house phone</figcaption>
+                </figure>
+              </div>
+            </div>
+
+            <div class="piece piece-main" data-depth="1.15">
+              <div class="piece-bob">
+                <div class="rings"><span></span><span></span><span></span></div>
+                <div class="iphone">
+                  <span class="iphone-silent"></span>
+                  <span class="iphone-side vol"></span>
+                  <span class="iphone-side"></span>
+                  <div class="screen">
+                    <div class="reel">
+                      <img class="shot" src="/assets/landing/shot-speed-dial.webp?v=4" alt="" width="864" height="1872" />
+                      <img class="shot" src="/assets/landing/shot-activity.webp?v=4" alt="" width="864" height="1872" />
+                      <img class="shot" src="/assets/landing/shot-messages.webp?v=4" alt="" width="864" height="1872" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="piece piece-ata" data-depth="0.9">
+              <div class="piece-bob">
+                <figure class="ata-card">
+                  <img src="/assets/landing/ht801.png" alt="" width="460" height="370" />
+                  <figcaption>HT801 adapter</figcaption>
+                </figure>
+              </div>
+            </div>
+
+            <div class="piece piece-analog" data-depth="1.5">
+              <div class="piece-bob">
+                <img class="analog" src="/assets/landing/analog-phone.png?v=5" alt="" width="863" height="632" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-follow">
+          <p class="hero-note">
+            Free on the <a href="https://apps.apple.com/app/id6804245868" rel="noopener">App Store</a>.
+            Hosting is 30 days free, then $25/year.
+            <a href="/downloads.html">Mac, Windows, Linux, Home Assistant, Docker</a>.
+          </p>
+          <ul class="stat-row">
+            <li><b>Free</b><span>iPhone app</span></li>
+            <li><b>$25</b><span>a year to host</span></li>
+            <li><b>$0</b><span>for everyone who joins your mothership</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <div class="marquee" aria-hidden="true">
+        <div class="marquee-track">
+          <div class="mq">
+            <span>No feeds</span><span>No strangers</span><span>Encrypted calls</span><span>You approve every contact</span><span>Any house phone</span><span>Your server</span><span>No call recording</span><span>No ads</span>
+          </div>
+          <div class="mq">
+            <span>No feeds</span><span>No strangers</span><span>Encrypted calls</span><span>You approve every contact</span><span>Any house phone</span><span>Your server</span><span>No call recording</span><span>No ads</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="story-wrap">
+        <div class="rail" aria-hidden="true">
+          <span class="rail-seg on"></span>
+          <span class="rail-seg"></span>
+          <span class="rail-seg"></span>
+          <span class="rail-seg"></span>
+        </div>
+        <div>
+          <article class="beat reveal" id="call" data-beat>
+            <div class="beat-copy">
+              <p class="kicker">How you call</p>
+              <h2>Tap a face.</h2>
+              <p class="lede">
+                Kids don’t get a contact list of the whole world. They get the people you put on the
+                phone. One tap rings Mom, Grandma, Dad — nobody else.
+              </p>
+              <ul class="points">
+                <li><span class="idx">01</span><div><b>Only your people</b><span>Parents approve every face before it can be called.</span></div></li>
+                <li><span class="idx">02</span><div><b>Made for a child</b><span>Big photos, a talk-time cap, Quiet Time that still lets VIPs through.</span></div></li>
+                <li><span class="idx">03</span><div><b>A real iPhone app</b><span>Lock-screen Answer and Face ID. Android and computers use the browser.</span></div></li>
+                <li><span class="idx">04</span><div><b>No feed hiding under the phone</b><span>No strangers, no ads, no algorithm. It is a phone.</span></div></li>
+              </ul>
+            </div>
+            <div class="beat-visual showcase" aria-hidden="true">
+              <div class="rings"><span></span><span></span><span></span></div>
+              <div class="iphone">
+                <span class="iphone-silent"></span>
+                <span class="iphone-side vol"></span>
+                <span class="iphone-side"></span>
+                <div class="screen">
+                  <div class="reel" style="--shift: -6s">
+                    <img class="shot" src="/assets/landing/shot-speed-dial.webp?v=4" alt="" width="864" height="1872" />
+                    <img class="shot" src="/assets/landing/shot-activity.webp?v=4" alt="" width="864" height="1872" />
+                    <img class="shot" src="/assets/landing/shot-messages.webp?v=4" alt="" width="864" height="1872" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="beat house reveal" id="house" data-beat>
+            <div class="beat-copy">
+              <p class="kicker">Or pick up</p>
+              <h2>The phone already in the house.</h2>
+              <p class="lede">
+                Any regular phone — corded, cordless, the beige one from a thrift store — plugs into a
+                small adapter. Same family. Same rules. No phone company.
+              </p>
+              <ul class="points">
+                <li><span class="idx">01</span><div><b>If it has a phone cord, it fits</b><span>Cool old handsets are the point, not a gadget you have to buy from us.</span></div></li>
+                <li><span class="idx">02</span><div><b>Grandstream HT801, about $40</b><span>Deck-of-cards size. Ethernet to your router, phone in the jack.</span></div></li>
+                <li><span class="idx">03</span><div><b>Encrypted, like the app</b><span>SIP TLS and SRTP. It only rings people in that child’s circle.</span></div></li>
+                <li><span class="idx">04</span><div><b>Not a 911 phone</b><span>Keep a real cell or landline for emergencies. This line stays in the family.</span></div></li>
+              </ul>
+              <p class="fine">A parent sets the house phone up from the app. No installer visit. <a href="#phones">See the phones that fit</a>.</p>
+            </div>
+            <div class="beat-visual still">
+              <figure class="still-kid">
+                <img src="/assets/landing/kid-pickup.webp" width="1152" height="864" alt="A boy on a sofa talking on a green corded house phone" />
+                <figcaption>The phone kids actually pick up.</figcaption>
+              </figure>
+              <img class="still-phone" src="/assets/landing/analog-phone.png?v=5" width="863" height="632" alt="A beige push-button house phone with a coiled cord" />
+              <figure class="still-ata">
+                <img src="/assets/landing/ht801.png" width="460" height="370" alt="Grandstream HT801 analog telephone adapter" />
+                <figcaption>The adapter</figcaption>
+              </figure>
+            </div>
+            <!-- Phone types, not a product catalog. Swap an img src for a real photo when a hashtag exists. Do not invent the tag. -->
+            <div class="handsets" id="phones">
+            <div class="handsets-head">
+              <h3 id="phones-title">Hamburger. Banana. The one with the giant bells.</h3>
+              <p class="lede">A phone cord is the only requirement. The adapter does not care what it looks like.</p>
+            </div>
+            <div class="handset-grid">
+              <figure class="handset wall">
+                <img src="/assets/landing/phone-wall.webp?v=3" width="864" height="1152" alt="Oak Western Electric 317 wall phone: two bells on the front, a butterstamp receiver, a mouthpiece, and a side crank. No dial." />
+                <figcaption><b>Wall phone</b><span>The giant bells</span></figcaption>
+              </figure>
+              <figure class="handset">
+                <img src="/assets/landing/phone-hamburger.webp?v=5" width="864" height="1152" alt="Plastic cheeseburger phone, the sesame bun hinged open over a numbered keypad" />
+                <figcaption><b>Hamburger</b><span>Sesame seeds included</span></figcaption>
+              </figure>
+              <figure class="handset">
+                <img src="/assets/landing/phone-banana.webp?v=4" width="864" height="1152" alt="Yellow banana phone with a green stem and green cord, resting on a low green stand" />
+                <figcaption><b>Banana</b><span>The yellow one</span></figcaption>
+              </figure>
+              <figure class="handset">
+                <img src="/assets/landing/phone-princess.webp?v=4" width="864" height="1152" alt="Rose pink Western Electric Princess phone: low oval base, dial in the top, handset behind the dial" />
+                <figcaption><b>Princess</b><span>Dial in the base</span></figcaption>
+              </figure>
+              <figure class="handset">
+                <img src="/assets/landing/phone-lips.webp?v=3" width="864" height="1152" alt="Glossy red Hot Lips phone, closed, the upper lip seated on the lower lip" />
+                <figcaption><b>Lips</b><span>Gloss red</span></figcaption>
+              </figure>
+              <figure class="handset">
+                <img src="/assets/landing/phone-football.webp?v=3" width="864" height="1152" alt="Small football phone standing on a low kicking tee, white laces down the front" />
+                <figcaption><b>Football</b><span>Laces included</span></figcaption>
+              </figure>
+            </div>
+            </div>
+          </article>
+
+          <section class="people" id="people" aria-labelledby="people-title">
+            <div class="people-head">
+              <h2 id="people-title">Kids, grandparents, and the app.</h2>
+              <p class="lede">The house phone is for whoever still wants to pick it up. Everyone else taps a face.</p>
+            </div>
+            <div class="people-grid">
+              <figure>
+                <div class="people-photo">
+                <img src="/assets/landing/life-kid-wall.webp?v=7" width="1152" height="864" alt="A girl talking on a beige wall phone with the rotary dial on the box" />
+                </div>
+                <figcaption><b>554</b><span>Dial on the box</span></figcaption>
+              </figure>
+              <figure>
+                <div class="people-photo">
+                <img src="/assets/landing/life-kid-banana.webp?v=6" width="1152" height="864" alt="A boy holding a red one-piece Ericofon on a porch" />
+                </div>
+                <figcaption><b>Ericofon</b><span>One piece</span></figcaption>
+              </figure>
+              <figure>
+                <div class="people-photo">
+                <img src="/assets/landing/life-kid-princess.webp?v=5" width="1152" height="864" alt="A girl on a bed talking on a white Trimline, the dial in the handset" />
+                </div>
+                <figcaption><b>Trimline</b><span>Dial in the handset</span></figcaption>
+              </figure>
+              <figure>
+                <div class="people-photo">
+                <img src="/assets/landing/life-kid-hamburger.webp?v=7" width="1152" height="864" alt="A boy talking on a red model 302 desk phone in a playroom" />
+                </div>
+                <figcaption><b>302</b><span>Red bakelite</span></figcaption>
+              </figure>
+              <figure>
+                <div class="people-photo">
+                <img src="/assets/landing/life-grandma.webp?v=5" width="1152" height="864" alt="A grandmother talking on a black model 500 rotary phone" />
+                </div>
+                <figcaption><b>500</b><span>Black rotary</span></figcaption>
+              </figure>
+              <figure>
+                <div class="people-photo">
+                <img src="/assets/landing/life-grandpa.webp?v=6" width="1152" height="864" alt="A grandfather talking on a candlestick phone in a mudroom" />
+                </div>
+                <figcaption><b>Candlestick</b><span>On the bench</span></figcaption>
+              </figure>
+              <figure>
+                <div class="people-photo">
+                <img src="/assets/landing/life-mom-app.webp?v=4" width="1152" height="864" alt="A woman looking at the PhoneHome parent screen on a smartphone" />
+                </div>
+                <figcaption><b>Parent</b><span>The app</span></figcaption>
+              </figure>
+              <figure>
+                <div class="people-photo">
+                <img src="/assets/landing/life-dad-app.webp?v=5" width="1152" height="864" alt="A man sitting on a porch looking at the PhoneHome speed dial" />
+                </div>
+                <figcaption><b>Speed dial</b><span>Tap a face</span></figcaption>
+              </figure>
+            </div>
+          </section>
+
+          <article class="beat reveal" id="parents" data-beat>
+            <div class="beat-copy">
+              <p class="kicker">Parent tools</p>
+              <h2>Private calls. You’re in control.</h2>
+              <p class="lede">
+                Calls are encrypted. We help you set the phone up. We don’t listen, and we don’t keep
+                what was said. Quiet Time, a PIN, and a pause button stay yours.
+              </p>
+              <ul class="points">
+                <li><span class="idx">01</span><div><b>Quiet Time</b><span>Bedtime and school hours per kid. The people you mark VIP can still get through.</span></div></li>
+                <li><span class="idx">02</span><div><b>Timeout</b><span>One switch stops calls for the whole household. Turn it off when you’re ready.</span></div></li>
+                <li><span class="idx">03</span><div><b>Your PIN, their phone</b><span>Lock a device into the kid’s phone so Parent controls stay behind the PIN.</span></div></li>
+                <li><span class="idx">04</span><div><b>The record stays home</b><span>Accounts, contacts, and call history live on the Mothership you run. No recording. No ads. No location.</span></div></li>
+              </ul>
+              <p class="fine">Apps use WebRTC with DTLS-SRTP. The push relay only tells Apple an iPhone should ring — it stores none of it. <a href="/privacy.html">Privacy policy</a>.</p>
+            </div>
+            <div class="beat-visual showcase" aria-hidden="true">
+              <div class="rings"><span></span><span></span><span></span></div>
+              <div class="iphone">
+                <span class="iphone-silent"></span>
+                <span class="iphone-side vol"></span>
+                <span class="iphone-side"></span>
+                <div class="screen">
+                  <img class="shot" src="/assets/landing/shot-parent.webp?v=4" alt="" width="864" height="1872" />
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="beat flip reveal" id="mothership" data-beat>
+            <div class="beat-copy">
+              <p class="kicker">How it nests</p>
+              <h2>One Mothership. Every family you invite.</h2>
+              <p class="lede">
+                The Mothership is a small server you — or someone you trust — leave running. It hosts
+                the families. You don’t rent a phone line, and joining families never see each other’s
+                phone books.
+              </p>
+              <ol class="nest">
+                <li>
+                  <span class="nest-ico ship" aria-hidden="true"><span class="ufo"></span></span>
+                  <div><b>Mothership</b><span>The computer that stays on. Mac, PC, Pi, Home Assistant, or Docker.</span></div>
+                </li>
+                <li>
+                  <span class="nest-ico ghost" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><use href="#i-house" /></svg></span>
+                  <div><b>Pod</b><span>A family name. North. East. West. Parents run that Pod.</span></div>
+                </li>
+                <li>
+                  <span class="nest-ico ghost" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><use href="#i-user" /></svg></span>
+                  <div><b>Circle</b><span>One child, and only the people their guardians allow them to call.</span></div>
+                </li>
+              </ol>
+            </div>
+            <div class="beat-visual">
+              <ul class="points">
+                <li><span class="idx">01</span><div><b>Invite a sister or in-law</b><span>They join your Pod as a parent and add their own kids. Never invite a child alone.</span></div></li>
+                <li><span class="idx">02</span><div><b>Invite Grandma and Grandpa</b><span>A simpler phone: big buttons, one tap, the grandchildren you chose.</span></div></li>
+                <li><span class="idx">03</span><div><b>Invite one kid’s friend</b><span>That friend’s parent lands in one child’s Circle — not your whole family phone book.</span></div></li>
+                <li><span class="idx">04</span><div><b>Up to 50 phones</b><span>Apps and house phones, as many families as you like, on the one license.</span></div></li>
+              </ul>
+              <p class="fine">The code is <a href="https://github.com/trevlars/PhoneHome" rel="noopener">public on GitHub</a>. The license pays for installers, updates, and the push relay.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <section class="pricing" id="pricing" aria-labelledby="price-title">
+        <div class="price-panel reveal">
+          <div>
+            <p class="kicker"><span class="ufo" aria-hidden="true"></span> The host license</p>
+            <p class="price">$25<small> / year</small></p>
+          </div>
+          <div>
+            <h2 id="price-title">One person hosts. Everybody else just picks up.</h2>
+            <ul class="checks">
+              <li>30 days free from first boot. No card. Nothing renews on its own.</li>
+              <li>Then $25 a year, up to 50 phones, any number of families.</li>
+              <li>Kids, grandparents, and friends who join pay $0.</li>
+              <li>Walk away and your family’s data stays on your machine.</li>
+            </ul>
+            <div class="hero-actions">
+              <a class="btn btn-gold" href="/trial.html">Start the 30-day trial</a>
+              <a class="btn btn-ghost" href="/compare.html">Compare the cost</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="doors" id="start" aria-label="Choose how to start">
+        <a class="door reveal" href="https://apps.apple.com/app/id6804245868" rel="noopener">
+          <img class="door-mark" src="/icon.svg" alt="" width="52" height="52" />
+          <span class="door-k">Joining a family</span>
+          <h3>Get the app.</h3>
+          <p>Someone you trust already runs a Mothership. Install the free iPhone app, or open their invite in the browser. You don’t pay, and you don’t install a server.</p>
+          <span class="go">Get the iPhone app →</span>
+        </a>
+        <a class="door reveal" href="/trial.html" style="--delay: .12s">
+          <span class="door-mark ship" aria-hidden="true"><span class="ufo"></span></span>
+          <span class="door-k">You’re the host</span>
+          <h3>Start a Mothership.</h3>
+          <p>Put it on a computer that stays on. Invite your kids, your parents, your sister. Every feature is on for 30 days. Keep it for $25 a year.</p>
+          <span class="go">Download the free trial →</span>
+        </a>
+      </section>
+
+      <section class="faq" id="faq" aria-labelledby="faq-title">
+        <h2 id="faq-title">Straight answers</h2>
+        <details>
+          <summary>Who pays?</summary>
+          <p>Only the person who hosts the Mothership. It’s free for 30 days from first boot, then $25 a year for up to 50 phones. Kids, grandparents, and other families who join pay nothing.</p>
+        </details>
+        <details>
+          <summary>What do I actually install?</summary>
+          <p>Joining: the free iPhone app, or a browser, plus the invite your family sent. Hosting: the Mothership on a Mac, Windows PC, Linux machine, Raspberry Pi, Home Assistant, or Docker. The trial clock starts when you first boot it, not when you download it. <a href="/downloads.html">All the downloads</a>.</p>
+        </details>
+        <details>
+          <summary>Do kids need a special phone?</summary>
+          <p>No. The app is enough. A house phone is optional: any regular RJ11 phone into a Grandstream HT801, about $40. Corded, cordless, and thrift-store sets all work. It is not a substitute for 911.</p>
+        </details>
+        <details>
+          <summary>Where do calls and contacts live?</summary>
+          <p>On your Mothership. PhoneHome sells the license and runs a push relay so iPhones can ring. It does not keep call audio, contacts, or call history. No recording, no ads, no location tracking. <a href="/privacy.html">The full policy</a>.</p>
+        </details>
+        <details>
+          <summary>Can it call regular numbers?</summary>
+          <p>No. This is a private family network, not a carrier. It does not call the public phone network or 911. Keep a real cell or landline for emergencies.</p>
+        </details>
+        <details>
+          <summary>Already have an invite?</summary>
+          <p>You don’t need this trial. Open the link they sent, or <a href="https://apps.apple.com/app/id6804245868" rel="noopener">get the iPhone app</a> and paste their Mothership address.</p>
+        </details>
+      </section>
+
+      <section class="final" aria-labelledby="final-title">
+        <div class="final-panel">
+          <p class="kicker" style="justify-content: center"><img class="mark" src="/icon.svg" alt="" width="28" height="28" /> PhoneHome</p>
+          <h2 id="final-title">The home phone, <em>reborn.</em></h2>
+          <p class="lede">Bring your people back to a phone that only rings for them.</p>
+          <div class="hero-actions">
+            <a class="btn btn-gold btn-lg" href="https://apps.apple.com/app/id6804245868" rel="noopener"><img class="mark" src="/icon.svg" alt="" width="22" height="22" />Get the iPhone app</a>
+            <a class="btn btn-ghost btn-lg" href="/trial.html"><span class="ufo" aria-hidden="true"></span>Start a Mothership</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <div class="foot-brand">
+        <a class="logo" href="/">
+          <span class="logo-mark" aria-hidden="true"><span class="logo-ring"></span><span class="logo-ring delay"></span><span class="nav-phone"></span></span>
+          <span class="logo-type">Phone<em>Home</em></span>
+        </a>
+        <a class="foot-ship" href="#mothership"><span class="ufo" aria-hidden="true"></span> Mothership</a>
+      </div>
+      <nav class="foot-links" aria-label="Footer">
+        <a href="/trial.html">Free trial</a>
+        <a href="/compare.html">Compare</a>
+        <a href="/buy.html">License — $25/year</a>
+        <a href="/downloads.html">Downloads</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/refund.html">Refunds</a>
+        <a href="/support.html">Support</a>
+        <a href="https://github.com/trevlars/PhoneHome" rel="noopener">Source</a>
+      </nav>
+      <p>
+        PhoneHome is sold by the operator. The host pays $25/year (USD) after a 30-day
+        free trial; families who join pay nothing. No ads, no tracking, no call recording — your
+        family’s calls live on a Mothership you or someone you trust runs.
+      </p>
+      <p>
+        Apple, iPhone, Face ID, TestFlight, Grandstream, Home Assistant, and other names are
+        trademarks of their owners. PhoneHome isn’t affiliated with or endorsed by them.
+        <a href="/terms.html#trademarks">Trademarks</a>
+      </p>
+      <p>© 2026 PhoneHome</p>
+    </footer>
+    <script src="/landing.js"></script>
+    <script src="/community-footer.js" defer></script>
+  </body>
+</html>

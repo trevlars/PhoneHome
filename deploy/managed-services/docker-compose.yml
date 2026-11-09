@@ -1,0 +1,48 @@
+services:
+  push-gateway:
+    build:
+      context: ../..
+      dockerfile: gateway/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "8789"
+      APNS_KEY_P8: /run/secrets/apns_key
+    secrets:
+      - apns_key
+    expose:
+      - "8789"
+
+  control:
+    build:
+      context: ../..
+      dockerfile: control/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "8791"
+      CONTROL_DATA_DIR: /app/data
+    volumes:
+      - ./control-data:/app/data
+    expose:
+      - "8791"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    depends_on:
+      - push-gateway
+      - control
+
+secrets:
+  apns_key:
+    file: ./secrets/AuthKey.p8

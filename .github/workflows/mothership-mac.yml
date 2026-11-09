@@ -1,0 +1,84 @@
+name: macOS Mothership app
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos-app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Import signing certificate
+        if: env.DEVELOPER_ID_CERTIFICATE_BASE64 != ''
+        env:
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN=$RUNNER_TEMP/app-signing.keychain-db
+          PASSWORD=$(openssl rand -base64 32)
+          security create-keychain -p "$PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASSWORD" "$KEYCHAIN"
+          echo "$DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$PASSWORD" "$KEYCHAIN"
+
+      # Xcode builds unsigned; the script signs the finished bundle with the Developer ID
+      # certificate when one was imported, otherwise ad-hoc (still launches, Gatekeeper prompt).
+      - name: Build app + DMG
+        env:
+          DEVELOPER_ID_APP: ${{ secrets.DEVELOPER_ID_APP }}
+        run: |
+          chmod +x macos/Scripts/*.sh
+          if [[ -z "${DEVELOPER_ID_APP:-}" ]]; then
+            echo "No Developer ID secrets — building ad-hoc signed DMG (Gatekeeper will prompt once)"
+          fi
+          ./macos/Scripts/build-macos-app.sh --dmg
+
+      - name: Notarize DMG
+        if: env.DEVELOPER_ID_APP != '' && env.NOTARY_API_KEY_BASE64 != ''
+        env:
+          DEVELOPER_ID_APP: ${{ secrets.DEVELOPER_ID_APP }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_API_KEY_BASE64: ${{ secrets.NOTARY_API_KEY_BASE64 }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+        run: |
+          echo "$NOTARY_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          export NOTARY_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          DMG=$(ls macos/build/*.dmg | head -1)
+          ./macos/Scripts/notarize-dmg.sh "$DMG"
+
+      - name: Upload DMG to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: macos/build/*.dmg
+          append_body: true
+          body: |
+            ### macOS menu bar app (Apple Silicon)
+            Download **PhoneHome-Mothership-*-macos.dmg** → drag **PhoneHome Mothership** to **Applications** → launch it → look for the **UFO icon** in the menu bar.
+
+            If macOS says it can’t verify the developer, right-click the app → **Open** (one time only).
+
+      - name: Upload DMG artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: mothership-macos-app
+          path: macos/build/*.dmg

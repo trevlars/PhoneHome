@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Transactional / legal — prefer marketing URLs
+Disallow: /buy-success.html
+
+Sitemap: https://phonehome.pages.dev/sitemap.xml
+
+# AI answer engines: plain-text summary with citable facts
+# https://phonehome.pages.dev/llms.txt

@@ -1,0 +1,496 @@
+# PhoneHome — App Store Connect listing upload
+#
+#   source scripts/asc.env    # or source ~/path/to/asc.env
+#   fastlane ios asc_info
+#   fastlane ios prepare_deliver
+#   fastlane ios upload_listing
+
+default_platform(:ios)
+
+def asc_api_key_hash
+  key_id = ENV["ASC_KEY_ID"]
+  issuer_id = ENV["ASC_ISSUER_ID"]
+  key_path = ENV["ASC_KEY_PATH"]
+  UI.user_error!("Set ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_PATH (see scripts/asc.env.example)") unless key_id && issuer_id && key_path
+  UI.user_error!("ASC_KEY_PATH not found: #{key_path}") unless File.exist?(key_path)
+
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key_filepath: key_path,
+    duration: 1200,
+    in_house: false
+  )
+end
+
+def connect_spaceship
+  key_id = ENV["ASC_KEY_ID"]
+  issuer_id = ENV["ASC_ISSUER_ID"]
+  key_path = ENV["ASC_KEY_PATH"]
+  token = Spaceship::ConnectAPI::Token.create(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    filepath: key_path,
+    duration: 1200,
+    in_house: false
+  )
+  Spaceship::ConnectAPI.token = token
+end
+
+platform :ios do
+  desc "Print App Store Connect app record for app.phonehome.ios"
+  lane :asc_info do
+    connect_spaceship
+    app = Spaceship::ConnectAPI::App.find("app.phonehome.ios")
+    UI.user_error!("App app.phonehome.ios not found — create it in App Store Connect first") unless app
+    UI.success("App: #{app.name} (#{app.id}) bundle=#{app.bundle_id}")
+  end
+
+  desc "Map generated screenshots into fastlane deliver folder layout"
+  lane :prepare_deliver do
+    sh(File.expand_path("../scripts/prepare-deliver-screenshots.sh", __dir__))
+  end
+
+  desc "Upload metadata + screenshots to App Store Connect (no binary)"
+  lane :upload_listing do
+    prepare_deliver
+    api_key = asc_api_key_hash
+
+    deliver(
+      api_key: api_key,
+      app_identifier: "app.phonehome.ios",
+      metadata_path: "app-store/metadata",
+      screenshots_path: "app-store/screenshots-deliver",
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      skip_metadata: true,
+      force: true,
+      submit_for_review: false,
+      precheck_include_in_app_purchases: false,
+      overwrite_screenshots: true
+    )
+  end
+
+  def inject_review_demo_password!
+    pass = ENV["ASC_REVIEW_DEMO_PASSWORD"].to_s.strip
+    dest = File.expand_path("../app-store/metadata/review_information/demo_password.txt", __dir__)
+    if pass.empty?
+      UI.important("ASC_REVIEW_DEMO_PASSWORD unset — skipping demo_password.txt (set it in asc.env to push review login)")
+      File.delete(dest) if File.exist?(dest)
+      return
+    end
+    File.write(dest, pass)
+    UI.message("Wrote review demo_password.txt from ASC_REVIEW_DEMO_PASSWORD")
+  end
+
+  desc "Set App Store price to Free via appPriceSchedules (new ASC pricing API)"
+  lane :set_price_free do
+    connect_spaceship
+    app = Spaceship::ConnectAPI::App.find("app.phonehome.ios")
+    UI.user_error!("App app.phonehome.ios not found") unless app
+
+    http = Spaceship::ConnectAPI.client.tunes_request_client
+    resp = http.get("v1/apps/#{app.id}/appPricePoints", { "filter[territory]" => "USA", "limit" => 200 })
+    points = resp.body["data"] || []
+    free = points.find do |p|
+      price = p.dig("attributes", "customerPrice")
+      price.to_s == "0.0" || price.to_f.zero?
+    end
+    UI.user_error!("No free (0.0) USA appPricePoint found for #{app.id}") unless free
+
+    body = {
+      data: {
+        type: "appPriceSchedules",
+        relationships: {
+          app: { data: { type: "apps", id: app.id } },
+          baseTerritory: { data: { type: "territories", id: "USA" } },
+          manualPrices: { data: [{ type: "appPrices", id: "${price1}" }] }
+        }
+      },
+      included: [
+        {
+          type: "appPrices",
+          id: "${price1}",
+          attributes: { startDate: nil },
+          relationships: {
+            appPricePoint: { data: { type: "appPricePoints", id: free["id"] } }
+          }
+        }
+      ]
+    }
+    http.post("v1/appPriceSchedules", body)
+    UI.success("Price schedule set to Free (USA base → equalized territories)")
+  end
+
+  desc "Upload metadata text only (category, age rating, URLs, review info) + Free price"
+  lane :upload_metadata do
+    inject_review_demo_password!
+    api_key = asc_api_key_hash
+    deliver(
+      api_key: api_key,
+      app_identifier: "app.phonehome.ios",
+      metadata_path: "app-store/metadata",
+      app_rating_config_path: File.expand_path("../app-store/age_rating.json", __dir__),
+      primary_category: "SOCIAL_NETWORKING",
+      secondary_category: "LIFESTYLE",
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      skip_metadata: false,
+      force: true,
+      submit_for_review: false,
+      precheck_include_in_app_purchases: false
+    )
+    set_price_free
+  end
+
+  desc "Prepare deliver folders + upload screenshots and metadata"
+  lane :upload_all do
+    upload_metadata
+    upload_listing
+  end
+
+  def read_testflight_what_to_test
+    path = File.expand_path("../app-store/metadata/en-US/testflight_what_to_test.txt", __dir__)
+    UI.user_error!("Missing #{path}") unless File.exist?(path)
+    File.read(path, encoding: "UTF-8").strip
+  end
+
+  desc "Print TestFlight beta groups, builds, and localization state"
+  lane :testflight_info do
+    connect_spaceship
+    app = Spaceship::ConnectAPI::App.find("app.phonehome.ios")
+    UI.user_error!("App app.phonehome.ios not found") unless app
+    UI.message("ASC app record: #{app.name} (#{app.id})")
+
+    info = app.fetch_edit_app_info
+    if info
+      info.get_app_info_localizations.each do |loc|
+        UI.message("Listing name [#{loc.locale}]: #{loc.name}")
+      end
+    end
+
+    app.get_beta_groups.each do |g|
+      UI.message("Beta group: #{g.name} public=#{g.public_link_enabled} link=#{g.public_link}")
+    end
+
+    Spaceship::ConnectAPI::Build.all(app_id: app.id, sort: "-uploadedDate", limit: 5).each do |b|
+      UI.message("Build: #{b.version} uploaded=#{b.uploaded_date} state=#{b.processing_state} expired=#{b.expired}")
+      b.get_beta_build_localizations.each do |l|
+        UI.message("  What to Test [#{l.locale}]: #{l.whats_new&.lines&.first&.strip}")
+      end
+    end
+
+    Spaceship::ConnectAPI.get_beta_app_localizations(filter: { app: app.id }).each do |l|
+      UI.message("Beta app [#{l.locale}]: #{l.description&.lines&.first&.strip}")
+    end
+  end
+
+  def read_optional_metadata(filename)
+    path = File.expand_path("../app-store/metadata/en-US/#{filename}", __dir__)
+    return nil unless File.exist?(path)
+    File.read(path, encoding: "UTF-8").strip
+  end
+
+  desc "Upload TestFlight tester notes + beta app description from metadata files"
+  lane :upload_testflight do
+    connect_spaceship
+    app = Spaceship::ConnectAPI::App.find("app.phonehome.ios")
+    UI.user_error!("App app.phonehome.ios not found") unless app
+
+    builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, sort: "-uploadedDate", limit: 1)
+    UI.user_error!("No builds found for app.phonehome.ios") if builds.empty?
+
+    build = builds.first
+    whats_new = read_testflight_what_to_test
+    beta_description = read_optional_metadata("testflight_beta_description.txt")
+    feedback_email = read_optional_metadata("testflight_feedback_email.txt")
+
+    # What to Test (per-build)
+    locs = build.get_beta_build_localizations
+    en_build = locs.find { |l| l.locale == "en-US" }
+    if en_build
+      Spaceship::ConnectAPI.patch_beta_build_localizations(
+        localization_id: en_build.id,
+        attributes: { whatsNew: whats_new }
+      )
+    else
+      Spaceship::ConnectAPI.post_beta_build_localizations(
+        build_id: build.id,
+        attributes: { locale: "en-US", whatsNew: whats_new }
+      )
+    end
+    UI.success("What to Test updated for build #{build.version}")
+
+    # Beta app description + feedback email (app-level TestFlight info)
+    if beta_description || feedback_email
+      beta_locs = Spaceship::ConnectAPI.get_beta_app_localizations(filter: { app: app.id })
+      en_app = beta_locs.find { |l| l.locale == "en-US" }
+      attrs = {}
+      attrs[:description] = beta_description if beta_description
+      attrs[:feedbackEmail] = feedback_email if feedback_email
+      if en_app
+        Spaceship::ConnectAPI.patch_beta_app_localizations(localization_id: en_app.id, attributes: attrs)
+      else
+        Spaceship::ConnectAPI.post_beta_app_localizations(
+          app_id: app.id,
+          attributes: attrs.merge(locale: "en-US")
+        )
+      end
+      UI.success("Beta app description/feedback email updated")
+    end
+
+    UI.success("TestFlight metadata updated for build #{build.version}")
+  end
+
+  desc "Refresh App Store distribution profile via ASC API (no Apple ID login)"
+  lane :refresh_appstore_profile do
+    api_key = asc_api_key_hash
+    sigh(
+      api_key: api_key,
+      app_identifier: "app.phonehome.ios",
+      force: true,
+      output_path: File.expand_path("../build", __dir__),
+      filename: "PhoneHome_AppStore.mobileprovision"
+    )
+    profile_name = lane_context[SharedValues::SIGH_NAME]
+    UI.success("Profile: #{profile_name}")
+    profile_name
+  end
+
+  desc "Attach a processed build to the editable App Store version"
+  lane :attach_appstore_build do |options|
+    connect_spaceship
+    app = Spaceship::ConnectAPI::App.find("app.phonehome.ios")
+    UI.user_error!("App app.phonehome.ios not found") unless app
+
+    version = app.get_edit_app_store_version(platform: Spaceship::ConnectAPI::Platform::IOS)
+    UI.user_error!("No editable iOS App Store version found") unless version
+
+    build_number = (options[:build_number] || get_build_number(
+      xcodeproj: File.expand_path("../ios/App/App.xcodeproj", __dir__)
+    )).to_s
+    build = Spaceship::ConnectAPI::Build.all(
+      app_id: app.id,
+      version: version.version_string,
+      build_number: build_number,
+      platform: Spaceship::ConnectAPI::Platform::IOS,
+      processing_states: Spaceship::ConnectAPI::Build::ProcessingState::VALID,
+      limit: 1
+    ).first
+    UI.user_error!("Processed build #{version.version_string} (#{build_number}) not found") unless build
+
+    version.select_build(build_id: build.id)
+    UI.success("Attached build #{version.version_string} (#{build_number}) to App Store version")
+  end
+
+  desc "Archive Release build, upload to TestFlight, and attach to the App Store version"
+  desc "build_number:N pins the build (the default restarts at 14 on a new version); skip_appstore_attach:true leaves a submitted App Store version untouched"
+  lane :release_testflight do |options|
+    api_key = asc_api_key_hash
+    whats_new = read_testflight_what_to_test
+    profile_name = refresh_appstore_profile
+    next_build = options[:build_number] || latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "app.phonehome.ios",
+      version: get_version_number(xcodeproj: File.expand_path("../ios/App/App.xcodeproj", __dir__)),
+      initial_build_number: 13
+    ).to_i + 1
+    increment_build_number(
+      build_number: next_build,
+      xcodeproj: File.expand_path("../ios/App/App.xcodeproj", __dir__)
+    )
+    build_number = get_build_number(
+      xcodeproj: File.expand_path("../ios/App/App.xcodeproj", __dir__)
+    )
+
+    # Bundled softphone only — no baked server.url (new users see Connect offline).
+    mobile_dir = File.expand_path("..", __dir__)
+    sh("cd #{File.expand_path('..', mobile_dir)} && npm run build -w web >/dev/null")
+    # fastlane's Ruby env (GEM_HOME etc.) breaks the system CocoaPods that cap sync runs.
+    sh("cd #{mobile_dir} && npm run build:plugin >/dev/null && env -u GEM_HOME -u GEM_PATH -u RUBYOPT -u RUBYLIB -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH PHONEHOME_CAP_BUNDLED=1 npx cap sync ios")
+
+    gym(
+      workspace: File.expand_path("../ios/App/App.xcworkspace", __dir__),
+      scheme: "App",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: File.expand_path("../build", __dir__),
+      clean: true,
+      include_bitcode: false,
+      # Xcode 27: parallel actool/ibtoold crashes mid-archive on this machine.
+      xcargs: "-jobs 1 ENABLE_ON_DEMAND_RESOURCES=NO",
+      export_options: {
+        provisioningProfiles: {
+          "app.phonehome.ios" => profile_name
+        }
+      }
+    )
+
+    # Wait for processing so we can attach What to Test and the PhoneHomers group.
+    upload_to_testflight(
+      api_key: api_key,
+      app_platform: "ios",
+      skip_waiting_for_build_processing: false,
+      distribute_external: true,
+      groups: ["PhoneHomers"],
+      changelog: whats_new
+    )
+    attach_appstore_build(build_number: build_number) unless options[:skip_appstore_attach].to_s == "true"
+    UI.success("Binary uploaded and distributed to PhoneHomers")
+  end
+
+  desc "Attach latest processed build to PhoneHomers + refresh What to Test"
+  lane :distribute_phonehomers do
+    upload_testflight
+    api_key = asc_api_key_hash
+    upload_to_testflight(
+      api_key: api_key,
+      app_platform: "ios",
+      skip_submission: true,
+      skip_waiting_for_build_processing: true,
+      distribute_only: true,
+      distribute_external: true,
+      groups: ["PhoneHomers"],
+      changelog: read_testflight_what_to_test
+    )
+    UI.success("Latest build distributed to PhoneHomers")
+  end
+
+  desc "Submit the attached App Store version for review (auto-release on approval)"
+  lane :submit_appstore do
+    inject_review_demo_password!
+    deliver(
+      api_key: asc_api_key_hash,
+      app_identifier: "app.phonehome.ios",
+      metadata_path: "app-store/metadata",
+      app_rating_config_path: File.expand_path("../app-store/age_rating.json", __dir__),
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      skip_metadata: false,
+      force: true,
+      submit_for_review: true,
+      automatic_release: true,
+      precheck_include_in_app_purchases: false
+    )
+  end
+end
+
+def play_json_key
+  key_path = ENV["PLAY_JSON_KEY_PATH"]
+  UI.user_error!("Set PLAY_JSON_KEY_PATH (see scripts/play.env.example)") unless key_path && File.exist?(key_path)
+  key_path
+end
+
+def play_package_name
+  ENV.fetch("PLAY_PACKAGE_NAME", "app.phonehome.android")
+end
+
+platform :android do
+  desc "Print Play Console package name and latest version codes"
+  lane :play_info do
+    json_key = play_json_key
+    supply(
+      json_key: json_key,
+      package_name: play_package_name,
+      track: "internal",
+      version_codes_to_retain: 0,
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      validate_only: true
+    )
+  end
+
+  desc "Map App Store assets into supply metadata folders"
+  lane :prepare_supply do
+    sh(File.expand_path("../scripts/prepare-play-metadata.sh", __dir__))
+  end
+
+  desc "Upload Play Store listing text + screenshots (no binary)"
+  lane :upload_listing do
+    prepare_supply
+    supply(
+      json_key: play_json_key,
+      package_name: play_package_name,
+      metadata_path: "play-store/metadata/android",
+      track: "internal",
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: false,
+      skip_upload_images: false,
+      skip_upload_screenshots: false,
+      skip_upload_changelogs: true,
+      version_code: 18
+    )
+  end
+
+  desc "Build signed release AAB"
+  lane :build_release do
+    mobile_dir = File.expand_path("..", __dir__)
+    repo_root = File.expand_path("..", mobile_dir)
+    sh("cd #{repo_root} && npm run build -w web >/dev/null")
+    sh("cd #{mobile_dir} && npm run build:plugin >/dev/null && npx cap sync android")
+    sh(File.expand_path("../scripts/prepare-android-signing.sh", __dir__))
+    sh("cd #{mobile_dir}/android && ./gradlew bundleRelease")
+    aab = File.join(mobile_dir, "android/app/build/outputs/bundle/release/app-release.aab")
+    UI.user_error!("AAB not found at #{aab}") unless File.exist?(aab)
+    UI.success("AAB: #{aab}")
+    aab
+  end
+
+  desc "Upload AAB to internal testing (Play's TestFlight equivalent)"
+  lane :upload_internal do |options|
+    aab = options[:aab]
+    aab = build_release unless aab && File.exist?(aab.to_s)
+    supply(
+      json_key: play_json_key,
+      package_name: play_package_name,
+      track: "internal",
+      aab: aab,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      # Draft Play apps reject API commits with release_status completed (store page never appears).
+      release_status: "draft"
+    )
+    UI.success("Uploaded to internal testing track (draft — roll out in Play Console)")
+  end
+
+  desc "Upload AAB to open testing (public opt-in beta)"
+  lane :upload_open do |options|
+    aab = options[:aab]
+    aab = File.join(File.expand_path("..", __dir__), "android/app/build/outputs/bundle/release/app-release.aab") unless aab && File.exist?(aab.to_s)
+    UI.user_error!("AAB not found — run build_release or upload_internal first") unless File.exist?(aab.to_s)
+    supply(
+      json_key: play_json_key,
+      package_name: play_package_name,
+      track: "beta",
+      aab: aab,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true,
+      release_status: "completed",
+      version_code: 19
+    )
+    UI.success("Uploaded to open testing track (beta)")
+  end
+
+  desc "Build + upload listing + push to internal testing"
+  lane :release_internal do
+    prepare_supply
+    aab = build_release
+    supply(
+      json_key: play_json_key,
+      package_name: play_package_name,
+      track: "internal",
+      metadata_path: "play-store/metadata/android",
+      aab: aab,
+      skip_upload_images: true,
+      release_status: "draft"
+    )
+    UI.success("Listing + internal testing release uploaded (draft — roll out in Play Console)")
+  end
+end

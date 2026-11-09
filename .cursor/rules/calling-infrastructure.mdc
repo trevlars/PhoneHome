@@ -1,0 +1,39 @@
+---
+description: Calling infrastructure stability — media invariants, call ownership, required tests, and deploy discipline that keep PhoneHome calls working on every mothership
+alwaysApply: true
+---
+
+# Calling infrastructure — no regressions (always)
+
+Calls are the product, and live family lines run on every mothership. Each rule below exists because breaking it shipped a regression on Oct 3–4, 2026.
+
+## Before changing call code
+Applies to server signaling (`server/src/index.ts`, `callDevices.ts`), `bridged/`, call paths in `web/src/app.js`, `mobile/plugins/phonehome-callkit/`, `bridged/freepbx/`, TURN/ICE config, and `deploy/`.
+- Read `docs/analog-media-invariants.md` first. It is the contract for FXS legs, ExternalMedia, and prompts.
+- Root-cause from evidence before editing: bridge `RTP summary` lines, Asterisk `/var/log/asterisk/full` on CT 121, server call lifecycle, and the iPhone over USB (`idevicesyslog`). Do not ship speculative fixes.
+- One media behavior change per commit, so a revert removes exactly one thing.
+
+## Hard invariants
+1. **No Asterisk playback into a softphone↔house call, and no other in-call audio without evidence.** Every buzz regression came from injected audio: Piper played by Asterisk (fixed in `b7bb15d`, `6520bb9`, `d29244e`), a full-scale dial-tone clip (`22b4ade`), and the "Call from Dad" bridge announcer (`76671ab`/`35d94d5`, removed in `030256a`). No `channel.play` on an FXS leg once ExternalMedia exists, and no bridge prompt before the mix. The one sanctioned handset prompt is `bridged/src/handsetPrompt.mjs`: pre-rendered "Call from {name}" sent as the caller's own PCMU through the 20 ms pacer after `armExternalMediaMix`, replacing (never interleaving with) mic frames, peak −6 dBFS, on by default and limited per line by `HANDSET_CALLER_ANNOUNCE`. Any new in-call audio needs the same bar: handset-side activity measured on a live call before and after.
+2. **FXS legs:** plain `mixing` bridge, join the bridge before `answer()`, and use UDP UnicastRTP ExternalMedia. See the invariants doc for the full order.
+3. **One device owns an answered call.** The first answer wins (`server/src/callDevices.ts`). Other devices on the line get `call.answered-elsewhere` and stop ringing without hanging up. A second socket must never rebind an open call.
+4. **iOS audio:** CallKit owns the audio session. Do not reintroduce the `RTCAudioSession` 48 kHz pin (`1870e8d`, reverted in `6ecdd39`).
+5. **Never fake media health.** Stats must be measured, not hardcoded. The existing `native-didActivate` report hardcodes `ice: "connected"`; do not trust it or copy it.
+6. **Privacy pillar** (`privacy-security-pillar.mdc`): no public cleartext SIP/RTP; no SDP crypto, keys, passwords, or session ids in logs. `pjsip set logger` prints `a=crypto`, so do not use it. Packet captures need Cameron's OK for that session, must be `timeout`-bounded and headers-only (never other families' payload), and are deleted after analysis. A forgotten capture of every call's RTP ran in CT 121 from Sep 28 to Oct 4.
+7. **Portable:** no lab IPs or hostnames in code other motherships run. Everything site-specific comes from env (`TURN_URLS`, `TURN_LAN_URLS`, `EXT_MEDIA_HOST`, ...).
+
+## Required before any deploy that touches call code
+```bash
+(cd server && npm test && npx tsc --noEmit -p .)
+(cd bridged && npm test)
+node --test web/src/holdPaths.test.js
+./deploy/phonehome-media-smoke.sh   # the deploy script also runs this
+```
+
+## Deploy discipline (live family lines)
+- Deploy only with `deploy/proxmox-rsync.sh`. It takes a lock, refuses uncommitted code, waits for idle lines, skips unchanged FreePBX and HT801 steps, and stamps `/opt/kids-landline/DEPLOYED_REVISION`. Never deploy a working tree containing another agent's uncommitted changes. On Oct 4, 21 deploys, each restarting services, were themselves the main source of breakage.
+- Never restart `kids-landline`, `phonehome-bridge`, Asterisk, or coturn, and never run `fwconsole reload`, while `pct exec 121 -- asterisk -rx "core show channels concise"` lists any `PJSIP/` leg. A restart mid-call strands the call; on Oct 4 one left a dead ExternalMedia leg for 20+ min. `bridged` now ends those on startup.
+- **HT801 check-sync restarts the adapter.** It re-provisions and drops its registration, so run it only for provisioning changes (`PHONEHOME_ATA_SYNC=1`). On Oct 4, per-deploy check-sync dropped every family's registration 10–14 times. All seven dead-house-uplink calls that day were among the first calls after a house registration drop.
+- **FreePBX reloads crash Asterisk.** On Oct 4, Asterisk 22.10.1 died five times: twice mid-reload (`res_digium_phone`, `http`), twice on a pjproject assert (`except.c: handler != NULL`), and once with no captured cause. Each crash drops every line. The deploy script reloads only when `bridged/freepbx/` or the FreePBX helpers change. `phonehome-set-sip-secret`, which the server runs per line on every start, reloads only when that line's state changed. Never add reloads to routine paths.
+- Two agents must never deploy at once. The script's lock enforces this; do not bypass it.
+- After deploying, place the calls your change affects: home↔home, softphone→home, home→softphone (iOS CallKit and Safari). Check `RTP summary` for `fxsIn`/`webrtcIn` > 0 and `sustained=yes`, and report only what you verified.

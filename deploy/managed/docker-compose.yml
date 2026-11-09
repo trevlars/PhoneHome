@@ -1,0 +1,90 @@
+# One isolated managed Mothership per cloud VPS.
+# FreePBX/Asterisk runs on the VPS host and is reachable through host.docker.internal.
+services:
+  phonehome:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "8787"
+      DATA_DIR: /app/data
+      NODE_ENV: production
+      BRIDGE_URL: http://bridge:8790
+      ATA_LAN_PUSH: "0"
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8787"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  bridge:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.bridge
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PHONEHOME_URL: http://phonehome:8787
+      PHONEHOME_WS: ws://phonehome:8787/ws
+      BRIDGE_HTTP_PORT: "8790"
+      BRIDGE_HTTP_BIND: "0.0.0.0"
+      EXT_MEDIA_HOST: ${EXT_MEDIA_HOST}
+      EXT_MEDIA_PORT_BASE: "14000"
+      ARI_URL: ${ARI_URL:-http://host.docker.internal:8088}
+      ARI_USER: ${ARI_USER:-phonehome}
+      ARI_PASS: ${ARI_PASS}
+      BRIDGE_SECRET: ${BRIDGE_SECRET}
+      TURN_URLS: ${TURN_URLS}
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL}
+    depends_on:
+      phonehome:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "14000-14050:14000-14050/udp"
+    expose:
+      - "8790"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PHONEHOME_HOST: ${PHONEHOME_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    depends_on:
+      phonehome:
+        condition: service_healthy
+
+  coturn:
+    image: coturn/coturn:4.6.2
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --fingerprint
+      - --lt-cred-mech
+      - --no-multicast-peers
+      - --no-cli
+      - --user=${TURN_USERNAME}:${TURN_CREDENTIAL}
+      - --realm=${PHONEHOME_HOST}
+      - --external-ip=${TURN_EXTERNAL_IP}

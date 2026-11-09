@@ -1,0 +1,48 @@
+{
+	# LAN split-DNS (AdGuard) may point mothership.example → 192.168.2.31.
+	# HTTPS certs: Let's Encrypt via TLS-ALPN on :443 (WAN TCP 443 → PVE).
+	auto_https disable_redirects
+}
+
+# --- DuckDNS (public hostname) ---
+
+http://mothership.example {
+	encode gzip
+}
+
+mothership.example:3080 {
+	encode gzip
+}
+
+# App Store Connect rejects non-443 ports for listing URLs — proxy PhoneHome
+# legal pages (+ /phonehome marketing) so ASC can use standard HTTPS.
+mothership.example {
+	encode gzip
+	@phonehome_asc path /privacy.html /support.html /terms.html /refund.html /phonehome /phonehome/*
+	handle @phonehome_asc {
+		uri strip_prefix /phonehome
+		reverse_proxy 192.168.2.106:8787
+	}
+	handle {
+	}
+}
+
+mothership.example:8443 {
+	encode gzip
+	# Control plane (host license / Stripe) — free lab deploy on CT 122 :8791
+	@control path /v1/*
+	handle @control {
+		reverse_proxy 192.168.2.106:8791
+	}
+	handle {
+		reverse_proxy 192.168.2.106:8787
+	}
+}
+
+	encode gzip
+}
+
+mothership.example:8123 {
+	encode gzip
+	reverse_proxy 192.168.2.89:8123
+}

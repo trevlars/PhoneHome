@@ -1,0 +1,3 @@
+# OBSOLETE — eero Secure DDNS (mothership.example) is retired.
+# Use deploy/Caddyfile.duckdns (mothership.example) on the PVE host.
+# Kept as a pointer so old docs/scripts do not resurrect the dead hostname.

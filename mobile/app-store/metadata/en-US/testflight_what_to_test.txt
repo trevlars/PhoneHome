@@ -1,0 +1,38 @@
+Welcome to the PhoneHome beta — the home phone, reborn for families.
+
+What's new in 1.0.1 — calls
+• Fixed a crash that could end a call with a "Call Failed" screen when either side hung up
+• Hold and hang-up from the house phone now reach a locked iPhone right away
+
+Also recent — smoother launch
+• Opening PhoneHome now shows the ringing rotary phone, then the speed dial animates in — no more Sign in flash or flicker
+• Prices and promo codes live on our website only; the app itself stays free
+• Privacy, Terms, and Support links in Parent settings go to the PhoneHome website
+• Welcome: switch to a different Mothership in one tap
+
+GETTING STARTED
+1. Install from TestFlight, then open PhoneHome.
+2. Splash → How it works → Connect — paste your invite (the whole text message is fine) or your Mothership's https:// address.
+3. Sign in, then allow microphone on the first call.
+
+PLEASE TEST
+• Force-quit and reopen: ringing phone → speed dial, with no Sign in screen in between
+• Splash → How it works → Connect, including the Join and Host choices
+• Privacy, compare, and support links open in the in-app browser and close back to PhoneHome
+• After Connect, land on Welcome without replaying How it works
+• Kill the app → have someone call you → system incoming call UI
+• Answer from the lock screen → two-way audio without unlocking
+• Move briefly between Wi-Fi and cellular during a call → call recovers or ends cleanly
+• Hang up from either side, including a few seconds after answering → the call ends cleanly, with no "Call Failed" screen
+• House phone puts you on hold while your iPhone is locked → hold starts right away, and resuming brings audio back
+• Speed dial, invites, Parent controls
+• Parent → This phone → Change Mothership address
+
+FEEDBACK
+File issues on GitHub or reply to the tester thread with device model, iOS version, and what you were doing.
+
+KNOWN LIMITATIONS
+• Fresh install: open PhoneHome once before expecting lock-screen Answer (VoIP token registration).
+• Use your own Mothership or an invite-only managed-pilot Mothership.
+
+Thank you for helping shape PhoneHome!

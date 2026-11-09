@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PhoneHome vs Tin Can, Pinwheel, Ooma, Gabb & TickTalk — Cost & Privacy Comparison</title>
+    <meta name="description" content="PhoneHome is $25/year self-hosted family calling vs Tin Can (~$135 + $9.99/mo Party Line) and kid watches. Use any analog RJ11 phone — no hardware lock-in." />
+    <meta name="keywords" content="PhoneHome vs Tin Can, Tin Can alternative, Pinwheel alternative, Ooma for kids, Gabb alternative, TickTalk alternative, kid phone without subscription, analog phone kids, self-hosted family phone" />
+    <meta name="author" content="the operator" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#07110d" />
+    <link rel="canonical" href="https://phonehome.pages.dev/compare.html" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PhoneHome" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://phonehome.pages.dev/compare.html" />
+    <meta property="og:title" content="PhoneHome vs Tin Can, Pinwheel, Ooma, Gabb & TickTalk — Cost & Privacy Comparison" />
+    <meta property="og:description" content="PhoneHome is $25/year self-hosted family calling vs Tin Can (~$135 + $9.99/mo Party Line) and kid watches. Use any analog RJ11 phone — no hardware lock-in." />
+    <meta property="og:image" content="https://phonehome.pages.dev/icon-512.png" />
+    <meta property="og:image:alt" content="PhoneHome Mothership mark" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="PhoneHome vs Tin Can, Pinwheel, Ooma, Gabb & TickTalk — Cost & Privacy Comparison" />
+    <meta name="twitter:description" content="PhoneHome is $25/year self-hosted family calling vs Tin Can (~$135 + $9.99/mo Party Line) and kid watches. Use any analog RJ11 phone — no hardware lock-in." />
+    <meta name="twitter:image" content="https://phonehome.pages.dev/icon-512.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,560;0,9..144,680;1,9..144,560&family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/storefront.css" />
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "PhoneHome Mothership",
+  "applicationCategory": "CommunicationApplication",
+  "operatingSystem": "Linux, Docker, Home Assistant OS, iOS (companion)",
+  "url": "https://phonehome.pages.dev/trial.html",
+  "downloadUrl": "https://github.com/trevlars/PhoneHome/releases/latest",
+  "offers": {
+    "@type": "Offer",
+    "price": "25.00",
+    "priceCurrency": "USD",
+    "priceValidUntil": "2027-12-31",
+    "category": "Annual host license",
+    "description": "$25/year after 30-day free trial"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "the operator"
+  }
+}
+    </script>
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "How much does PhoneHome cost compared to Tin Can?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Only the Mothership host pays: $25 per year after a 30-day free trial, covering up to 50 phones (apps and house phones) across as many families as you like. Families who join that Mothership pay nothing. Softphones are free; an analog kid path is typically about $40 for a Grandstream HT801 plus a thrift or vintage RJ11 phone, so year one often lands around $75–$105. Tin Can’s handset is about $135, and Party Line to call regular phone numbers is $9.99 per month (about $100–$120 per year). Two Tin Cans means two devices; PhoneHome stays one license for the family mesh."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use any analog phone with PhoneHome?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. PhoneHome is not a proprietary handset. Plug a Grandstream HT801 or similar ATA into your LAN and use nearly any RJ11 analog phone — vintage Western Electric, Princess phones, thrift novelty sets, or cordless DECT bases. Softphones work without an ATA. You are not locked into a brand-only device like Tin Can or most kid smartwatches."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is PhoneHome better than Gabb, TickTalk, or Gizmo for home calling?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Those products are LTE wearables or locked phones with GPS and monthly carrier or brand plans (often $10–$25+ per month per device). PhoneHome is for the home phone reborn: private family mesh calling on a server you host, typically $25 per year for the whole household. Choose watches when you need on-the-go tracking; choose PhoneHome when you want kitchen-wall and grandma calling without hardware lock-in."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is PhoneHome different from Pinwheel or Ooma?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Pinwheel is a managed kids' Android smartphone ($17.99–$29.99 per month per phone, plus the phone) that keeps call, text, and GPS location history for 12 months. Ooma is an internet home phone line (about $130 for the Telo, then about $6–$9 per month in taxes and fees) with regular numbers and 911 but no kid-approved contact list. PhoneHome is private, screen-free family calling on a Mothership you or someone you trust runs, for one $25/year host license covering up to 50 phones."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does PhoneHome include 911 or PSTN calling?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Stage 1 PhoneHome is a private family mesh, not a PSTN or bundled 911 service. Keep a real emergency path (mobile or landline). Analog ATA e911 needs a BYO trunk if you add one later."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is PhoneHome safer from data breaches?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It’s a much smaller target. Kid-phone and calling companies keep every customer’s data in one cloud, so one breach can expose millions of families. PhoneHome has no central database of families — each Mothership holds only its own circle (up to 50 phones), and calls are encrypted. No server is breach-proof, so keep your Mothership updated; but a problem there affects one circle, not everyone."
+      }
+    }
+  ]
+}
+    </script>
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://phonehome.pages.dev/#org",
+  "name": "PhoneHome",
+  "legalName": "the operator",
+  "url": "https://phonehome.pages.dev/",
+  "logo": "https://phonehome.pages.dev/icon-512.png",
+  "email": "support@example.com",
+  "sameAs": [
+    "https://github.com/trevlars/PhoneHome"
+  ],
+  "contactPoint": [
+    {
+      "@type": "ContactPoint",
+      "contactType": "customer support",
+      "email": "support@example.com",
+      "url": "https://phonehome.pages.dev/support.html",
+      "availableLanguage": "English"
+    }
+  ],
+  "description": "Self-hosted family calling Mothership: private mesh, free softphones, any RJ11 analog via ATA, $25/year host license covering up to 50 phones."
+}
+    </script>
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "PhoneHome",
+      "item": "https://phonehome.pages.dev/trial.html"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Compare",
+      "item": "https://phonehome.pages.dev/compare.html"
+    }
+  ]
+}
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand-lockup" href="/">
+        <span class="brand-mark" aria-hidden="true"><span class="logo-ring"></span><span class="logo-ring delay"></span><span class="nav-phone"></span></span>
+        <span class="brand-text">
+          <span class="brand-wordmark">Phone<em>Home</em></span>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Storefront">
+        <a href="/">Home</a>
+        <a href="/trial.html">Trial</a>
+        <a href="/compare.html" aria-current="page">Compare</a>
+        <a href="/buy.html">License</a>
+        <a href="/downloads.html">Downloads</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/support.html">Support</a>
+      </nav>
+    </header>
+
+    <main class="site-main">
+      <p class="eyebrow">Cost · lock-in · privacy</p>
+      <h1 class="page-title">How PhoneHome compares</h1>
+      <p class="lede">
+        Kid “phones” and watches sell independence — then lock you into their device, their cloud,
+        and a monthly plan. PhoneHome is the opposite: one small yearly license, a Mothership run by
+        you or someone you trust, and any phone that still rings.
+      </p>
+
+      <div class="answer-block">
+        <strong>The short version:</strong> only the person who hosts the Mothership pays —
+        <strong>$25/year</strong>, covering up to <strong>50 phones</strong> across as many families as you like.
+        Everyone who joins is <strong>free</strong>. It works with <strong>any phone you already
+        own</strong> and keeps calls on <strong>a server you or someone you trust runs</strong>. Tin
+        Can and kid watches charge every family per device, need their own hardware, and run calls
+        through their cloud. No ads, no tracking, no location —
+        <a href="#privacy-compared">see how our privacy stacks up</a>.
+      </div>
+
+      <h2 class="section-title">One host pays. Everyone else is free.</h2>
+      <div class="who-pays">
+        <div class="who-pays-steps">
+          <div class="who-pays-step">
+            <b>$25/yr</b>
+            <span>paid once, by whoever hosts the Mothership</span>
+          </div>
+          <div class="who-pays-arrow" aria-hidden="true">→</div>
+          <div class="who-pays-step">
+            <b>50 phones</b>
+            <span>apps and house phones, shared by any number of families on that one license</span>
+          </div>
+          <div class="who-pays-arrow" aria-hidden="true">→</div>
+          <div class="who-pays-step">
+            <b>$0</b>
+            <span>for every family that joins — the app is free</span>
+          </div>
+        </div>
+        <p>
+          A full Mothership works out to about <strong>50¢ per phone per year</strong>. Joining
+          families only spend money if they want a house phone: a ~$40 adapter plus any RJ11 phone.
+        </p>
+      </div>
+
+      <h2 class="section-title">At a glance</h2>
+      <div class="compare-scroll wide">
+        <table class="scorecard">
+          <thead>
+            <tr>
+              <th scope="col"><span class="sr-only">Feature</span></th>
+              <th scope="col" class="us">PhoneHome</th>
+              <th scope="col">Tin Can</th>
+              <th scope="col">Pinwheel<br /><small>kids’ smartphone</small></th>
+              <th scope="col">Ooma<br /><small>internet home phone</small></th>
+              <th scope="col">Kid watches &amp; locked phones<br /><small>Gabb, TickTalk, Gizmo</small></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Use any phone you already own</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Any RJ11 house phone, or the free app</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Tin Can handset only</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Pinwheel phone only</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Any house phone, plugged into an Ooma Telo</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Brand device only</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">One price covers everyone</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Host’s $25/year covers up to 50 phones, any number of families</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Buy a Can for each kid</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Phone + plan for each kid</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>One Telo and monthly fees per home</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Device + plan for each kid</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">Free for families who join</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>$0 — only the host pays</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Every family buys its own Can</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Each kid needs a phone + plan</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Each home buys its own Telo</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Every kid needs a device + plan</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">No monthly bill</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Host pays yearly; joiners pay nothing</span></span></td>
+              <td><span class="cell"><span class="mark part" aria-hidden="true"></span><span><span class="sr-only">Partly. </span>Can-to-Can free; $9.99/mo to call regular numbers</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>$17.99–$29.99/month per phone</span></span></td>
+              <td><span class="cell"><span class="mark part" aria-hidden="true"></span><span><span class="sr-only">Partly. </span>Basic service $0, but ~$6–$9/month taxes and fees</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>$10–$25+/month per device</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">Calls stay on a server you (or someone you trust) run</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Your Mothership</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Tin Can’s cloud</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Pinwheel’s cloud</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Ooma’s network</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Carrier and brand cloud</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">No central database of every family to breach</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Each Mothership holds one family circle — <a href="#smaller-target">why that matters</a></span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Every customer’s call records in Tin Can’s cloud</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Call history, texts, and GPS for every family in one portal</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Every customer’s call logs on Ooma’s network</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Every customer’s calls and location in carrier and brand clouds</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">No ads, tracking, or location collection</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>None of it — <a href="/privacy.html">read the policy</a></span></span></td>
+              <td><span class="cell"><span class="mark part" aria-hidden="true"></span><span><span class="sr-only">Partly. </span>No GPS; ad and analytics tracking</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>GPS history; caregiver data shared with ad platforms</span></span></td>
+              <td><span class="cell"><span class="mark part" aria-hidden="true"></span><span><span class="sr-only">Partly. </span>No GPS; targeted ads and ad cookies</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Location by design, plus analytics</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">Parent-approved contacts</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Mutual allowlist</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Approved contacts</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Safelist contacts</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Regular phone line — anyone can call</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Approved contacts</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">Screen-free option</th>
+              <td class="us"><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Analog house phones</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Screen-free by design</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Smartphone</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Regular house phone</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Screens and apps</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">Works away from home</th>
+              <td class="us"><span class="cell"><span class="mark part" aria-hidden="true"></span><span><span class="sr-only">Partly. </span>App works anywhere online; house phones stay home</span></span></td>
+              <td><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Home Wi‑Fi device</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Cellular + GPS</span></span></td>
+              <td><span class="cell"><span class="mark part" aria-hidden="true"></span><span><span class="sr-only">Partly. </span>Ooma app for adults; house phone stays home</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>LTE + GPS</span></span></td>
+            </tr>
+            <tr>
+              <th scope="row">Calls regular phone numbers</th>
+              <td class="us"><span class="cell"><span class="mark no" aria-hidden="true"></span><span><span class="sr-only">No. </span>Family network only (no 911)</span></span></td>
+              <td><span class="cell"><span class="mark part" aria-hidden="true"></span><span><span class="sr-only">Partly. </span>With Party Line ($9.99/mo)</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Calls and texts approved numbers</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Unlimited U.S. calling, plus 911</span></span></td>
+              <td><span class="cell"><span class="mark yes" aria-hidden="true"></span><span><span class="sr-only">Yes. </span>Included in plan</span></span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="mark-legend" aria-hidden="true">
+        <span><span class="mark yes"></span>Yes</span>
+        <span><span class="mark part"></span>Partly</span>
+        <span><span class="mark no"></span>No</span>
+      </p>
+
+      <h2 class="section-title" id="what-it-costs">What it costs</h2>
+      <p class="section-lede">
+        One kid calling family, typical U.S. list prices as of late 2026. Add a second kid and Tin
+        Can, Pinwheel, or a watch doubles; PhoneHome stays one $25 license — and only the host pays it.
+      </p>
+
+      <div class="savings-panel">
+        <p class="savings-kicker">What a family saves with PhoneHome over 3 years</p>
+        <div class="savings-bubbles">
+          <div class="savings-bubble">
+            <span class="savings-vs">vs Ooma</span>
+            <b>~$335</b>
+          </div>
+          <div class="savings-bubble">
+            <span class="savings-vs">vs Tin Can</span>
+            <b>~$400</b>
+          </div>
+          <div class="savings-bubble">
+            <span class="savings-vs">vs a kid watch</span>
+            <b>~$680</b>
+          </div>
+          <div class="savings-bubble big">
+            <span class="savings-vs">vs Pinwheel</span>
+            <b>~$940</b>
+          </div>
+        </div>
+        <div class="savings-notes">
+          <p>
+            <strong>Two kids?</strong> Tin Can, Pinwheel, and watches charge per kid, so the gap
+            roughly doubles — about <strong>$1,600+ saved vs Pinwheel</strong>, even after its
+            multi-device discount. On PhoneHome, a second kid is $0 on the app or about $50 for
+            another house phone.
+          </p>
+          <p>
+            <strong>Hosting the Mothership?</strong> Your $25/year still leaves you about
+            <strong>$260–$865 ahead</strong> over 3 years — and every family that joins you saves
+            the full amount.
+          </p>
+        </div>
+        <p class="savings-basis">
+          Based on a joining family with one kid and a house phone (~$65 once, then $0), against the
+          middle of each price range below. Your numbers will vary.
+        </p>
+      </div>
+
+      <div class="cost-bars">
+        <p class="cost-bars-key"><span class="save-pill" aria-hidden="true">Save</span> what a joining family with a house phone saves that year</p>
+        <h3>Year one</h3>
+        <div class="cost-bar us">
+          <div class="cost-bar-label"><span>PhoneHome — joining family, app only</span><b>$0</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 0%"></div></div>
+        </div>
+        <div class="cost-bar us">
+          <div class="cost-bar-label"><span>PhoneHome — joining family, with a house phone</span><b>~$50–$80</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 15%"></div></div>
+        </div>
+        <div class="cost-bar us">
+          <div class="cost-bar-label"><span>PhoneHome — host, app only</span><b>~$25</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 5%"></div></div>
+        </div>
+        <div class="cost-bar us">
+          <div class="cost-bar-label"><span>PhoneHome — host, with a house phone</span><b>~$75–$105</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 20%"></div></div>
+        </div>
+        <div class="cost-bar">
+          <div class="cost-bar-label"><span>Ooma Telo + Basic service (taxes and fees)</span><b>~$200–$240</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 47%"></div></div>
+          <span class="save-pill">Save ~$155</span>
+        </div>
+        <div class="cost-bar">
+          <div class="cost-bar-label"><span>Tin Can + Party Line</span><b>~$235–$255</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 51%"></div></div>
+          <span class="save-pill">Save ~$180</span>
+        </div>
+        <div class="cost-bar">
+          <div class="cost-bar-label"><span>Kid watch or locked phone + plan</span><b>~$250–$400+</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 80%"></div></div>
+          <span class="save-pill">Save ~$260</span>
+        </div>
+        <div class="cost-bar">
+          <div class="cost-bar-label"><span>Pinwheel phone + Pinwheel Wireless</span><b>~$385–$485</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 100%"></div></div>
+          <span class="save-pill">Save ~$370</span>
+        </div>
+
+        <h3>Every year after</h3>
+        <div class="cost-bar us">
+          <div class="cost-bar-label"><span>PhoneHome — joining family</span><b>$0</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 0%"></div></div>
+        </div>
+        <div class="cost-bar us">
+          <div class="cost-bar-label"><span>PhoneHome — host</span><b>~$25</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 8%"></div></div>
+        </div>
+        <div class="cost-bar">
+          <div class="cost-bar-label"><span>Ooma Basic taxes and fees</span><b>~$72–$108</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 34%"></div></div>
+          <span class="save-pill">Save ~$90</span>
+        </div>
+        <div class="cost-bar">
+          <div class="cost-bar-label"><span>Tin Can Party Line</span><b>~$100–$120</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 38%"></div></div>
+          <span class="save-pill">Save ~$110</span>
+        </div>
+        <div class="cost-bar">
+          <div class="cost-bar-label"><span>Pinwheel Wireless (yearly plan)</span><b>~$285</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 92%"></div></div>
+          <span class="save-pill">Save ~$285</span>
+        </div>
+        <div class="cost-bar">
+          <div class="cost-bar-label"><span>Kid watch or locked phone plan</span><b>~$120–$300+</b></div>
+          <div class="cost-bar-track"><div class="cost-bar-fill" style="width: 100%"></div></div>
+          <span class="save-pill">Save ~$210</span>
+        </div>
+      </div>
+
+      <h2 class="section-title">Where your family’s calls live</h2>
+      <p class="section-lede">
+        The biggest difference isn’t price — it’s who holds your kids’ contacts and call history.
+      </p>
+      <div class="live-grid">
+        <div class="live-card us">
+          <h3>PhoneHome</h3>
+          <p class="live-where">On your Mothership</p>
+          <p>
+            A server run by you or someone you know and trust. Every call is encrypted, app and house
+            phone alike. PhoneHome the company never keeps call history, contacts, or voicemail —
+            <a href="/privacy.html#never-keep">see exactly what we never keep</a>.
+          </p>
+        </div>
+        <div class="live-card">
+          <h3>Tin Can</h3>
+          <p class="live-where">On Tin Can’s servers</p>
+          <p>The company runs the network, so your family’s calling goes through its cloud.</p>
+        </div>
+        <div class="live-card">
+          <h3>Pinwheel</h3>
+          <p class="live-where">On Pinwheel’s servers</p>
+          <p>Call history, texts, photos, and GPS location sync to the Caregiver Portal, kept for 12 months.</p>
+        </div>
+        <div class="live-card">
+          <h3>Ooma</h3>
+          <p class="live-where">On Ooma’s network</p>
+          <p>A real phone line over the internet. Your call logs and voicemail sit with Ooma.</p>
+        </div>
+        <div class="live-card">
+          <h3>Kid watches &amp; locked phones</h3>
+          <p class="live-where">On the carrier’s and brand’s servers</p>
+          <p>Calls, contacts, and the GPS location these devices are built to share.</p>
+        </div>
+      </div>
+
+      <div class="privacy-callout breach-callout" id="smaller-target">
+        <h3>Smaller target, smaller leak</h3>
+        <p>
+          When one company keeps millions of families’ contacts, call logs, and locations in a single
+          cloud, one breach can expose all of them at once — which is exactly why big central
+          databases are what attackers go after. PhoneHome is decentralized: each Mothership holds
+          only its own circle, at most 50 phones, and there’s no PhoneHome database of families to
+          steal because we never build one.
+        </p>
+        <p class="fine" style="margin-bottom: 0">
+          To be straight with you: no server is breach-proof, and a Mothership still needs care —
+          keep it updated and reachable only over HTTPS. But if one is ever compromised, it’s one
+          family circle, not everyone’s kids at once.
+          <a href="/privacy.html#smaller-targets">How we limit what any server holds</a>.
+        </p>
+      </div>
+
+      <h2 class="section-title" id="privacy-compared">Privacy, compared — in their own words</h2>
+      <p class="section-lede">
+        We read each company’s published privacy policy. Here’s what they say they collect, next to
+        <a href="/privacy.html">ours</a>.
+      </p>
+      <div class="pcard-grid">
+        <div class="pcard us">
+          <h3>PhoneHome</h3>
+          <ul>
+            <li><span class="mark yes" aria-hidden="true"></span><span><b>Call history:</b> on your Mothership only — PhoneHome never gets it</span></li>
+            <li><span class="mark yes" aria-hidden="true"></span><span><b>Location:</b> never collected — the app doesn’t even ask</span></li>
+            <li><span class="mark yes" aria-hidden="true"></span><span><b>Ads &amp; analytics:</b> none — no ads, analytics SDKs, or tracking cookies</span></li>
+            <li><span class="mark yes" aria-hidden="true"></span><span><b>Voicemail:</b> on your Mothership</span></li>
+          </ul>
+        </div>
+        <div class="pcard">
+          <h3>Tin Can</h3>
+          <ul>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Call history:</b> Tin Can keeps numbers, times, and call lengths; usage kept up to 12 months</span></li>
+            <li><span class="mark yes" aria-hidden="true"></span><span><b>Location:</b> not a GPS device</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Ads &amp; analytics:</b> cookies, pixels, and SDKs; targeted ads on other sites</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Voicemail:</b> recorded and stored by Tin Can</span></li>
+          </ul>
+        </div>
+        <div class="pcard">
+          <h3>Pinwheel</h3>
+          <ul>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Call history:</b> collects call history, texts, and images; kept 12 months</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Location:</b> GPS location history, kept 12 months</span></li>
+            <li><span class="mark part" aria-hidden="true"></span><span><b>Ads &amp; analytics:</b> kids’ data not used for ads; caregiver data shared with Meta, Google, and Klaviyo</span></li>
+            <li><span class="mark part" aria-hidden="true"></span><span><b>Voicemail:</b> not spelled out in its policy</span></li>
+          </ul>
+        </div>
+        <div class="pcard">
+          <h3>Ooma</h3>
+          <ul>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Call history:</b> Ooma keeps your call logs and usage</span></li>
+            <li><span class="mark part" aria-hidden="true"></span><span><b>Location:</b> no GPS; approximate location from your IP, plus your 911 address</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Ads &amp; analytics:</b> targeted ads and ad cookies; may count as a “sale” under state law</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Voicemail:</b> held on Ooma’s service</span></li>
+          </ul>
+        </div>
+        <div class="pcard">
+          <h3>Gabb</h3>
+          <ul>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Call history:</b> with Gabb and its service partners</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Location:</b> collects precise device location</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Ads &amp; analytics:</b> advertising cookies and ad networks on its sites</span></li>
+            <li><span class="mark part" aria-hidden="true"></span><span><b>Voicemail:</b> not spelled out in its policy</span></li>
+          </ul>
+        </div>
+        <div class="pcard">
+          <h3>TickTalk</h3>
+          <ul>
+            <li><span class="mark part" aria-hidden="true"></span><span><b>Call history:</b> call content stays on the watch; account and device data with TickTalk</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Location:</b> always on — “you may not disable” it</span></li>
+            <li><span class="mark part" aria-hidden="true"></span><span><b>Ads &amp; analytics:</b> no ads to kids; Google Analytics cookies</span></li>
+            <li><span class="mark part" aria-hidden="true"></span><span><b>Voicemail:</b> voice messages on the watch and parent app</span></li>
+          </ul>
+        </div>
+        <div class="pcard">
+          <h3>Verizon Gizmo</h3>
+          <ul>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Call history:</b> Verizon collects call, messaging, and app usage</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Location:</b> precise location, kept up to 60 days</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Ads &amp; analytics:</b> device IDs shared with Google Analytics</span></li>
+            <li><span class="mark no" aria-hidden="true"></span><span><b>Voicemail:</b> Verizon collects audio messages</span></li>
+          </ul>
+        </div>
+      </div>
+      <p class="mark-legend" aria-hidden="true">
+        <span><span class="mark yes"></span>Privacy-friendly</span>
+        <span><span class="mark part"></span>Mixed</span>
+        <span><span class="mark no"></span>Held or tracked by the company</span>
+      </p>
+      <div class="privacy-callout">
+        <p>
+          <strong>To be fair:</strong> Tin Can says it doesn’t record calls, TickTalk says it never
+          sells children’s data, Gabb says it doesn’t sell kids’ data either, Pinwheel says it never
+          uses children’s data for ads, and Ooma won’t sell your calling records outside the company.
+          These are decent companies. The difference is structural — with PhoneHome there’s no company cloud holding
+          your kids’ calls in the first place.
+        </p>
+        <p>
+          <a class="btn" href="/privacy.html">Read our privacy policy</a>
+          <span class="fine">The “What we never keep or track” list is right at the top — it takes a minute.</span>
+        </p>
+      </div>
+      <details class="sources">
+        <summary>Sources (policies read October 2, 2026)</summary>
+        <ul>
+          <li>
+            <a href="https://tincan.kids/policies/privacy-policy" rel="noopener">Tin Can privacy policy</a>
+            (updated May 21, 2026) and
+            <a href="https://tincan.kids/pages/delete-account" rel="noopener">account deletion page</a>
+          </li>
+          <li>
+            <a href="https://www.pinwheel.com/privacypolicy" rel="noopener">Pinwheel privacy policy</a>
+            (updated August 29, 2025) and
+            <a href="https://www.pinwheel.com/phones" rel="noopener">plans and pricing</a>
+          </li>
+          <li>
+            <a href="https://www.ooma.com/legal/privacy-policy/" rel="noopener">Ooma privacy policy</a>
+            (updated July 23, 2026) and
+            <a href="https://www.ooma.com/home-phone-service/basic/" rel="noopener">Basic plan pricing</a>
+          </li>
+          <li><a href="https://gabb.com/privacy-policy/" rel="noopener">Gabb privacy policy</a></li>
+          <li>
+            <a href="https://www.myticktalk.com/policies/privacy-policy" rel="noopener">TickTalk privacy policy</a>
+            (updated October 5, 2024)
+          </li>
+          <li>
+            <a href="https://www.verizon.com/about/privacy/verizon-family-privacy-notice" rel="noopener">Verizon Family and Gizmo Wearables privacy notice</a>
+            and <a href="https://www.verizon.com/about/privacy/gizmo-privacy-policy" rel="noopener">Gizmo privacy policy</a>
+          </li>
+        </ul>
+        <p class="fine">
+          Policies change. This is our plain-English reading for comparison, not legal advice —
+          check each policy yourself before you decide.
+        </p>
+      </details>
+      <div class="compare-disclaimer" id="about-comparisons">
+        <p>
+          <strong>About these comparisons:</strong> prices and policies come from each company’s public
+          site on the dates listed above, and the privacy notes are our plain-language reading of their
+          published policies — check the originals before you decide. Savings are estimates for the
+          example family we describe. Tin Can, Pinwheel, Ooma, Gabb, TickTalk, and Gizmo are trademarks
+          of their respective owners; PhoneHome isn’t affiliated with or endorsed by any of them.
+          Spot a mistake?
+          <a href="mailto:support@example.com?subject=PhoneHome%20comparison%20correction">Tell us</a>
+          and we’ll fix it. <a href="/terms.html#trademarks">Trademarks &amp; comparisons</a>
+        </p>
+      </div>
+
+      <h2 class="section-title" id="what-phonehome-isnt">What PhoneHome isn’t — and who to pick instead</h2>
+      <p class="section-lede">
+        At the end of the day, we want your kid to have the right tool, even if it isn’t ours. If
+        one of these is a dealbreaker, the alternative we name is a good choice. We mean it.
+      </p>
+      <div class="isnt-grid">
+        <div class="isnt-card">
+          <p class="isnt-label">It isn’t a phone your kid carries</p>
+          <p>No cellular service and no GPS. PhoneHome is the house phone, plus the app for family.</p>
+          <p class="isnt-pick"><b>Pick instead:</b> Pinwheel for a managed kids’ smartphone, or a watch like Gabb, TickTalk, or Verizon Gizmo.</p>
+        </div>
+        <div class="isnt-card">
+          <p class="isnt-label">It doesn’t call regular numbers or 911</p>
+          <p>It’s a private network for your family and friends. Kids can only reach people you approve.</p>
+          <p class="isnt-pick"><b>Pick instead:</b> Ooma for a real home line with 911 (about $130 once, then ~$6–$9/mo in taxes and fees), or Tin Can with Party Line ($9.99/mo). Either way, keep a real 911 path in the house.</p>
+        </div>
+        <div class="isnt-card">
+          <p class="isnt-label">It isn’t a tracker or monitoring tool</p>
+          <p>No location, no call recordings, no reading over shoulders. That’s on purpose, and it won’t change.</p>
+          <p class="isnt-pick"><b>Pick instead:</b> a GPS watch if you need location — and read <a href="#privacy-compared">how long they keep it</a>.</p>
+        </div>
+        <div class="isnt-card">
+          <p class="isnt-label">It isn’t a big company</p>
+          <p>No store, no phone hotline, no 24/7 desk. Support is email, answered by the people who build it.</p>
+          <p class="isnt-pick"><b>Pick instead:</b> a carrier product like Verizon Gizmo if you want a store to walk into.</p>
+        </div>
+      </div>
+
+      <div class="support-promise">
+        <h3>Not quite what you need? Tell us.</h3>
+        <p>
+          We’re a small team building this for our own families, and we listen. Real people answer
+          every email, setup questions included. If a feature would make PhoneHome right for your
+          kids, ask. Suggestions from families shape what we build next, and we’re glad to add new
+          features. We just won’t add anything that trades away your family’s privacy.
+        </p>
+        <div class="support-promise-actions">
+          <a class="btn" href="mailto:support@example.com?subject=PhoneHome%20suggestion">Suggest a feature</a>
+          <a class="btn ghost" href="/support.html">Get help</a>
+        </div>
+      </div>
+
+      <h2 class="section-title">The full numbers</h2>
+      <p class="section-lede">
+        Public list prices as of late 2026 — verify before you buy.
+      </p>
+      <div class="compare-scroll wide">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col" class="highlight">PhoneHome</th>
+              <th scope="col">Tin Can</th>
+              <th scope="col">Pinwheel</th>
+              <th scope="col">Ooma</th>
+              <th scope="col">Gabb / TickTalk / Gizmo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Kid device</td>
+              <td class="highlight">
+                Free app, or ~$40 HT801 adapter + any thrift / vintage RJ11 phone (~$10–$40)
+              </td>
+              <td>~$135 Tin Can Wi‑Fi handset</td>
+              <td>~$99–$599 Pinwheel phone (Android)</td>
+              <td>~$130 Ooma Telo + any house phone</td>
+              <td>~$130–$180 brand watch or locked phone</td>
+            </tr>
+            <tr>
+              <td>Service</td>
+              <td class="highlight">
+                <strong>$25/year</strong>, paid by the host only — up to 50 phones, any number of
+                families. Joining families: <strong>$0</strong>
+              </td>
+              <td>
+                Can-to-Can free; Party Line <strong>$9.99/mo</strong> (~$100–$120/yr) for regular
+                numbers
+              </td>
+              <td>
+                <strong>$17.99/mo</strong> portal only (bring a carrier), or <strong>$29.99/mo</strong>
+                with Pinwheel Wireless; yearly plans ~$175 / ~$285
+              </td>
+              <td>
+                Basic <strong>$0</strong> + taxes and fees (~$6–$9/mo); Premier
+                <strong>$9.99/mo</strong> more
+              </td>
+              <td>Typically <strong>$10–$25+/mo</strong> per device</td>
+            </tr>
+            <tr>
+              <td>Year 1 (1 kid)</td>
+              <td class="highlight">
+                Host: ~$25 app-only, or ~$75–$105 with a house phone. Joining family: $0, or
+                ~$50–$80 with a house phone
+              </td>
+              <td>~$235–$255</td>
+              <td>~$385–$485 with Pinwheel Wireless</td>
+              <td>~$200–$240</td>
+              <td>Often $250–$400+</td>
+            </tr>
+            <tr>
+              <td>Year 2+</td>
+              <td class="highlight">Host: ~$25. Joining family: $0</td>
+              <td>~$100–$120 if you keep Party Line</td>
+              <td>~$285 (yearly Pinwheel Wireless)</td>
+              <td>~$72–$108 (Basic)</td>
+              <td>~$120–$300+</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="section-title">Any phone you already love</h2>
+      <p class="section-lede">
+        PhoneHome is not a gadget company. Plug a Grandstream HT801 (or similar adapter) into your
+        network and use:
+      </p>
+      <ul class="pitch-list">
+        <li><strong>Cool old stuff</strong> — Bakelite, rotary (with pulse-to-tone adapters), Princess phones, hotel-lobby leftovers.</li>
+        <li><strong>Kid-friendly plastic</strong> — novelty sets from the thrift aisle, not a $135 exclusive.</li>
+        <li><strong>Cordless DECT</strong> — house phones grandparents already know how to answer.</li>
+        <li><strong>The free app</strong> — iPhone or browser for parents and kids who don’t need a desk set.</li>
+      </ul>
+      <p class="fine">
+        When a handset dies, buy another — the Mothership stays yours.
+      </p>
+
+      <h2 class="section-title">Frequently asked questions</h2>
+      <div class="faq">
+        <details open>
+          <summary>How much does PhoneHome cost vs Tin Can?</summary>
+          <p>
+            Only the Mothership host pays: <strong>$25/year</strong> after a 30-day trial, covering
+            up to 50 phones across any number of families. Families who join pay nothing. The app is free; a
+            house phone usually needs a ~$40 HT801 plus a thrift or vintage RJ11 set. Tin Can is
+            about <strong>$135</strong> per Can plus Party Line at <strong>$9.99/mo</strong> to reach
+            regular numbers, and every family buys its own.
+          </p>
+        </details>
+        <details>
+          <summary>Do grandparents, cousins, or friends have to pay?</summary>
+          <p>
+            No. If they join your Mothership, they’re covered by the host’s license — the app is
+            free and there’s nothing to subscribe to. Their only possible cost is a house phone
+            adapter, if they want one.
+          </p>
+        </details>
+        <details>
+          <summary>Can I use cool old / thrift analog phones?</summary>
+          <p>
+            Yes. Any RJ11 handset works through an adapter — Princess phones, Bakelite, novelty kids
+            sets, cordless bases. The app needs no adapter.
+          </p>
+        </details>
+        <details>
+          <summary>How is this different from Gabb, TickTalk, or Gizmo?</summary>
+          <p>
+            Those are LTE watches and phones with monthly plans and GPS tracking — great on the go.
+            PhoneHome is home calling for the family, on your own server, at a fraction of the
+            ongoing cost.
+          </p>
+        </details>
+        <details>
+          <summary>How is this different from Pinwheel or Ooma?</summary>
+          <p>
+            <strong>Pinwheel</strong> is a managed kids’ smartphone: great controls, but it’s a screen
+            in their pocket, with GPS history and a monthly plan per kid. <strong>Ooma</strong> is a
+            real internet home phone with regular numbers and 911, but no kid-approved contact list,
+            and every home pays its own fees. PhoneHome is screen-free house phones for the whole
+            family circle, on a server you trust, for one $25/year license.
+          </p>
+        </details>
+        <details>
+          <summary>Can cousins and friends on other Motherships call us?</summary>
+          <p>
+            Yes. Friends can host their own Mothership, and calls between hubs work once <strong>the operators on both sides complete a peer
+            invite</strong>.
+          </p>
+        </details>
+        <details>
+          <summary>Is PhoneHome safer from data breaches?</summary>
+          <p>
+            It’s a much smaller target. Kid-phone and calling companies keep every customer’s data in one cloud, so one breach can expose millions of families. PhoneHome has no central database of families — each Mothership holds only its own circle (up to 50 phones), and calls are encrypted. No server is breach-proof, so keep your Mothership updated; but a problem there affects one circle, not everyone.
+            <a href="#smaller-target">Why decentralized helps</a>.
+          </p>
+        </details>
+        <details>
+          <summary>Does PhoneHome replace 911?</summary>
+          <p>
+            No. PhoneHome is a private family network. Keep a real emergency path — a mobile phone or
+            landline — in the house.
+          </p>
+        </details>
+      </div>
+
+      <div class="cta-row">
+        <a class="btn" href="/trial.html">Start 30-day free trial</a>
+        <a class="btn ghost" href="/buy.html">Buy host license $25/year</a>
+        <a class="btn ghost" href="/privacy.html">Read our privacy policy</a>
+      </div>
+      <p class="fine">
+        Third-party pricing changes; we cite typical public rates for orientation, not as a quote.
+        PhoneHome does not include regular phone numbers or 911 — use a real emergency path
+        alongside any home phone setup.
+      </p>
+
+      <nav class="related" aria-labelledby="related-title">
+        <h2 class="related-title" id="related-title">Keep exploring</h2>
+        <div class="related-grid">
+          <a class="related-link" href="/trial.html"><b>Start the free trial</b><span>30 days, full features, no card needed to try.</span></a>
+          <a class="related-link" href="/privacy.html"><b>Privacy policy</b><span>Who holds what: PhoneHome, your Mothership, your phone.</span></a>
+          <a class="related-link" href="/buy.html"><b>Host license — $25/year</b><span>One license covers up to 50 phones; joiners pay $0.</span></a>
+          <a class="related-link" href="/downloads.html"><b>Downloads</b><span>Home Assistant, Docker, PC, and the free iPhone app.</span></a>
+          <a class="related-link" href="/terms.html"><b>Terms of Service</b><span>The plain rules for the license and the app.</span></a>
+          <a class="related-link" href="/support.html"><b>Support</b><span>Setup help, common fixes, and how to reach us.</span></a>
+        </div>
+      </nav>
+    </main>
+
+    <footer class="site-footer">
+      <a class="brand-lockup foot-brand" href="/">
+        <span class="brand-mark" aria-hidden="true"><span class="logo-ring"></span><span class="logo-ring delay"></span><span class="nav-phone"></span></span>
+        <span class="brand-wordmark">Phone<em>Home</em></span>
+      </a>
+      <div class="footer-cols">
+        <nav aria-label="Product">
+          <p class="footer-h">Product</p>
+          <a href="/">Home</a>
+          <a href="/trial.html">Free trial</a>
+          <a href="/compare.html">Compare</a>
+          <a href="/compare.html#what-it-costs">Savings</a>
+          <a href="/buy.html">Host license</a>
+          <a href="/downloads.html">Downloads</a>
+        </nav>
+        <nav aria-label="Trust and legal">
+          <p class="footer-h">Trust</p>
+          <a href="/privacy.html">Privacy policy</a>
+          <a href="/privacy.html#never-keep">What we never keep</a>
+          <a href="/terms.html">Terms</a>
+          <a href="/refund.html">Refunds</a>
+          <a href="https://github.com/trevlars/PhoneHome/blob/master/SECURITY.md" rel="noopener">Security</a>
+        </nav>
+        <nav aria-label="Help">
+          <p class="footer-h">Help</p>
+          <a href="/support.html">Support</a>
+          <a href="mailto:support@example.com">Email us</a>
+          <a href="mailto:support@example.com?subject=PhoneHome%20suggestion">Suggest a feature</a>
+          <a href="https://github.com/trevlars/PhoneHome/issues" rel="noopener">Report a bug</a>
+        </nav>
+      </div>
+      <p class="footer-transparency">
+        PhoneHome is sold by the operator. The host pays $25/year (USD) after a
+        30-day free trial; families who join pay nothing. No ads, no tracking, no call recording —
+        your family’s calls live on a Mothership you or someone you trust runs.
+      </p>
+      <p class="footer-tm">
+        Tin Can, Pinwheel, Ooma, Gabb, TickTalk, Apple, iPhone, Home Assistant, Grandstream, and other
+        names on this site are trademarks of their respective owners, used only to identify and
+        compare products. PhoneHome isn’t affiliated with, endorsed by, or sponsored by any of them.
+        <a href="/terms.html#trademarks">Trademarks &amp; comparisons</a>
+      </p>
+      <p>© 2026 PhoneHome — family calling on your own Mothership</p>
+    </footer>
+    <script src="/community-footer.js" defer></script>
+  </body>
+</html>

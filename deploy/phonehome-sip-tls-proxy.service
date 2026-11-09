@@ -1,0 +1,21 @@
+# TCP proxy: public/LAN clients hit PVE :5061 → FreePBX CT SIP TLS.
+# Lets eero hairpin behave like :443/:8443 (forward TCP 5061 → 192.168.2.31).
+#
+# Install on Proxmox host:
+#   cp deploy/phonehome-sip-tls-proxy.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now phonehome-sip-tls-proxy
+#
+# Then point eero TCP 5061 → 192.168.2.31 (this host), not FreePBX directly.
+[Unit]
+Description=PhoneHome SIP TLS proxy (PVE → FreePBX :5061)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/socat TCP-LISTEN:5061,bind=0.0.0.0,fork,reuseaddr,keepalive TCP:192.168.2.105:5061,keepalive
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,28 @@
+[Unit]
+Description=PhoneHome Stage 1 softphone hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kids-landline
+Environment=PORT=8787
+Environment=DATA_DIR=/var/lib/kids-landline
+Environment=NODE_ENV=production
+# Host-specific URLs — run deploy/phonehome-init.sh or copy deploy/phonehome.env.example
+EnvironmentFile=-/var/lib/kids-landline/phonehome.env
+EnvironmentFile=-/var/lib/kids-landline/bridge.env
+# Keep FreePBX sip.secret in lockstep with PhoneHome (remote Download config accuracy).
+EnvironmentFile=-/var/lib/kids-landline/freepbx-sync.env
+# One-tap HT801 push needs LAN. Shared/cloud hosts: ATA_LAN_PUSH=0 (UI leads with Download config).
+# Environment=ATA_LAN_PUSH=0
+# TURN (coturn on PVE — see docs/hosting.md). Use public WAN IP after eero port-forward.
+# Environment=TURN_URLS=turn:YOUR.PUBLIC.IP:3478
+# Environment=TURN_USERNAME=kidslandline
+# Environment=TURN_CREDENTIAL=secret-from-pve-root-creds-file
+ExecStart=/usr/bin/npm run start -w server
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

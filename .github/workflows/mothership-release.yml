@@ -1,0 +1,85 @@
+name: Mothership release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach artifacts to (e.g. v0.1.14)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # Create/update the release notes first so matrix jobs can attach files
+  # without using Actions artifact storage (quota-sensitive for ~80MB bundles).
+  ensure-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          generate_release_notes: ${{ github.event_name != 'workflow_dispatch' }}
+          body: |
+            ## PhoneHome Mothership downloads
+
+            Pick the archive for your OS, unzip, then run the installer inside:
+
+            | OS | File |
+            | --- | --- |
+            | **macOS (Apple Silicon)** | **`PhoneHome-Mothership-*-macos.dmg`** menu bar app (see below) · or `*-darwin-arm64.zip` + `Install PhoneHome Mothership.command` |
+            | **macOS (Intel)** | Build from source (`docs/download-mothership.md`) |
+            | **Linux x64** | `*-linux-x64.tar.gz` — `./install-mothership.sh` |
+            | **Linux ARM64 (Raspberry Pi)** | `*-linux-arm64.tar.gz` — `./install-mothership.sh` |
+            | **Windows** | `*-win-x64.zip` — `install-mothership.ps1` |
+
+            No separate Node.js install required — each bundle includes Node 22.
+
+            **Spinoff:** Pod migrate (`/api/migrate/*`) and Mothership peering (`/api/peers/*`) ship in this bundle — see [migrate-mothership.md](https://github.com/${{ github.repository }}/blob/master/docs/migrate-mothership.md).
+
+            Docs: [Download Mothership](https://github.com/${{ github.repository }}/blob/master/docs/download-mothership.md) · [Self-host guide](https://github.com/${{ github.repository }}/blob/master/docs/self-host.md)
+
+  bundle:
+    name: ${{ matrix.platform }}
+    needs: ensure-release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: darwin-arm64
+            runner: macos-latest
+          # Intel Mac: scarce macos-13 runners; use git clone or Rosetta not supported for native deps.
+          - platform: win-x64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build Mothership bundle
+        shell: bash
+        env:
+          MOTHERSHIP_PLATFORM: ${{ matrix.platform }}
+        run: |
+          chmod +x deploy/build-mothership-bundle.sh
+          ./deploy/build-mothership-bundle.sh
+
+      - name: Attach bundle to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: dist/phonehome-mothership-*

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ph_bg">#0C1814</color>
+    <color name="ph_gold">#F0B429</color>
+    <color name="ph_text">#F4F7F4</color>
+    <color name="ph_decline">#C4493A</color>
+</resources>

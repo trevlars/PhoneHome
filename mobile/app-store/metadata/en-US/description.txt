@@ -1,0 +1,39 @@
+PhoneHome is the home phone, reborn — a private family phone where kids call the people you choose, and nobody else can ring.
+
+TAP A FACE TO CALL
+
+Kids get a speed dial of familiar faces: Mom, Dad, Grandma, a favorite cousin. No numbers to remember, no apps to browse, nothing to scroll. Just tap and talk.
+
+ONLY PEOPLE YOU APPROVE
+
+There's no public phone number and no searchable directory. Parents choose who's in each child's Circle, and both families approve before a call can ring. Strangers can't find your kids, and your kids can't stumble into strangers.
+
+PARENTS STAY IN CONTROL
+
+• Quiet Time for bedtime, school, or your own schedule
+• Daily talk limits
+• Timeout pauses every call in the house
+• A parent PIN so settings stay put
+• Separate kid and parent experiences on the same app
+
+SEE WHO CALLED — NEVER WHAT WAS SAID
+
+Activity shows parents who called and for how long. Calls are encrypted and never recorded, so there's nothing to listen back to — for you, or anyone else.
+
+USE THE PHONES YOU ALREADY LOVE
+
+On iPhone and iPad, calls ring on the Lock Screen like a real phone, and Face ID keeps sign-in safe. Prefer something kids can hold? Plug a classic home phone into a small adapter box and it joins the same private family line.
+
+BRING THE WHOLE FAMILY CLOSER
+
+Invite grandparents, co-parents, aunts, uncles, and family friends with a private link. Grandparents get a simple setup link — no passwords to type. TreeHouse and FamilyRoom give everyone a place to gather.
+
+YOUR FAMILY'S OWN PRIVATE SERVER
+
+Every family's calls run through its own Mothership — a private server your family trusts, not an ad company. No ads, no tracking, no feeds.
+
+GETTING STARTED
+
+PhoneHome needs an invite link or Mothership address from your family. Got an invite? Paste it and you're in — no server needed. Want to host your own? Download the Mothership for macOS, Linux, or Windows:
+
+Releases: https://github.com/trevlars/PhoneHome/releases

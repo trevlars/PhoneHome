@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>phonehome-mothership</Name>
+  <Repository>ghcr.io/trevlars/phonehome-mothership:latest</Repository>
+  <Registry>https://github.com/trevlars/PhoneHome/pkgs/container/phonehome-mothership</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/trevlars/PhoneHome/issues</Support>
+  <Project>https://github.com/trevlars/PhoneHome</Project>
+  <Overview>PhoneHome Mothership — private family voice server (hub + SIP bridge). Prefer DuckDNS subdomain + token (DUCKDNS_*); or set PUBLIC_BASE_URL to your HTTPS reverse proxy. FreePBX is optional for analog HT801 handsets.</Overview>
+  <Category>HomeAutomation: Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:8787]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/trevlars/PhoneHome/master/deploy/unraid/phonehome-mothership.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/trevlars/PhoneHome/master/web/public/apple-touch-icon.png</Icon>
+  <ExtraParams>--add-host=host.docker.internal:host-gateway</ExtraParams>
+  <PostArgs/>
+  <Description>PhoneHome Mothership for Unraid.
+
+First boot writes config under appdata. After install:
+
+1. Prefer DuckDNS: set DUCKDNS_DOMAIN + DUCKDNS_TOKEN (Mothership keeps DNS updated). Or set PUBLIC_BASE_URL to your HTTPS URL.
+2. Put HTTPS in front of port 8787 (Caddy/NPM on your DuckDNS hostname, or Cloudflare Tunnel).
+3. For analog HT801: run FreePBX elsewhere, set ARI_URL and SIP_SERVER to your FreePBX LAN IP.
+4. Read HOST_CODE.txt in appdata for the Mothership setup code.
+
+Docs: https://github.com/trevlars/PhoneHome/blob/master/docs/mothership-unraid-proxmox.md</Description>
+  <Config Name="Web UI Port" Target="8787" Default="8787" Mode="tcp" Description="PhoneHome hub HTTP (put HTTPS proxy in front for phones)." Type="Port" Display="always" Required="true" Mask="false">8787</Config>
+  <Config Name="Bridge Port" Target="8790" Default="8790" Mode="tcp" Description="SIP bridge health / ARI sidecar." Type="Port" Display="always" Required="true" Mask="false">8790</Config>
+  <Config Name="Bridge RTP" Target="14000-14050" Default="14000-14050" Mode="udp" Description="WebRTC / bridge media ports." Type="Port" Display="always" Required="true" Mask="false">14000-14050</Config>
+  <Config Name="Appdata" Target="/app/data" Default="/mnt/user/appdata/phonehome-mothership" Mode="rw" Description="SQLite, HOST_CODE.txt, phonehome.env, bridge.env" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/phonehome-mothership</Config>
+  <Config Name="DUCKDNS_DOMAIN" Target="DUCKDNS_DOMAIN" Default="" Mode="" Description="DuckDNS subdomain only (e.g. myfamily). Recommended." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="DUCKDNS_TOKEN" Target="DUCKDNS_TOKEN" Default="" Mode="" Description="Token from https://www.duckdns.org (never share)." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="DUCKDNS_HTTPS_PORT" Target="DUCKDNS_HTTPS_PORT" Default="8443" Mode="" Description="Port parents use in https://name.duckdns.org:PORT" Type="Variable" Display="always" Required="false" Mask="false">8443</Config>
+  <Config Name="PUBLIC_BASE_URL" Target="PUBLIC_BASE_URL" Default="" Mode="" Description="Optional override: https://phonehome.yourname.net:8443 (auto from DuckDNS if empty)." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="SIP_PUBLIC_HOST" Target="SIP_PUBLIC_HOST" Default="" Mode="" Description="HT801 TLS hostname (auto from DuckDNS if empty)." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="SIP_SERVER" Target="SIP_SERVER" Default="" Mode="" Description="FreePBX LAN IP (optional — analog only)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="ARI_URL" Target="ARI_URL" Default="" Mode="" Description="FreePBX ARI URL, e.g. http://10.0.0.50:8088" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="ARI_PASS" Target="ARI_PASS" Default="" Mode="" Description="FreePBX ARI password for user phonehome." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="EXT_MEDIA_HOST" Target="EXT_MEDIA_HOST" Default="" Mode="" Description="LAN IP FreePBX uses to reach bridge RTP (often Unraid IP)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="TURN_URLS" Target="TURN_URLS" Default="" Mode="" Description="e.g. turn:203.0.113.10:3478" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="TURN_USERNAME" Target="TURN_USERNAME" Default="" Mode="" Description="coturn username." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="TURN_CREDENTIAL" Target="TURN_CREDENTIAL" Default="" Mode="" Description="coturn password." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="ATA_LAN_PUSH" Target="ATA_LAN_PUSH" Default="0" Mode="" Description="1 = one-tap HT801 on same LAN; 0 for cloud/Unraid (Download config)." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="Unraid nobody user." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Unraid users group." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="Timezone" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone." Type="Variable" Display="advanced" Required="false" Mask="false">America/New_York</Config>
+</Container>

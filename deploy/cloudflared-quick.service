@@ -1,0 +1,14 @@
+[Unit]
+Description=Cloudflare Quick Tunnel for PhoneHome (auto PUBLIC_BASE_URL)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Wrapper captures the trycloudflare URL and syncs PUBLIC_BASE_URL + TURN into CT 122.
+# Install scripts to /usr/local/sbin on the Proxmox host (see docs/hosting.md).
+ExecStart=/usr/local/sbin/phonehome-cloudflared.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

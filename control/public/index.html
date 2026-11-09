@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>PhoneHome Managed Mothership</title>
+  <style>
+    :root {
+      --ink: #1c1915;
+      --muted: #5c564c;
+      --paper: #f7f1e6;
+      --card: #fffdf8;
+      --line: #d8cfc0;
+      --accent: #0f6b5c;
+      --accent-ink: #f4fffb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #ffe7c2 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #c8e8df 0%, transparent 50%),
+        var(--paper);
+    }
+    main {
+      width: min(520px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 3.5rem 0 4rem;
+    }
+    h1 {
+      font-size: clamp(2rem, 5vw, 2.6rem);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.6rem;
+    }
+    .lede {
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.45;
+      margin: 0 0 1.75rem;
+    }
+    form {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 1.25rem;
+      display: grid;
+      gap: 0.9rem;
+    }
+    label {
+      display: grid;
+      gap: 0.35rem;
+      font-size: 0.92rem;
+    }
+    input, select, button {
+      font: inherit;
+      font-size: 1rem;
+    }
+    input, select {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 0.7rem 0.75rem;
+      color: var(--ink);
+    }
+    button {
+      border: 0;
+      background: var(--accent);
+      color: var(--accent-ink);
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.55; cursor: wait; }
+    .fine {
+      margin: 0.9rem 0 0;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+    .error {
+      color: #8a1f1f;
+      font-size: 0.92rem;
+      margin: 0;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PhoneHome</h1>
+    <p class="lede">
+      Pay for one isolated Managed Mothership. The free app connects to your
+      family’s HTTPS URL. Relatives pay you directly if you bill them — we never
+      take a cut.
+    </p>
+    <form id="checkout">
+      <label>
+        Work email
+        <input name="email" type="email" autocomplete="email" required placeholder="you@example.com" />
+      </label>
+      <label>
+        Plan
+        <select name="plan" required>
+          <option value="family">Family — $39/mo</option>
+          <option value="extended">Extended — $69/mo</option>
+        </select>
+      </label>
+      <label>
+        Mothership name
+        <input name="instanceName" type="text" maxlength="80" placeholder="East family" />
+      </label>
+      <label id="invite-wrap" hidden>
+        Pilot invite
+        <input name="invite" type="text" autocomplete="off" spellcheck="false" />
+      </label>
+      <p class="error" id="error" aria-live="polite"></p>
+      <button type="submit">Continue to secure checkout</button>
+    </form>
+    <p class="fine">
+      Stage 1 is private family calling only — no PSTN, no 911. After payment we
+      provision your cloud VPS and email the HTTPS URL. Cancel anytime from the
+      Stripe customer portal.
+    </p>
+  </main>
+  <script>
+    const form = document.getElementById("checkout");
+    const error = document.getElementById("error");
+    const inviteWrap = document.getElementById("invite-wrap");
+    const planSelect = form.elements.plan;
+
+    fetch("/v1/plans")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.invite_required) inviteWrap.hidden = false;
+        for (const plan of data.plans || []) {
+          const opt = [...planSelect.options].find((o) => o.value === plan.id);
+          if (opt && plan.list_price_usd) {
+            const label = plan.id === "family" ? "Family" : "Extended";
+            opt.textContent = `${label} — $${plan.list_price_usd}/mo`;
+            opt.disabled = !plan.checkout_ready;
+          }
+        }
+      })
+      .catch(() => {});
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      const button = form.querySelector("button");
+      button.disabled = true;
+      try {
+        const body = {
+          email: form.elements.email.value.trim(),
+          plan: form.elements.plan.value,
+          instanceName: form.elements.instanceName.value.trim(),
+          invite: form.elements.invite.value.trim(),
+        };
+        const res = await fetch("/v1/checkout/session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.url) throw new Error(data.error || "Checkout failed");
+        location.href = data.url;
+      } catch (err) {
+        error.textContent = err instanceof Error ? err.message : "Checkout failed";
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# Interactive first-time setup for a PhoneHome host (full stack).
+# Writes $DATA_DIR/phonehome.env and $DATA_DIR/bridge.env, optionally installs background service.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DEPLOY="$ROOT/deploy"
+
+default_data_dir() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    echo "/var/lib/kids-landline"
+  elif [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "$HOME/.phonehome"
+  else
+    echo "$HOME/.phonehome"
+  fi
+}
+
+DATA_DIR="${DATA_DIR:-$(default_data_dir)}"
+mkdir -p "$DATA_DIR"
+chmod 700 "$DATA_DIR" 2>/dev/null || true
+
+ENV_FILE="$DATA_DIR/phonehome.env"
+BRIDGE_FILE="$DATA_DIR/bridge.env"
+
+prompt() {
+  local var="$1" default="$2" label="$3"
+  local val
+  if [[ -n "$default" ]]; then
+    read -r -p "$label [$default]: " val
+    val="${val:-$default}"
+  else
+    read -r -p "$label: " val
+  fi
+  printf -v "$var" '%s' "$val"
+}
+
+echo "==> PhoneHome Mothership setup"
+echo "    Repo: $ROOT"
+echo "    Data: $DATA_DIR"
+echo ""
+
+# --- Load existing values as defaults ---
+existing_pub=""
+existing_sip=""
+existing_duck_domain=""
+existing_duck_token=""
+existing_duck_port="8443"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  set -a; source "$ENV_FILE"; set +a
+  existing_pub="${PUBLIC_BASE_URL:-}"
+  existing_sip="${SIP_PUBLIC_HOST:-}"
+  existing_duck_domain="${DUCKDNS_DOMAIN:-}"
+  existing_duck_token="${DUCKDNS_TOKEN:-}"
+  existing_duck_port="${DUCKDNS_HTTPS_PORT:-8443}"
+fi
+
+normalize_duck_domain() {
+  local d
+  d="$(echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's#^https?://##; s#/.*##; s#:.*##; s/\.duckdns\.org$//')"
+  if [[ "$d" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+    echo "$d"
+  else
+    echo ""
+  fi
+}
+
+echo "Public hostname — recommended: DuckDNS (https://www.duckdns.org)."
+echo "Create a subdomain, copy the token. Mothership keeps DNS updated while running."
+echo "Alternatives: Cloudflare Tunnel or your own domain."
+echo ""
+prompt duck_in "${existing_duck_domain:-}" "DuckDNS subdomain (or Enter to skip)"
+DUCKDNS_DOMAIN="$(normalize_duck_domain "$duck_in")"
+DUCKDNS_TOKEN=""
+DUCKDNS_HTTPS_PORT="$existing_duck_port"
+PUBLIC_BASE_URL=""
+SIP_PUBLIC_HOST=""
+
+if [[ -n "$DUCKDNS_DOMAIN" ]]; then
+  prompt DUCKDNS_TOKEN "${existing_duck_token:-}" "DuckDNS token"
+  prompt DUCKDNS_HTTPS_PORT "${existing_duck_port}" "HTTPS port on that hostname"
+  DUCKDNS_HTTPS_PORT="${DUCKDNS_HTTPS_PORT:-8443}"
+  if [[ "$DUCKDNS_HTTPS_PORT" == "443" ]]; then
+    PUBLIC_BASE_URL="https://${DUCKDNS_DOMAIN}.duckdns.org"
+  else
+    PUBLIC_BASE_URL="https://${DUCKDNS_DOMAIN}.duckdns.org:${DUCKDNS_HTTPS_PORT}"
+  fi
+  SIP_PUBLIC_HOST="${DUCKDNS_DOMAIN}.duckdns.org"
+  echo "Updating DuckDNS…"
+  if body="$(curl -fsS --max-time 20 \
+    "https://www.duckdns.org/update?domains=${DUCKDNS_DOMAIN}&token=${DUCKDNS_TOKEN}&ip=" 2>/dev/null)"; then
+    if [[ "$body" == OK* ]]; then
+      echo "  DuckDNS OK — ${DUCKDNS_DOMAIN}.duckdns.org"
+    else
+      echo "  DuckDNS response: ${body}" >&2
+    fi
+  else
+    echo "  Could not reach DuckDNS (updater retries with Mothership)." >&2
+  fi
+else
+  echo "Paste your public HTTPS URL (required for mic + invites)."
+  echo "Examples: https://phonehome.yourname.net:8443  or  https://abc.trycloudflare.com"
+  prompt PUBLIC_BASE_URL "${existing_pub:-}" "PUBLIC_BASE_URL"
+fi
+
+if [[ ! "$PUBLIC_BASE_URL" =~ ^https:// ]]; then
+  echo "PUBLIC_BASE_URL must start with https://" >&2
+  exit 1
+fi
+
+host_from_url="$(node -e "try{console.log(new URL(process.argv[1]).hostname)}catch{process.exit(1)}" "$PUBLIC_BASE_URL")"
+prompt SIP_PUBLIC_HOST "${SIP_PUBLIC_HOST:-${existing_sip:-$host_from_url}}" "SIP_PUBLIC_HOST (for HT801 TLS)"
+
+prompt SIP_SERVER "${SIP_SERVER:-127.0.0.1}" "FreePBX LAN address (SIP_SERVER)"
+prompt ARI_URL "${ARI_URL:-http://${SIP_SERVER}:8088}" "FreePBX ARI URL"
+
+lan_ip=""
+if command -v ip >/dev/null 2>&1; then
+  lan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1); exit}' || true)"
+elif command -v ifconfig >/dev/null 2>&1; then
+  lan_ip="$(ifconfig 2>/dev/null | awk '/inet / && $2!="127.0.0.1"{print $2; exit}' || true)"
+fi
+prompt EXT_MEDIA_HOST "${EXT_MEDIA_HOST:-${lan_ip:-127.0.0.1}}" "EXT_MEDIA_HOST (FreePBX reaches bridge here)"
+
+read -r -p "Enable one-tap HT801 LAN push? [Y/n] (No for VPS/cloud): " ata_push
+ata_push="${ata_push:-Y}"
+if [[ "$ata_push" =~ ^[Nn] ]]; then
+  ATA_LAN_PUSH=0
+else
+  ATA_LAN_PUSH=1
+fi
+
+read -r -p "Configure TURN now? [y/N]: " turn_now
+TURN_BLOCK=""
+if [[ "$turn_now" =~ ^[Yy] ]]; then
+  prompt TURN_URLS "" "TURN_URLS (e.g. turn:203.0.113.10:3478)"
+  prompt TURN_USERNAME "phonehome" "TURN_USERNAME"
+  read -r -s -p "TURN_CREDENTIAL: " TURN_CREDENTIAL
+  echo ""
+  TURN_BLOCK=$(
+    cat <<EOF
+TURN_URLS=${TURN_URLS}
+TURN_USERNAME=${TURN_USERNAME}
+TURN_CREDENTIAL=${TURN_CREDENTIAL}
+EOF
+  )
+fi
+
+umask 077
+cat >"$ENV_FILE" <<EOF
+# Generated by deploy/phonehome-init.sh — edit and restart PhoneHome.
+PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+SIP_PUBLIC_HOST=${SIP_PUBLIC_HOST}
+DUCKDNS_DOMAIN=${DUCKDNS_DOMAIN}
+DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
+DUCKDNS_HTTPS_PORT=${DUCKDNS_HTTPS_PORT:-8443}
+PORT=8787
+DATA_DIR=${DATA_DIR}
+NODE_ENV=production
+SIP_SERVER=${SIP_SERVER}
+BRIDGE_URL=http://127.0.0.1:8790
+ATA_LAN_PUSH=${ATA_LAN_PUSH}
+${TURN_BLOCK}
+# SIP_TLS_VALIDATE_CERT=0   # escape hatch for raw LAN IP only — not for production FQDN
+EOF
+
+if [[ -f "$BRIDGE_FILE" ]] && grep -q '^BRIDGE_SECRET=' "$BRIDGE_FILE"; then
+  BRIDGE_SECRET="$(grep '^BRIDGE_SECRET=' "$BRIDGE_FILE" | cut -d= -f2-)"
+else
+  BRIDGE_SECRET="$(openssl rand -base64 32 2>/dev/null | tr -d '=+/' | cut -c1-40 || head -c 40 /dev/urandom | base64 | tr -d '=+/' | cut -c1-40)"
+fi
+
+read -r -p "ARI password [generate random]: " ari_pass
+if [[ -z "$ari_pass" ]]; then
+  ari_pass="$(openssl rand -base64 18 2>/dev/null | tr -d '=+/' | cut -c1-24 || echo "change-me-$(date +%s)")"
+  echo "    (generated — set the same in FreePBX ARI user)"
+fi
+
+cat >"$BRIDGE_FILE" <<EOF
+BRIDGE_SECRET=${BRIDGE_SECRET}
+PHONEHOME_URL=http://127.0.0.1:8787
+PHONEHOME_WS=ws://127.0.0.1:8787/ws
+ARI_URL=${ARI_URL}
+ARI_USER=phonehome
+ARI_PASS=${ari_pass}
+ARI_APP=phonehome
+EXT_MEDIA_HOST=${EXT_MEDIA_HOST}
+EXT_MEDIA_PORT_BASE=14000
+BRIDGE_HTTP_PORT=8790
+BRIDGE_HTTP_BIND=0.0.0.0
+${TURN_BLOCK}
+EOF
+
+# --- FreePBX auto-provision (analog) ---
+SYNC_FILE="$DATA_DIR/freepbx-sync.env"
+read -r -p "Configure FreePBX extension auto-sync (required for analog)? [Y/n]: " sync_now
+sync_now="${sync_now:-Y}"
+if [[ ! "$sync_now" =~ ^[Nn] ]]; then
+  if [[ -f "$SYNC_FILE" ]] && grep -q '^FREEPBX_SYNC_TOKEN=' "$SYNC_FILE"; then
+    echo "==> Keeping existing $SYNC_FILE"
+  else
+    SYNC_TOKEN="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p -c 64)"
+    prompt FREEPBX_SYNC_URL "http://${SIP_SERVER}:8797/sip-secret" "FREEPBX_SYNC_URL"
+    cat >"$SYNC_FILE" <<EOF
+FREEPBX_SYNC_URL=${FREEPBX_SYNC_URL}
+FREEPBX_SYNC_TOKEN=${SYNC_TOKEN}
+EOF
+    echo ""
+    echo "==> Wrote $SYNC_FILE"
+    echo "On FreePBX (as root), run:"
+    echo "  FREEPBX_SYNC_TOKEN=${SYNC_TOKEN} PHONEHOME_HOST_IP=${EXT_MEDIA_HOST} \\"
+    echo "    SIP_PUBLIC_HOST=${SIP_PUBLIC_HOST} $ROOT/deploy/install-freepbx-sync.sh"
+  fi
+fi
+
+echo ""
+echo "==> Wrote $ENV_FILE"
+echo "==> Wrote $BRIDGE_FILE"
+echo ""
+echo "Next steps:"
+echo "  1. npm install && npm run build"
+echo "  2. FreePBX: enable ARI + run install-freepbx-sync.sh (see above)"
+echo "  3. ./deploy/setup-analog.sh          # analog checklist"
+echo "  4. HTTPS reverse proxy → localhost:8787 (see docs/self-host.md)"
+echo "  5. Port forwards: TURN 3478 + relays; SIP TLS 5061 + RTP 10000-10200"
+echo "  6. ./deploy/install-service.sh       # background app (macOS / Linux)"
+echo "     deploy/invite-card.html           # printable invite for cousins"
+echo "     or .\\deploy\\windows\\install-service.ps1"
+echo ""
+read -r -p "Install background service now? [y/N]: " install_now
+if [[ "$install_now" =~ ^[Yy] ]]; then
+  PHONEHOME_ROOT="$ROOT" DATA_DIR="$DATA_DIR" "$DEPLOY/install-service.sh"
+fi

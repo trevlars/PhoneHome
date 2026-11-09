@@ -1,0 +1,51 @@
+# PhoneHome Mothership — Unraid / homelab Docker (hub + bridge in one container).
+#
+# Unraid: Apps → Docker Compose → paste this file, or add via the CA template.
+# Data lives on the Unraid appdata share (survives container updates).
+#
+#   mkdir -p /mnt/user/appdata/phonehome-mothership
+#   cp deploy/phonehome.env.example /mnt/user/appdata/phonehome-mothership/phonehome.env
+#   # edit PUBLIC_BASE_URL, SIP_PUBLIC_HOST, TURN_*, ARI_* as needed
+#   docker compose -f deploy/docker-compose.unraid.yml up -d
+#
+# Image: ghcr.io/trevlars/phonehome-mothership (published on release tags).
+# Local build: PHONEHOME_IMAGE=phonehome-mothership:local docker compose ...
+
+name: phonehome-mothership
+
+services:
+  mothership:
+    image: ${PHONEHOME_IMAGE:-ghcr.io/trevlars/phonehome-mothership:latest}
+    build:
+      context: ..
+      dockerfile: Dockerfile.mothership
+    container_name: phonehome-mothership
+    restart: unless-stopped
+    ports:
+      - "${PHONEHOME_HTTP_PORT:-8787}:8787"
+      - "${PHONEHOME_BRIDGE_PORT:-8790}:8790"
+      - "${PHONEHOME_RTP_BASE:-14000}-${PHONEHOME_RTP_END:-14050}:14000-14050/udp"
+    volumes:
+      - ${PHONEHOME_APPDATA:-/mnt/user/appdata/phonehome-mothership}:/app/data
+    environment:
+      PUID: ${PUID:-99}
+      PGID: ${PGID:-100}
+      TZ: ${TZ:-America/New_York}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      SIP_PUBLIC_HOST: ${SIP_PUBLIC_HOST:-}
+      SIP_SERVER: ${SIP_SERVER:-}
+      ATA_LAN_PUSH: ${ATA_LAN_PUSH:-0}
+      ARI_URL: ${ARI_URL:-}
+      ARI_USER: ${ARI_USER:-phonehome}
+      ARI_PASS: ${ARI_PASS:-}
+      EXT_MEDIA_HOST: ${EXT_MEDIA_HOST:-}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_USERNAME: ${TURN_USERNAME:-}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8787/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

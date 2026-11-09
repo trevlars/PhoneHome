@@ -1,0 +1,9 @@
+{$PUSH_HOST} {
+	encode gzip
+	reverse_proxy push-gateway:8789
+}
+
+{$CONTROL_HOST} {
+	encode gzip
+	reverse_proxy control:8791
+}

@@ -1,0 +1,107 @@
+# Full-stack PhoneHome (hub + bridge + TURN + HTTPS proxy).
+# FreePBX is separate — install on a VM/LXC or your own host; point bridge.env ARI_URL at it.
+#
+# Quick start:
+#   cp deploy/phonehome.env.example deploy/.env
+#   # edit deploy/.env — set PUBLIC_BASE_URL, SIP_PUBLIC_HOST, SIP_SERVER, TURN_*
+#   docker compose -f deploy/docker-compose.full.yml --env-file deploy/.env up -d --build
+#
+# First boot: docker compose logs phonehome | grep HOST
+
+services:
+  phonehome:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    volumes:
+      - phonehome-data:/app/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "8787"
+      DATA_DIR: /app/data
+      NODE_ENV: production
+      BRIDGE_URL: http://bridge:8790
+      ATA_LAN_PUSH: ${ATA_LAN_PUSH:-0}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8787/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  bridge:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.bridge
+    restart: unless-stopped
+    depends_on:
+      phonehome:
+        condition: service_healthy
+    ports:
+      - "8790:8790"
+      - "14000-14050:14000-14050/udp"
+    volumes:
+      - phonehome-data:/data:ro
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PHONEHOME_URL: http://phonehome:8787
+      PHONEHOME_WS: ws://phonehome:8787/ws
+      BRIDGE_HTTP_PORT: "8790"
+      BRIDGE_HTTP_BIND: "0.0.0.0"
+      EXT_MEDIA_HOST: ${EXT_MEDIA_HOST:-bridge}
+      EXT_MEDIA_PORT_BASE: "14000"
+      ARI_URL: ${ARI_URL:-http://host.docker.internal:8088}
+      ARI_USER: ${ARI_USER:-phonehome}
+      ARI_PASS: ${ARI_PASS:-change-me}
+      BRIDGE_SECRET: ${BRIDGE_SECRET:-}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_USERNAME: ${TURN_USERNAME:-}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  coturn:
+    image: coturn/coturn:4.6.2
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --fingerprint
+      - --lt-cred-mech
+      - --user=${TURN_USERNAME:-phonehome}:${TURN_CREDENTIAL:-change-me}
+      - --realm=phonehome
+      - --external-ip=${TURN_EXTERNAL_IP:-}
+    profiles:
+      - turn
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./templates/Caddyfile.phonehome:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      PHONEHOME_HOST: ${PHONEHOME_HOST:-localhost}
+      PHONEHOME_UPSTREAM: phonehome:8787
+    depends_on:
+      - phonehome
+    profiles:
+      - https
+
+volumes:
+  phonehome-data:
+  caddy-data:
+  caddy-config:

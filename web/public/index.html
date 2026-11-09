@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Allow pinch-zoom (WCAG 1.4.4); viewport-fit for notched devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e1a15" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="PhoneHome" />
+    <meta name="application-name" content="PhoneHome" />
+    <!-- phonehome-link-preview -->
+    <title>PhoneHome</title>
+    <meta name="description" content="PhoneHome — the home phone, reborn. Private calling for family and approved trusted friends." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PhoneHome" />
+    <meta property="og:title" content="PhoneHome" />
+    <meta property="og:description" content="PhoneHome — the home phone, reborn. Private calling for family and approved trusted friends." />
+    <meta property="og:image" content="/icon-1024.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PhoneHome" />
+    <meta name="twitter:description" content="PhoneHome — the home phone, reborn. Private calling for family and approved trusted friends." />
+    <meta name="twitter:image" content="/icon-1024.png" />
+    <!-- /phonehome-link-preview -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,SOFT,wght@0,9..144,30..100,500;0,9..144,30..100,680;0,9..144,30..100,700;1,9..144,50,500;1,9..144,50,560&family=Fredoka:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700&family=Oswald:wght@500;600;700&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=Sora:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=VT323&family=Varela+Round&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="/icon.svg?v=mv6q057y" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico?v=mv6q057y" sizes="any" />
+    <link rel="icon" href="/favicon-32.png?v=mv6q057y" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/favicon-16.png?v=mv6q057y" type="image/png" sizes="16x16" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=mv6q057y" />
+    <link rel="stylesheet" href="/app.css?v=mv6q057y" />
+    <script>
+      try {
+        var cap = window.Capacitor;
+        if (cap && cap.isNativePlatform && cap.isNativePlatform()) {
+          document.documentElement.classList.add("capacitor-native");
+          // Newer shells hold a native launch cover across reloads; older ones need the web copy.
+          var kit = (cap.PluginHeaders || []).filter(function (p) { return p.name === "PhoneHomeCallKit"; })[0];
+          var nativeCover = kit && (kit.methods || []).some(function (m) { return m.name === "hideLaunchCover"; });
+          if (!nativeCover) document.documentElement.classList.add("boot-splash-on");
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div class="boot-splash" id="boot-splash" aria-hidden="true">
+      <div class="boot-hero">
+        <span class="boot-ring"></span><span class="boot-ring delay"></span>
+        <img src="/launch-mark.png" alt="" width="180" height="180" decoding="sync" />
+      </div>
+    </div>
+    <a class="skip-link" href="#app-page">Skip to main content</a>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <div id="app"></div>
+    <!-- Persist across screen re-renders so WebRTC audio isn't torn down mid-call -->
+    <audio id="remote-audio" autoplay playsinline webkit-playsinline></audio>
+    <audio id="vm-monitor-audio" autoplay playsinline webkit-playsinline></audio>
+    <div id="group-audio-root" hidden></div>
+    <div id="toast-root" hidden aria-live="polite"></div>
+    <div id="ptr-root" class="ptr-root" hidden aria-hidden="true">
+      <div class="ptr-pill">
+        <span class="ptr-ring" aria-hidden="true"></span>
+        <span class="ptr-label">Pull to refresh</span>
+      </div>
+    </div>
+    <div id="call-root"></div>
+    <script type="module" src="/app.js?v=mv6q057y"></script>
+  </body>
+</html>

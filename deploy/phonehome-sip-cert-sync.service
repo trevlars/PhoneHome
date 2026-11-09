@@ -1,0 +1,8 @@
+[Unit]
+Description=Sync Caddy Let's Encrypt cert to FreePBX SIP TLS
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/sync-phonehome-sip-cert.sh

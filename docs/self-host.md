@@ -1,0 +1,298 @@
+# Self-host your Mothership
+
+Run your circle’s **Mothership** — the always-on PhoneHome server at home. Many **Pods** (families) can share one Mothership; each parent curates **Circles** for their kids.
+
+**Terms:** [`glossary.md`](./glossary.md) — Mothership → Pod → Circle.
+
+**Privacy pillar:** [`privacy-security.md`](./privacy-security.md) — no cleartext public SIP, HTTPS required off-LAN.
+
+## Who should host?
+
+| Host | Good for |
+| --- | --- |
+| **Always-on home PC / Mac / Linux** | Parents who want “install and forget” — background service |
+| **Raspberry Pi / NUC / mini PC** | Low-power 24/7 Mothership |
+| **Proxmox LXC / VPS** | Power users; one-liner VE script in [`mothership-unraid-proxmox.md`](./mothership-unraid-proxmox.md) |
+| **Unraid (Docker)** | [`mothership-unraid-proxmox.md`](./mothership-unraid-proxmox.md) — CA template + compose |
+
+Each family joins as a **Pod** (family name) on one Mothership. A **family** invite adds a sibling/in-law as a **parent on your Pod** (shared grandparents). Cousins use your **HTTPS URL + invite code** — no VPN, no second server. A **friend** invite is different: it only joins one **child’s Circle**, not your Pod.
+
+## What you install
+
+| Piece | Role | Required? |
+| --- | --- | --- |
+| **PhoneHome hub** | Signaling on the Mothership | Yes |
+| **Bridge** | FreePBX ARI ↔ WebRTC / HT801 | Yes for analog; runs with hub |
+| **HTTPS** | Mic + sessions on phones | Yes for remote users |
+| **coturn (TURN)** | Cross-NAT softphone calls | Strongly recommended |
+| **FreePBX** | SIP registrar for HT801 | Only for analog landline |
+| **Reverse proxy** | Caddy, Traefik, Cloudflare Tunnel | Yes (or tunnel URL) |
+
+## Fast path — download (recommended for parents)
+
+**No Git or Node.js required.** See **[`docs/download-mothership.md`](./download-mothership.md)** for per-OS archives from [GitHub Releases](https://github.com/trevlars/PhoneHome/releases).
+
+| OS | Install |
+| --- | --- |
+| **macOS** | Open `PhoneHome-Mothership-*-macos.dmg` → drag to Applications (or zip: `Install PhoneHome Mothership.command`) |
+| **Linux** | `tar -xzf`, then `./install-mothership.sh` |
+| **Windows** | Unzip, then `.\install-mothership.ps1` |
+
+Each bundle includes Node.js, hub, bridge, and web UI.
+
+## Fast path — git clone (developers)
+
+Best for contributors or bleeding-edge `master`:
+
+### 1. Prerequisites
+
+- **Node.js 20+** ([nodejs.org](https://nodejs.org))
+- **Git** clone of this repo
+- A **public HTTPS URL** (pick one):
+  - **DuckDNS** (recommended stable hostname): subdomain + token in `phonehome.env` — see below
+  - **Cloudflare Tunnel** (easiest, no port forward): `cloudflared tunnel --url http://127.0.0.1:8787`
+  - **Your own domain** + Caddy/nginx on `:8443` → `127.0.0.1:8787`
+  - Router DDNS + port forward (see [Ports](#ports-to-forward))
+
+### 2. Build & configure
+
+```bash
+git clone https://github.com/trevlars/PhoneHome.git
+cd PhoneHome
+npm install
+npm run build
+chmod +x deploy/phonehome-init.sh deploy/install-service.sh
+./deploy/phonehome-init.sh
+```
+
+`phonehome-init.sh` writes:
+
+- `~/.phonehome/phonehome.env` — `PUBLIC_BASE_URL`, `SIP_PUBLIC_HOST`, TURN, etc.
+- `~/.phonehome/bridge.env` — ARI + `BRIDGE_SECRET`
+
+On Linux as root / server install, data defaults to `/var/lib/kids-landline`.
+
+### 3. Install background service
+
+```bash
+./deploy/install-service.sh
+```
+
+| OS | What it installs |
+| --- | --- |
+| **macOS** | LaunchAgent `com.phonehome.server` — starts at login, restarts on crash |
+| **Linux** | systemd **user** service `phonehome.service` |
+| **Windows** | Scheduled Task **PhoneHome** at logon |
+
+```powershell
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File deploy\windows\install-service.ps1
+```
+
+Both hub and bridge run via `deploy/phonehome-supervisor.mjs` (one parent-friendly process).
+
+**Linux tip:** `sudo loginctl enable-linger $USER` so PhoneHome keeps running after you log out.
+
+### 4. HTTPS URL
+
+**DuckDNS (recommended):** set in `phonehome.env`:
+
+```bash
+DUCKDNS_DOMAIN=myfamily
+DUCKDNS_TOKEN=…          # from https://www.duckdns.org — never commit/log
+DUCKDNS_HTTPS_PORT=8443
+```
+
+While Mothership runs, the supervisor updates DuckDNS every few minutes and fills `PUBLIC_BASE_URL` / `SIP_PUBLIC_HOST` when those are empty. You still need HTTPS (Caddy/Let’s Encrypt) and a router forward of that port to `:8787`.
+
+Or set `PUBLIC_BASE_URL` explicitly, e.g. `https://abc123.trycloudflare.com` or `https://phonehome.yourname.net:8443`.
+
+If the URL changes (new tunnel), edit `phonehome.env` and restart the service.
+
+### 5. First parent
+
+1. Open **PUBLIC_BASE_URL** on your phone.
+2. **Mothership setup** with code from `~/.phonehome/HOST_CODE.txt` (or log on first boot).
+3. Create household → softphone → **Invite family**.
+
+---
+
+## Full stack — analog phone (HT801)
+
+Softphones work after steps above. For a **real RJ11 handset** you need FreePBX + port forwards.
+
+### FreePBX (separate VM recommended)
+
+1. Install [FreePBX](https://www.freepbx.org/) on a VM, LXC, or second machine on your LAN.
+2. Enable **ARI**: Settings → Asterisk REST Interface — user `phonehome`, app `phonehome` (password from `bridge.env`).
+3. Deploy PhoneHome FreePBX overlays from `bridged/freepbx/` (see [`ht801-lab.md`](./ht801-lab.md)).
+4. **Auto-provision extensions** (required — do not skip):
+
+```bash
+# On FreePBX as root (token from phonehome-init.sh):
+FREEPBX_SYNC_TOKEN=<token> PHONEHOME_HOST_IP=<PhoneHome LAN IP> \
+  SIP_PUBLIC_HOST=phonehome.yourname.net \
+  ./deploy/install-freepbx-sync.sh
+```
+
+Install wires the sync daemon. The **PhoneHome hub** resolves `SIP_PUBLIC_HOST` / `PUBLIC_BASE_URL` to a public IPv4 and sends `media_address` on every Analog Save/Download (and on hub boot for all ATAs). A private answer from the mothership's DNS is rejected — that is the LAN rewrite used for SIP signaling, not the RTP address a cousin phone can reach. Cousin phones get remote SDP automatically; home one-tap ATAs stay LAN mode. Operators do not set FreePBX media env by hand.
+
+This installs `phonehome-freepbx-syncd` on port **8797**. Parent → Analog Phone → **Save** creates the PJSIP extension automatically.
+
+5. Run the checklist:
+
+```bash
+./deploy/setup-analog.sh
+```
+
+Set in `phonehome.env`:
+
+```bash
+SIP_PUBLIC_HOST=phonehome.yourname.net    # same hostname as HTTPS (Let's Encrypt on SIP TLS)
+SIP_SERVER=10.0.0.50                      # FreePBX LAN IP
+```
+
+Set in `bridge.env`:
+
+```bash
+ARI_URL=http://10.0.0.50:8088
+EXT_MEDIA_HOST=10.0.0.51                  # PhoneHome host LAN IP (where bridge listens)
+```
+
+### SIP TLS certificate
+
+Reuse your HTTPS Let's Encrypt cert on FreePBX SIP TLS (`deploy/sync-phonehome-sip-cert.sh`). ATAs must register to your **FQDN** on **TCP 5061** with cert validation on.
+
+### Ports to forward
+
+Forward on your router to the correct internal host:
+
+| Port | To | Purpose |
+| --- | --- | --- |
+| **TCP 8443** (or 443) | PhoneHome / Caddy | HTTPS app |
+| **UDP+TCP 3478** | coturn host | TURN |
+| **UDP 49160–49200** | coturn host | TURN media |
+| **TCP 5061** | FreePBX (or SIP TLS proxy) | ATA signaling (TLS only) |
+| **UDP 10000–10200** | FreePBX | SRTP audio |
+
+Do **not** forward UDP 5060 (cleartext SIP) — not a supported production path.
+
+### HT801 setup
+
+- **Mothership home household:** Parent UI → Analog Phone → **Set up adapter** (one-tap) when PhoneHome is on the same LAN as the box.
+- **Invited / remote pods:** the app leads with **Download config** (one-tap cannot reach another house). The file always writes `SIP_PUBLIC_HOST` — a mothership LAN IP only works on the host LAN.
+- **Cloud / VPS host:** set `ATA_LAN_PUSH=0` — Download config only.
+- **Remote adapter:** must reach `SIP_PUBLIC_HOST:5061` through your forwards. The cousin **house firewall** must allow outbound **TCP 5061** (and return SRTP).
+- **HT801 firmware:** v2 **1.0.9.3+** is enough for TLS+SRTP; prefer **1.0.11.4** (v2 image only) if REGISTER fails after a good Download. See `docs/ht801-lab.md`.
+- **Kid handset keypad:** **0** = TreeHouse · **1** = Home/parent · **2–9** = speed dial · **\*98** = Messages
+
+### Invite cousins
+
+Open **`deploy/invite-card.html`** in a browser, enter your `PUBLIC_BASE_URL` + invite code, **Print / Save PDF**.
+
+---
+
+## Docker (Unraid, compose, full stack)
+
+**Unraid / single-container (recommended for NAS):** see **[`mothership-unraid-proxmox.md`](./mothership-unraid-proxmox.md)** — `ghcr.io/trevlars/phonehome-mothership` + CA template.
+
+**Two-container compose** (hub + bridge + optional TURN/Caddy). FreePBX stays on a VM:
+
+```bash
+cp deploy/phonehome.env.example deploy/.env
+# Edit deploy/.env — set PUBLIC_BASE_URL, ARI_URL, BRIDGE_SECRET, TURN_*
+docker compose -f deploy/docker-compose.full.yml --env-file deploy/.env up -d --build
+docker compose -f deploy/docker-compose.full.yml --profile turn --profile https up -d
+```
+
+`BRIDGE_SECRET` is auto-generated in the data volume on first boot for the all-in-one image; for `docker-compose.full.yml`, set it in `.env`.
+
+---
+
+## Environment reference
+
+| Variable | Meaning |
+| --- | --- |
+| `PUBLIC_BASE_URL` | HTTPS origin for invites and the app (required off-LAN) |
+| `SIP_PUBLIC_HOST` | Hostname in HT801 configs (defaults from `PUBLIC_BASE_URL`) |
+| `SIP_SERVER` | FreePBX LAN address |
+| `DATA_DIR` | SQLite + `HOST_CODE.txt` |
+| `TURN_URLS` / `TURN_USERNAME` / `TURN_CREDENTIAL` | coturn for cross-NAT calls |
+| `ATA_LAN_PUSH` | `1` home LAN; `0` cloud/VPS |
+| `ATA_LAN_HOUSEHOLD_IDS` | Optional household ids that may use one-tap (default: oldest household) |
+| `BRIDGE_SECRET` | Shared by hub + bridge (auto-generated by init) |
+
+Templates: `deploy/phonehome.env.example`, `deploy/bridge.env.example`.
+
+---
+
+## Changing your public URL
+
+1. Update DNS / tunnel / Caddy.
+2. Edit `phonehome.env`: `PUBLIC_BASE_URL` and usually `SIP_PUBLIC_HOST`.
+3. Restart PhoneHome service.
+4. Re-download or push HT801 configs if analog.
+5. Re-share invites — old LAN-only bookmarks won’t carry sessions.
+
+No hardcoded hostnames in the app — everything reads from your env files.
+
+---
+
+## Mothership size (defaults)
+
+Designed for extended family — not open server farms. Defaults (override in `phonehome.env`):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MOTHERSHIP_MAX_LINES` | 50 | Hard cap on lines (softphones + ATAs) |
+| `MOTHERSHIP_WARN_LINES` | 40 | Parents see a warning in the app |
+| `MOTHERSHIP_MAX_PODS` | none | Optional cap on Pods (households) |
+| `MOTHERSHIP_WARN_PODS` | none | Optional Pod warning threshold |
+
+When full, invite redemption fails with a clear message — start another Mothership for a new branch of the family.
+
+---
+
+## Connecting two Motherships (future)
+
+Stage 1: one Mothership, all households on it. **Stage 3** (planned): Mothership↔Mothership federation via `peer_servers` — each circle keeps its own database; see [`family-mesh.md`](./family-mesh.md).
+
+Optional future **connectivity helper** = TURN/rendezvous only, not household data.
+
+---
+
+## Troubleshooting
+
+```bash
+# Health
+curl -sS http://127.0.0.1:8787/api/health
+curl -sS http://127.0.0.1:8790/health
+
+# macOS logs
+tail -f ~/.phonehome/phonehome.log
+
+# Linux
+journalctl --user -u phonehome -f
+
+# Analog line (Proxmox lab)
+./deploy/phonehome-doctor.sh
+```
+
+| Symptom | Check |
+| --- | --- |
+| Mic blocked | Must use **HTTPS** `PUBLIC_BASE_URL`, not `http://LAN:8787` |
+| Ring, no audio (softphone) | TURN ports + `TURN_*` in `phonehome.env` |
+| Ring, no audio (ATA) | RTP forwards 10000–10200; `rtp show settings` on FreePBX |
+| ATA “Working” but dead | Run `phonehome-doctor.sh`; SIP secret drift |
+
+---
+
+## Related
+
+| Doc | Topic |
+| --- | --- |
+| [`hosting.md`](./hosting.md) | example lab topology (eero, Proxmox CTs) |
+| [`mothership-unraid-proxmox.md`](./mothership-unraid-proxmox.md) | Unraid Docker + Proxmox VE helper script |
+| [`ht801-lab.md`](./ht801-lab.md) | HT801 + FreePBX procedure |
+| [`family-mesh.md`](./family-mesh.md) | Invites, TreeHouse, federation plan |
+| [`privacy-security.md`](./privacy-security.md) | Encryption pillar |

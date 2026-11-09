@@ -1,0 +1,32 @@
+# Home Assistant OS add-on — PhoneHome Mothership (trial + licensed)
+name: PhoneHome Mothership
+version: "0.1.0"
+slug: phonehome
+description: >-
+  Self-hosted PhoneHome Mothership for private family softphones. 30-day trial from first
+  start, then paste a $25/year signed host license. Free iOS/PWA clients connect to your HTTPS URL.
+url: https://github.com/trevlars/PhoneHome
+arch:
+  - aarch64
+  - amd64
+init: false
+# Analog SIP/RTP often needs host networking — document in README; start with bridge + published ports.
+host_network: false
+ports:
+  8787/tcp: 8787
+ports_description:
+  8787/tcp: PhoneHome HTTPS/API (put Caddy/Nginx or HA ingress in front for TLS)
+map:
+  - ssl
+  - share:rw
+options:
+  host_license: ""
+  host_license_enforce: true
+  host_license_buy_url: "https://phonehome.pages.dev/buy.html"
+  public_base_url: ""
+schema:
+  host_license: str?
+  host_license_enforce: bool
+  host_license_buy_url: str
+  public_base_url: str?
+image: ghcr.io/trevlars/phonehome-mothership-{arch}

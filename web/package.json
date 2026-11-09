@@ -1,0 +1,10 @@
+{
+  "name": "@phonehome/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node build.mjs --watch",
+    "test": "node --test src/inviteLink.test.js src/speedDial.test.js src/profilePicker.test.js src/updateDetection.test.js src/parentSettingsIa.test.js src/analogSetup.test.js src/holdPaths.test.js src/callKitEndPaths.test.js src/androidShell.test.js"
+  }
+}

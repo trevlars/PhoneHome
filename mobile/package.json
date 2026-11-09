@@ -1,0 +1,23 @@
+{
+  "name": "@phonehome/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PhoneHome Capacitor shell (iOS CallKit, Android Telecom)",
+  "scripts": {
+    "build:plugin": "npm run build --prefix plugins/phonehome-callkit",
+    "sync": "npm run build:plugin && npx cap sync ios",
+    "sync:android": "npx cap sync android",
+    "open:ios": "npx cap open ios",
+    "open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.8",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/cli": "^7.6.8",
+    "@capacitor/core": "^7.6.8",
+    "@capacitor/ios": "^7.6.8",
+    "@capacitor/preferences": "^7.0.4",
+    "phonehome-callkit": "file:plugins/phonehome-callkit"
+  }
+}

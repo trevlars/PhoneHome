@@ -1,0 +1,3 @@
+• Fixes Connect onboarding layout on iPhone (Join / Host cards)
+• Fixes rare CallKit “Call Failed” crash on answered calls
+• Faster hang up and hold while the phone is locked

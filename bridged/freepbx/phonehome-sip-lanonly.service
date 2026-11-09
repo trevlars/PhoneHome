@@ -1,0 +1,13 @@
+[Unit]
+Description=PhoneHome: keep cleartext SIP (UDP 5060) LAN-only on FreePBX
+After=network-online.target
+Wants=network-online.target
+Before=fail2ban.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/phonehome-sip-lanonly.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

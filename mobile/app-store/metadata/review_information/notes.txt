@@ -1,0 +1,18 @@
+PhoneHome is a free family calling app. Each family's calls run through its own private PhoneHome server, called a Mothership. The app needs a Mothership HTTPS address or an invite link before sign-in.
+
+DEMO FOR REVIEW
+1. Open the app: Splash → What makes it special → How you call → Connect.
+2. On Connect, tap "Got an invite? Join" and enter: https://mothership.example:8443
+   (A full invite share link also works — the app keeps the invite.)
+3. Sign in with username: test (password in the field below).
+4. The test account can only see and call the one demo contact — never kids or other families.
+5. Allow microphone on the first call. Face ID is optional under Parent → Account.
+6. Optional: Parent → This phone → Answer from the lock screen (CallKit; on by default).
+
+NO IN-APP PURCHASES
+The app is free and has no in-app purchases. On the US storefront only, the "Host" option on the Connect screen links out to our website for a Mothership trial or license. That license is for the separate server software a parent runs on their own computer (macOS, Windows, Linux), not for content or features inside this app. Outside the US those links are hidden. Joining a family's Mothership is always free.
+
+The website softphone at the same HTTPS address works without the app. The iOS app adds CallKit, lock-screen answering, and Keychain/Face ID sign-in.
+
+Privacy: https://phonehome.pages.dev/privacy.html
+Support: https://phonehome.pages.dev/support.html

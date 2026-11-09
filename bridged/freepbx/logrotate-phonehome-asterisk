@@ -1,0 +1,15 @@
+# PhoneHome — rotate the Asterisk evidence log written by
+# /etc/asterisk/logger_logfiles_custom.conf. Install: /etc/logrotate.d/phonehome-asterisk
+/var/log/asterisk/phonehome-verbose {
+	daily
+	missingok
+	rotate 14
+	compress
+	delaycompress
+	notifempty
+	create 0640 asterisk asterisk
+	su asterisk asterisk
+	postrotate
+		/usr/sbin/asterisk -rx 'logger reload' > /dev/null 2> /dev/null
+	endscript
+}

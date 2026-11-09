@@ -1,0 +1,25 @@
+---
+description: Always commit, deploy, and push finished lab work without being asked — through the guarded deploy script, re-provisioning HT801s only for provisioning changes.
+alwaysApply: true
+---
+
+# Deploy · commit · re-provision (always)
+
+Finish verified lab work with a commit and a deploy. A deploy must not drop live calls. The Proxmox host and container ids are not stored in this repo.
+
+## After finishing verified work
+
+1. **Commit** your own finished changes, never another agent's work in progress. `deploy/proxmox-rsync.sh` refuses uncommitted changes in deployed paths. `PHONEHOME_DEPLOY_DIRTY=1` is only for a time-boxed lab experiment, and the CT stamp then shows `+dirty`.
+2. **Deploy** to the operator's host: `FREEPBX_CT=<id> ./deploy/proxmox-rsync.sh <user@proxmox-host> <phonehome-ctid>`. Do this for any change that must reach the mothership (server, web, bridged, FreePBX overlays, scripts the CT runs). The script takes a lock, waits up to 5 min for zero SIP call legs, and stamps `/opt/kids-landline/DEPLOYED_REVISION`. Do not stop at "build succeeded" or "fixed locally". `PHONEHOME_DEPLOY_FORCE=1` drops live calls and needs an explicit yes. The FreePBX files in this repo use example addresses. Set `local_net` and fail2ban `ignoreip` for that host before the first install. Do not copy those example values over a box that is already working.
+3. **Push** to `origin` once the deploy verifies, following the Git Safety Protocol (no force-push, no secrets, focused message). Skip only if the operator says not to, or the change is still broken.
+4. **HT801 re-provisioning only when provisioning changed** (the `server/src/ht801.ts` output: P-values, certs, firmware URLs). Run `PHONEHOME_ATA_SYNC=1` with the same host arguments, which sends `check-sync` to each idle HT801. Each adapter fetches config and restarts, so its registration drops. App-only deploys must not touch the adapters. A per-deploy check-sync has dropped every registration repeatedly, and the dead-house-uplink calls followed those drops.
+5. **FreePBX reloads only when FreePBX inputs changed.** The script hashes `bridged/freepbx/` plus the syncd and set-sip-secret helpers; `PHONEHOME_FREEPBX_SYNC=1` forces a reload. A full `fwconsole reload` crashed Asterisk during the Oct 4 deploys, dropping every line.
+
+Forced single-adapter reboot (provisioning debug only, idle line): `pct exec <freepbx-ctid> -- asterisk -rx "pjsip send notify phonehome-reboot endpoint <ext>"` on the Proxmox host. `reboot=true` can reboot without fetching config, so plain check-sync is the normal path.
+
+## Do not
+
+- Hand off with "deploy when ready" or "say the word to commit".
+- Leave lab-affecting fixes only in the local checkout, or deploy a working tree containing diffs you did not author.
+- Re-provision or reboot adapters for app-only changes.
+- Restart `kids-landline`, `phonehome-bridge`, Asterisk, or coturn, or run `fwconsole reload`, by hand while `pct exec 121 -- asterisk -rx "core show channels concise"` lists a `PJSIP/` leg.

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>License confirmed — PhoneHome</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="canonical" href="https://phonehome.pages.dev/buy.html" />
+    <meta name="description" content="Your PhoneHome host license is ready. Paste it on your Mothership to activate." />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <meta name="author" content="the operator" />
+    <meta name="theme-color" content="#1f6b4a" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PhoneHome" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://phonehome.pages.dev/buy-success.html" />
+    <meta property="og:title" content="License confirmed — PhoneHome" />
+    <meta property="og:description" content="Your PhoneHome host license is ready. Paste it on your Mothership to activate." />
+    <meta property="og:image" content="https://phonehome.pages.dev/icon-512.png" />
+    <meta property="og:image:alt" content="PhoneHome Mothership mark" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="License confirmed — PhoneHome" />
+    <meta name="twitter:description" content="Your PhoneHome host license is ready. Paste it on your Mothership to activate." />
+    <meta name="twitter:image" content="https://phonehome.pages.dev/icon-512.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Nunito+Sans:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/storefront.css" />
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://phonehome.pages.dev/#org",
+  "name": "PhoneHome",
+  "legalName": "the operator",
+  "url": "https://phonehome.pages.dev/",
+  "logo": "https://phonehome.pages.dev/icon-512.png",
+  "email": "support@example.com",
+  "sameAs": [
+    "https://github.com/trevlars/PhoneHome"
+  ],
+  "contactPoint": [
+    {
+      "@type": "ContactPoint",
+      "contactType": "customer support",
+      "email": "support@example.com",
+      "url": "https://phonehome.pages.dev/support.html",
+      "availableLanguage": "English"
+    }
+  ],
+  "description": "Self-hosted family calling Mothership: private mesh, free softphones, any RJ11 analog via ATA, $25/year host license covering up to 50 phones."
+}
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand-lockup" href="/trial.html">
+        <span class="brand-mark" aria-hidden="true"><span class="mothership-glyph"></span></span>
+        <span class="brand-text">
+          <span class="brand-wordmark">Phone<span>Home</span></span>
+          <span class="brand-product">Mothership</span>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Storefront">
+        <a href="/trial.html">Trial</a>
+        <a href="/compare.html">Compare</a>
+        <a href="/buy.html">License</a>
+        <a href="/downloads.html">Downloads</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/support.html">Support</a>
+      </nav>
+    </header>
+
+    <main class="site-main">
+      <div class="success-hero">
+        <span class="success-check" aria-hidden="true">✓</span>
+        <div>
+          <p class="eyebrow">Payment received</p>
+          <h1 class="page-title" style="margin-bottom: 0.35rem">Your host license is ready</h1>
+        </div>
+      </div>
+      <p class="lede">
+        Thank you for supporting PhoneHome. Activate the signed key on your Mothership so calling
+        stays unlocked for the licensed year.
+      </p>
+
+      <div class="card" id="license-card">
+        <h2>Your license key</h2>
+        <p class="fine" id="session-status">Looking up your Stripe session…</p>
+        <div class="license-box" id="license-box" hidden>
+          <p class="fine" style="margin: 0"><strong>Signed host license</strong> — keep a copy somewhere safe.</p>
+          <pre id="lic"></pre>
+          <div class="actions">
+            <button type="button" class="primary" id="copy">Copy license key</button>
+            <a class="btn ghost" href="/downloads.html">Go to downloads</a>
+          </div>
+          <p class="status" id="copy-status" aria-live="polite"></p>
+        </div>
+        <div id="referral-box" hidden style="margin-top: 1.25rem">
+          <h2>Your referral code</h2>
+          <p class="fine">
+            Share this when a friend starts their own Mothership. They get $5 off year one; you get
+            $3 toward your next bill.
+          </p>
+          <p class="price" style="font-size: 1.5rem; margin: 0.5rem 0" id="referral-code"></p>
+          <div class="actions">
+            <button type="button" class="ghost" id="copy-ref">Copy code</button>
+            <button type="button" class="ghost" id="copy-ref-link">Copy share link</button>
+          </div>
+          <p class="status" id="ref-copy-status" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Activate on your Mothership</h2>
+        <ol class="steps">
+          <li>
+            <strong>Open Parent controls</strong>
+            On the phone or web UI signed in as the Mothership host.
+          </li>
+          <li>
+            <strong>Parent → Mothership → Host license</strong>
+            Paste the key and tap Activate license.
+          </li>
+          <li>
+            <strong>HAOS hosts</strong>
+            Paste the same key in add-on options (<code>host_license</code>), then restart if asked.
+          </li>
+        </ol>
+        <p class="fine">
+          If the key is not shown yet, refresh this page in a minute — Stripe webhooks usually finish
+          within seconds. You should also receive email confirmation from Stripe.
+        </p>
+      </div>
+
+      <p class="fine" style="margin-top: 1.25rem">
+        <a href="/buy.html">Buy / renew another year</a> ·
+        <a href="/support.html">Support</a>
+      </p>
+
+      <nav class="related" aria-labelledby="related-title">
+        <h2 class="related-title" id="related-title">Keep exploring</h2>
+        <div class="related-grid">
+          <a class="related-link" href="/downloads.html"><b>Downloads</b><span>Home Assistant, Docker, PC, and the free iPhone app.</span></a>
+          <a class="related-link" href="https://github.com/trevlars/PhoneHome/blob/master/docs/self-host.md" rel="noopener"><b>Self-hosting guide</b><span>Step-by-step Mothership setup on GitHub.</span></a>
+          <a class="related-link" href="/support.html"><b>Support</b><span>Setup help, common fixes, and how to reach us.</span></a>
+          <a class="related-link" href="/refund.html"><b>Refunds & cancellation</b><span>How to cancel and when you get money back.</span></a>
+          <a class="related-link" href="/privacy.html"><b>Privacy policy</b><span>Who holds what: PhoneHome, your Mothership, your phone.</span></a>
+          <a class="related-link" href="/terms.html"><b>Terms of Service</b><span>The plain rules for the license and the app.</span></a>
+        </div>
+      </nav>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-cols">
+        <nav aria-label="Product">
+          <p class="footer-h">Product</p>
+          <a href="/trial.html">Free trial</a>
+          <a href="/compare.html">Compare</a>
+          <a href="/compare.html#what-it-costs">Savings</a>
+          <a href="/buy.html">Host license</a>
+          <a href="/downloads.html">Downloads</a>
+        </nav>
+        <nav aria-label="Trust and legal">
+          <p class="footer-h">Trust</p>
+          <a href="/privacy.html">Privacy policy</a>
+          <a href="/privacy.html#never-keep">What we never keep</a>
+          <a href="/terms.html">Terms</a>
+          <a href="/refund.html">Refunds</a>
+          <a href="https://github.com/trevlars/PhoneHome/blob/master/SECURITY.md" rel="noopener">Security</a>
+        </nav>
+        <nav aria-label="Help">
+          <p class="footer-h">Help</p>
+          <a href="/support.html">Support</a>
+          <a href="mailto:support@example.com">Email us</a>
+          <a href="mailto:support@example.com?subject=PhoneHome%20suggestion">Suggest a feature</a>
+          <a href="https://github.com/trevlars/PhoneHome/issues" rel="noopener">Report a bug</a>
+        </nav>
+      </div>
+      <p class="footer-transparency">
+        PhoneHome is sold by the operator. The host pays $25/year (USD) after a
+        30-day free trial; families who join pay nothing. No ads, no tracking, no call recording —
+        your family’s calls live on a Mothership you or someone you trust runs.
+      </p>
+      <p class="footer-tm">
+        Tin Can, Pinwheel, Ooma, Gabb, TickTalk, Apple, iPhone, Home Assistant, Grandstream, and other
+        names on this site are trademarks of their respective owners, used only to identify and
+        compare products. PhoneHome isn’t affiliated with, endorsed by, or sponsored by any of them.
+        <a href="/terms.html#trademarks">Trademarks &amp; comparisons</a>
+      </p>
+      <p>© 2026 PhoneHome — family calling on your own Mothership · Receipt from Stripe on behalf of the LLC</p>
+    </footer>
+
+    <script>
+      const params = new URLSearchParams(location.search);
+      const sessionId = params.get("session_id");
+      const control =
+        params.get("control") ||
+        localStorage.getItem("ph_control_url") ||
+        "https://mothership.example:8443";
+      const statusEl = document.getElementById("session-status");
+      const box = document.getElementById("license-box");
+
+      function showReferral(code) {
+        if (!code) return;
+        const refBox = document.getElementById("referral-box");
+        refBox.hidden = false;
+        document.getElementById("referral-code").textContent = code;
+        const shareUrl = `${location.origin}/buy.html?ref=${encodeURIComponent(code)}`;
+        const setRefStatus = (ok, msg) => {
+          const el = document.getElementById("ref-copy-status");
+          el.classList.remove("error", "ok");
+          el.classList.add(ok ? "ok" : "error");
+          el.textContent = msg;
+        };
+        document.getElementById("copy-ref").onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(code);
+            setRefStatus(true, "Referral code copied.");
+          } catch {
+            setRefStatus(false, "Could not copy — select the code manually.");
+          }
+        };
+        document.getElementById("copy-ref-link").onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(shareUrl);
+            setRefStatus(true, "Share link copied.");
+          } catch {
+            setRefStatus(false, "Could not copy link.");
+          }
+        };
+      }
+
+      function showLicense(blob, referralCode) {
+        box.hidden = false;
+        document.getElementById("lic").textContent = blob;
+        statusEl.textContent = "License issued for your Mothership instance.";
+        statusEl.classList.add("ok");
+        document.getElementById("copy").onclick = async () => {
+          const copyStatus = document.getElementById("copy-status");
+          try {
+            await navigator.clipboard.writeText(blob);
+            copyStatus.classList.add("ok");
+            copyStatus.textContent = "Copied to clipboard.";
+          } catch {
+            copyStatus.classList.add("error");
+            copyStatus.textContent = "Could not copy — select the key manually.";
+          }
+        };
+        showReferral(referralCode);
+      }
+
+      if (!sessionId) {
+        statusEl.textContent =
+          "No checkout session in this link. Check your email for the signed key, or open Buy again.";
+      } else {
+        fetch(`${control.replace(/\/$/, "")}/v1/host-license/session/${encodeURIComponent(sessionId)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.license) showLicense(data.license, data.referral_code || null);
+            else {
+              statusEl.textContent =
+                data.error ||
+                "License not ready yet — refresh in a moment, or check the email from Stripe.";
+            }
+          })
+          .catch(() => {
+            statusEl.classList.add("error");
+            statusEl.textContent =
+              "Could not reach the license service. Check your email for the key, or refresh this page.";
+          });
+      }
+    </script>
+  </body>
+</html>

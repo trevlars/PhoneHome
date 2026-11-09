@@ -1,0 +1,5 @@
+app_identifier("app.phonehome.ios")
+team_id("ABG342Z7V2")
+
+# Shared App Store Connect API key (same as another app):
+#   source ../scripts/asc.env   # or ~/path/to/asc.env
