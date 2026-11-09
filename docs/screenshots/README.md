@@ -5,6 +5,7 @@ Marketing and UI captures for the GitHub README.
 | File | What it shows |
 | --- | --- |
 | `01-splash.png` | Splash — brand + kid on landline |
+| `03-phone-pad.png` | Speed dial pad, TreeHouse / FamilyRoom |
 | `04-parent-settings.png` | Parent controls panel |
 | `05-activity.png` | Activity / call history |
 | `06-kid-landline.jpg` | Lifestyle — kid on house phone |

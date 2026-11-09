@@ -11,7 +11,7 @@ One **Mothership** (always-on server) hosts many **Pods** (families). Each paren
 <p align="center">
   <img src="docs/screenshots/01-splash.png" width="280" alt="PhoneHome splash — the home phone, reborn" />
   &nbsp;&nbsp;
-  <img src="docs/screenshots/01-splash.png" width="280" alt="PhoneHome speed dial pad with TreeHouse and FamilyRoom" />
+  <img src="docs/screenshots/03-phone-pad.png" width="280" alt="PhoneHome speed dial pad with TreeHouse and FamilyRoom" />
 </p>
 
 | | |
